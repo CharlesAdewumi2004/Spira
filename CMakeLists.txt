@@ -17,7 +17,12 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchDeps.cmake)
 
 # Library (placeholder for now)
-add_library(spira src/dummy.cpp)
+add_library(spira src/dummy.cpp
+        include/spira/matrix.hpp
+        include/spira/row.hpp
+        include/spira/slab.hpp
+        include/spira/Element.hpp
+)
 target_include_directories(spira PUBLIC include)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
