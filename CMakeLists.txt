@@ -18,10 +18,10 @@ include(${PROJECT_SOURCE_DIR}/cmake/FetchDeps.cmake)
 
 # Library (placeholder for now)
 add_library(spira src/dummy.cpp
-        include/spira/matrix.hpp
         include/spira/row.hpp
-        include/spira/slab.hpp
         include/spira/Element.hpp
+        include/spira/traits.hpp
+        include/spira/concepts.hpp
 )
 target_include_directories(spira PUBLIC include)
 
