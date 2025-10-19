@@ -1,8 +1,7 @@
-//
-// Created by charlie on 10/2/25.
-//
+#pragma once
 
-#ifndef SPIRA_ROW_HPP
-#define SPIRA_ROW_HPP
+#include "element.hpp"
 
-#endif //SPIRA_ROW_HPP
+namespace spira::row {
+
+}

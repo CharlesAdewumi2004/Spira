@@ -3,12 +3,13 @@
 #include <type_traits>
 #include <complex>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace spira::traits {
-
     // -------- char-like detection --------
-    template <class T> struct is_char_like : std::false_type {};
+    template <class T>
+    struct is_char_like : std::false_type {};
     template <> struct is_char_like<char> : std::true_type {};
     template <> struct is_char_like<signed char> : std::true_type {};
     template <> struct is_char_like<unsigned char> : std::true_type {};
@@ -96,7 +97,7 @@ namespace spira::traits {
     template <class V>
     struct AccumulationOf<V, std::enable_if_t<std::is_integral_v<std::remove_cv_t<V>>>> {
         using base = std::remove_cv_t<V>;
-        using type = std::conditional_t<std::is_signed_v<base>, std::int64_t, std::uint64_t>;
+        using type = std::conditional_t<std::is_signed_v<base>, int64_t, uint64_t>;
     };
 
     // float -> double, double->double, long double->long double
