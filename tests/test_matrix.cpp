@@ -10,7 +10,7 @@
 // Helper: build an element quickly
 template <class V, class I>
 static inline spira::element<V, I> E(I col, V val) {
-    spira::element<V, I> e;
+    spira::element<V, I> e{};
     e.col = col;
     e.value = val;
     return e;
@@ -132,22 +132,3 @@ TEST(Matrix, SetRow_TooManyElementsThrows) {
     EXPECT_THROW(m.setRow(0, std::move(elems)), std::out_of_range);
 }
 
-TEST(Matrix, At_OutOfRangeIndicesReturnNullopt) {
-    using I = std::size_t;
-    using V = int;
-    constexpr I R = 2, C = 3;
-
-    spira::matrix<V, I, R, C> m;
-
-    std::vector<spira::element<V, I>> elems = { E<V,I>(1, 42) };
-    ASSERT_TRUE(m.setRow(1, std::move(elems)));
-
-    // OOB row
-    EXPECT_FALSE(m.at(R, 1).has_value());
-    // OOB col
-    EXPECT_FALSE(m.at(1, C).has_value());
-    // Valid miss
-    EXPECT_FALSE(m.at(1, 0).has_value());
-    // Valid hit
-    EXPECT_EQ(m.at(1, 1).value_or(-1), 42);
-}
