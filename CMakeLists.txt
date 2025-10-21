@@ -18,6 +18,7 @@ add_library(spira
         include/spira/element.hpp
         include/spira/traits.hpp
         include/spira/concepts.hpp
+        include/spira/matrix.hpp
 )
 target_include_directories(spira PUBLIC include)
 target_compile_features(spira PUBLIC cxx_std_20)

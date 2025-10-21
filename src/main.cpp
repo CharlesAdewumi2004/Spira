@@ -1,6 +1,9 @@
+#include "spira/matrix.hpp"
 #include "spira/row.hpp"
 #include "spira/spira.hpp"
+
 int main() {
-    const spira::row::row<int, size_t> r({{3,4},{5,6}, {1,2}});
-    r.printRow();
+    spira::matrix<size_t, size_t, 2, 2> matrix{};
+    matrix.tryFillRow(0, {{1,2}, {3,4}, {7,16}});
+    matrix.printRow(0);
 }
