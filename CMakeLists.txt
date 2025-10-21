@@ -39,6 +39,7 @@ enable_testing()
 
 add_executable(unit_tests
         tests/element_test.cpp
+        tests/test_matrix.cpp
 )
 target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
 
