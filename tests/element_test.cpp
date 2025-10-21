@@ -14,7 +14,7 @@
 // Namespace aliases for brevity
 namespace ct = spira::traits;
 namespace cc = spira::concepts;
-namespace se = spira::element;
+namespace se = spira;
 
 // ---------------------------------------------
 // Helper: detect whether element<V,I> is well-formed

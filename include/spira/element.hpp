@@ -1,7 +1,7 @@
 #pragma once
 #include "concepts.hpp"
 
-namespace spira::element {
+namespace spira {
     template <concepts::Valueable V, concepts::Indexable I>
     struct element {
         V value;

@@ -14,7 +14,6 @@ include(${PROJECT_SOURCE_DIR}/cmake/FetchDeps.cmake)
 add_library(spira
         src/main.cpp
         # headers are optional to list; helps IDEs:
-        include/spira/row.hpp
         include/spira/element.hpp
         include/spira/traits.hpp
         include/spira/concepts.hpp
