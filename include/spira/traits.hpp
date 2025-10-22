@@ -90,32 +90,42 @@ namespace spira::traits {
     };
 
     // ======================= AccumulationOf =============================
-    template <class V, class Enable = void>
-    struct AccumulationOf { using type = V; };
+    template<class V, class Enable = void>
+    struct AccumulationOf { using type = std::remove_cvref_t<V>; };
 
-    // integral -> promote to 64-bit with signedness preserved
-    template <class V>
-    struct AccumulationOf<V, std::enable_if_t<std::is_integral_v<std::remove_cv_t<V>>>> {
-        using base = std::remove_cv_t<V>;
-        using type = std::conditional_t<std::is_signed_v<base>, int64_t, uint64_t>;
-    };
+        // ── integral → at least 64-bit; preserve width if already wider
+        template<class V>
+        struct AccumulationOf<V, std::enable_if_t<std::is_integral_v<std::remove_cvref_t<V>>>> {
+            using B = std::remove_cvref_t<V>;
+            static constexpr int bits = std::numeric_limits<B>::digits;
 
-    // float -> double, double->double, long double->long double
-    template <class V>
-    struct AccumulationOf<V, std::enable_if_t<std::is_floating_point_v<std::remove_cv_t<V>>>> {
-        using base = std::remove_cv_t<V>;
-        using type = std::conditional_t<std::is_same_v<base, long double>, long double, double>;
-    };
+            // choose target signed/unsigned base with at least 64 bits
+            using wider_signed   = std::conditional_t<(bits <= 31), int64_t,  B>;
+            using wider_unsigned = std::conditional_t<(bits <= 32), uint64_t, B>;
 
-    // complex<T> -> complex<AccumulationOf<T>>
-    template <class V>
-    struct AccumulationOf<V, std::enable_if_t<is_complex_like_v<V>>> {
-        using S    = complex_value_type_t<V>;
-        using AccS = typename AccumulationOf<S>::type;
-        using type = std::complex<AccS>;
-    };
+            using type = std::conditional_t<std::is_signed_v<B>, wider_signed, wider_unsigned>;
+        };
 
-    template <class V>
-    using AccumulationOf_t = typename AccumulationOf<V>::type;
+        // (optional) bool policy override (if you want counts)
+        template<>
+        struct AccumulationOf<bool, void> { using type = uint64_t; };
 
-} // namespace spira::traits
+        // ── floating: float→double, double→double, long double→long double
+        template<class V>
+        struct AccumulationOf<V, std::enable_if_t<std::is_floating_point_v<std::remove_cvref_t<V>>>> {
+            using B = std::remove_cvref_t<V>;
+            using type = std::conditional_t<std::is_same_v<B, long double>, long double, double>;
+        };
+
+        // ── complex<T> → complex<AccumulationOf<T>>
+        template<class V>
+        struct AccumulationOf<V, std::enable_if_t<is_complex_like_v<std::remove_cvref_t<V>>>> {
+            using B    = std::remove_cvref_t<V>;
+            using S    = complex_value_type_t<B>;                // inner scalar (cvref removed by B)
+            using AccS = typename AccumulationOf<S>::type;
+            using type = std::complex<AccS>;
+        };
+
+        template<class V>
+        using AccumulationOf_t = typename AccumulationOf<V>::type;
+}

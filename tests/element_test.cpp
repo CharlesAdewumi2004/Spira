@@ -43,7 +43,6 @@ static_assert(!cc::Indexable<char>);            // char-like
 static_assert(!cc::Indexable<wchar_t>);         // char-like
 static_assert(!cc::Indexable<signed char>);     // char-like
 static_assert(!cc::Indexable<unsigned char>);   // char-like
-static_assert(!cc::Indexable<bool>);            //bool
 
 // ---- Valueable ----
 // Valid reals

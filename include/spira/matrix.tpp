@@ -113,8 +113,24 @@ void matrix<V, I, rowSize, colSize>::printMatrix() const noexcept {
 }
 
 template <concepts::Valueable V, concepts::Indexable I, I rowSize, I colSize>
-std::vector<traits::AccumulationOf_t<V>> matrix<V, I, rowSize, colSize>::spmv(std::vector<V> x) const {
+std::vector<traits::AccumulationOf_t<V>> matrix<V, I, rowSize, colSize>::spmv(std::vector<V> x) {
+    using Acc = traits::AccumulationOf_t<V>;
 
+    if (x.size() != static_cast<std::size_t>(colSize)) {
+        throw std::out_of_range("spmv: input vector has wrong length");
+    }
+
+    std::vector<Acc> y(static_cast<std::size_t>(rowSize), Acc{});
+
+    for (I i = 0; i < rowSize; ++i) {
+        Acc sum{};
+        const auto& row = _matrix[static_cast<std::size_t>(i)];
+        for (const auto& e : row) {
+            sum += static_cast<Acc>(e.value) * static_cast<Acc>(x[static_cast<std::size_t>(e.col)]);
+        }
+        y[static_cast<std::size_t>(i)] = sum;
+    }
+    return y;
 }
 
 }

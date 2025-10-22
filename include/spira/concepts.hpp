@@ -7,12 +7,9 @@ namespace spira::concepts{
     //used for the col in element
     template<typename I>
     concept Indexable =
-        !std::is_same_v<bool, std::remove_cv_t<I>>&&
-        std::is_integral_v<I>&&
-        !traits::is_char_like_v<I>&&
-        std::is_unsigned_v<I>&&
-        std::is_trivially_copyable_v<I>&&
-        std::is_default_constructible_v<I>;
+        std::unsigned_integral<std::remove_cvref_t<I>> &&
+        !traits::is_char_like_v<std::remove_cvref_t<I>>;
+
 
     //used for value in element
     template <class V>

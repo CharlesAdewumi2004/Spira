@@ -18,7 +18,7 @@ namespace spira {
         void printRow(I rowIndex) const noexcept;
         std::optional<V> at(I rowIndex, I colIndex) const;
         void printMatrix() const noexcept;
-        std::vector<traits::AccumulationOf_t<V>> spmv(std::vector<V> x) const;
+        std::vector<traits::AccumulationOf_t<V>> spmv(std::vector<V> x);
     };
 
 }
