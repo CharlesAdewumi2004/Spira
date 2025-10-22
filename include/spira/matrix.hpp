@@ -13,10 +13,12 @@ namespace spira {
 
     public:
         matrix() noexcept;
+        matrix(std::vector<std::vector<element<V, I>>> matrix);
         bool setRow(I rowIndex, std::vector<element<V, I>> elems);
         void printRow(I rowIndex) const noexcept;
         std::optional<V> at(I rowIndex, I colIndex) const;
         void printMatrix() const noexcept;
+        std::vector<traits::AccumulationOf_t<V>> spmv(std::vector<V> x) const;
     };
 
 }

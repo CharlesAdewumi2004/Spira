@@ -6,6 +6,21 @@
 namespace spira {
 
 template <concepts::Valueable V, concepts::Indexable I, I rowSize, I colSize>
+matrix<V, I, rowSize, colSize>::matrix(std::vector<std::vector<element<V,I>>> rows) {
+    if (rows.empty()) {
+        throw std::out_of_range("Input has 0 rows");
+    }
+    if (rows.size() > static_cast<size_t>(rowSize)) {
+        throw std::out_of_range("Too many rows for matrix");
+    }
+    _matrix.resize(rowSize);
+
+    for (size_t i = 0; i < rows.size(); ++i) {
+        setRow(static_cast<I>(i), std::move(rows[i]));
+    }
+}
+
+template <concepts::Valueable V, concepts::Indexable I, I rowSize, I colSize>
 matrix<V, I, rowSize, colSize>::matrix() noexcept {
     _matrix.resize(rowSize);
 }
@@ -95,6 +110,11 @@ void matrix<V, I, rowSize, colSize>::printMatrix() const noexcept {
             std::cout << '\n';
         }
     }
+}
+
+template <concepts::Valueable V, concepts::Indexable I, I rowSize, I colSize>
+std::vector<traits::AccumulationOf_t<V>> matrix<V, I, rowSize, colSize>::spmv(std::vector<V> x) const {
+
 }
 
 }
