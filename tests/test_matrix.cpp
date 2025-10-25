@@ -7,9 +7,9 @@
 #include <complex>
 #include <cstdint>
 
-#include "spira/matrix.hpp"   // your matrix template
+#include "../include/spira/matrix.hpp"
 #include "spira/element.hpp"  // your element<V,I> with .value and .col
-#include "spira/traits.hpp"   // AccumulationOf_t (if split), else remove
+#include "../include/spira/traits.hpp"
 
 // Helper: build an element quickly
 template <class V, class I>

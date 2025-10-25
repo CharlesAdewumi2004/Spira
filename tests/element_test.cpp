@@ -2,8 +2,8 @@
 
 #include <spira/spira.hpp>
 #include "spira/element.hpp"
-#include "spira/traits.hpp"
-#include "spira/concepts.hpp"
+#include "../include/spira/traits.hpp"
+#include "../include/spira/concepts.hpp"
 
 
 #include <type_traits>

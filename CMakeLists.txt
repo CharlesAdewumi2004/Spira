@@ -14,12 +14,11 @@ include(${PROJECT_SOURCE_DIR}/cmake/FetchDeps.cmake)
 add_library(spira
         src/main.cpp
         # headers are optional to list; helps IDEs:
-        include/spira/element.hpp
         include/spira/traits.hpp
         include/spira/concepts.hpp
         include/spira/matrix.hpp
-        include/spira/matrix.tpp
-        include/spira/layout.hpp
+        include/spira/layouts/aos.hpp
+        include/spira/layouts/soa.hpp
 )
 target_include_directories(spira PUBLIC include)
 target_compile_features(spira PUBLIC cxx_std_20)

@@ -1,4 +1,4 @@
-#include "spira/matrix.hpp"
+#include "../include/spira/matrix.hpp"
 #include "spira/spira.hpp"
 
 /*
