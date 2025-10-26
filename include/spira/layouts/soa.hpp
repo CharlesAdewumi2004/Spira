@@ -1,5 +1,5 @@
 #pragma once
 
-namespace spira::layout::soa {
+namespace spira::layout {
     struct soa{};
 }

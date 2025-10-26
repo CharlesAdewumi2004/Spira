@@ -1,5 +1,5 @@
 #pragma once
 
-namespace spira::layout::aos {
+namespace spira::layout {
     struct aos{};
 }

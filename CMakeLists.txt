@@ -19,6 +19,7 @@ add_library(spira
         include/spira/matrix.hpp
         include/spira/layouts/aos.hpp
         include/spira/layouts/soa.hpp
+        include/spira/layouts/layout_concepts.h
 )
 target_include_directories(spira PUBLIC include)
 target_compile_features(spira PUBLIC cxx_std_20)
