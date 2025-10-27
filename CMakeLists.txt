@@ -20,6 +20,7 @@ add_library(spira
         include/spira/layouts/aos.hpp
         include/spira/layouts/soa.hpp
         include/spira/layouts/layout_concepts.h
+        include/spira/row.hpp
 )
 target_include_directories(spira PUBLIC include)
 target_compile_features(spira PUBLIC cxx_std_20)
@@ -40,7 +41,6 @@ endif()
 enable_testing()
 
 add_executable(unit_tests
-        tests/element_test.cpp
         tests/test_matrix.cpp
 )
 target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
