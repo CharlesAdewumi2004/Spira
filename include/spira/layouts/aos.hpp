@@ -41,10 +41,10 @@ namespace spira::layout {
             [[nodiscard]] const V& value_at(size_t pos) const noexcept {
                     return elements[pos].value;
                 }
-            void set_at(size_t index, I col, V val) {
-                elements[index] = elementPair<I,V>{col, val};
+            void set_at(size_t index, I col, const V& val) {
+                elements.insert(elements.begin() + index, elementPair<I, V>{col, val});
             }
-            void insert_at(size_t index, I col, V val) {
+            void insert_at(size_t index, I col, const V& val) {
                 elements.insert(elements.begin() + index, elementPair<I,V>{col, val});
             }
             void erase_at(size_t index) {
@@ -55,7 +55,7 @@ namespace spira::layout {
                     elements.begin(), elements.end(), col,
                     [](auto const& e, I key){ return e.column < key; }
                 );
-                return static_cast<size_t>(std::distance(elements.begin(), it));
+                return static_cast<size_t>(distance(elements.begin(), it));
             }
     };
 }

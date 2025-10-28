@@ -20,6 +20,6 @@ namespace spira::layout::of {
     };
 
     template<class Tag, class I, class V>
-    using storage_of_t = typename storage_of<Tag, I, V>::type;
+    using storage_of_t = storage_of<Tag, I, V>::type;
 
 }
