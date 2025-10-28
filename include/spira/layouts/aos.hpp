@@ -45,10 +45,10 @@ namespace spira::layout {
                 elements[index] = elementPair<I,V>{col, val};
             }
             void insert_at(size_t index, I col, V val) {
-                elements.insert_at(index, elementPair<I,V>{col, val});
+                elements.insert(elements.begin() + index, elementPair<I,V>{col, val});
             }
             void erase_at(size_t index) {
-                elements.erase_at(elements.begin() + index);
+                elements.erase(elements.begin() + index);
             }
             [[nodiscard]] size_t lower_bound(I col) const noexcept {
                 auto it = std::lower_bound(
