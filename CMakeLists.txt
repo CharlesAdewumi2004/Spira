@@ -13,11 +13,11 @@ add_library(spira
         src/main.cpp
         include/spira/traits.hpp
         include/spira/concepts.hpp
-        include/spira/matrix.hpp
+        include/spira/containers/matrix.hpp
         include/spira/layouts/aos.hpp
         include/spira/layouts/soa.hpp
         include/spira/layouts/layout_of.hpp
-        include/spira/row.hpp
+        include/spira/containers/row.hpp
         include/spira/layouts/layout_tags.hpp
 )
 target_include_directories(spira PUBLIC include)

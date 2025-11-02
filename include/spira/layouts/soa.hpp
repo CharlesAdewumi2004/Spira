@@ -8,10 +8,6 @@
 namespace spira::layout {
     template<concepts::Indexable I, concepts::Valueable V>
     class soa {
-        private:
-            std::vector<I> columns;
-            std::vector<V> values;
-
         public:
             [[nodiscard]] bool empty() const noexcept {
                 return  columns.empty();
@@ -60,5 +56,9 @@ namespace spira::layout {
                     return static_cast<size_t>(std::distance(columns.begin(), it));
                 }
             }
+        private:
+            std::vector<I> columns;
+            std::vector<V> values;
+
     };
 }

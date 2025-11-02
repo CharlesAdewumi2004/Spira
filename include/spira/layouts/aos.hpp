@@ -13,8 +13,6 @@ namespace spira::layout {
 
     template<concepts::Indexable I, concepts::Valueable V>
     class aos {
-        private:
-            std::vector<elementPair<I, V>> elements;
         public:
             [[nodiscard]] bool empty() const noexcept {
                 return elements.empty();
@@ -57,5 +55,7 @@ namespace spira::layout {
                 );
                 return static_cast<size_t>(distance(elements.begin(), it));
             }
+    private:
+        std::vector<elementPair<I, V>> elements;
     };
 }
