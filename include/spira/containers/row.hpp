@@ -112,7 +112,6 @@ class row {
 
         [[nodiscard]] const V* get(I col) const {
             if (col >= column_limit_) {
-                printf("here");
                 return nullptr;
             }
             std::size_t pos = storage_.lower_bound(col);

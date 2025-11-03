@@ -49,8 +49,15 @@ class matrix {
             return entries;
         }
         void add(I row_index, I col_index, V &&val) {
+            if (row_index >= _row_limit) {
+                throw std::out_of_range("Row index out of range");
+            }
+            if (col_index >= _column_limit) {
+                throw std::out_of_range("Column index out of range");
+            }
             _rows[row_index].add(col_index, val);
         }
+
         [[nodiscard]] V get(I row_index, I col_index) const {
             if (row_index >= _row_limit) {
                 throw std::out_of_range("Row index out of range");
@@ -60,22 +67,43 @@ class matrix {
             }
             V const *val = _rows[row_index].get(col_index);
             if (val == nullptr) {
-                return 0;
+                return spira::traits::ValueTraits<V>::zero();
             }
             return *val;
         }
+
         void clear() noexcept {
-            for (auto const &row : _rows) {
+            for (auto &row : _rows) {
                 row.clear();
             }
         }
 
         template<class PairRange>
-        void set_row(I row_index, PairRange &elems) {
+        void set_row(I row_index, const PairRange& elems) {
             if (row_index >= _row_limit) {
                 throw std::out_of_range("Row index out of range");
             }
             _rows[row_index].set_row(elems);
+        }
+
+        [[nodiscard]] bool contains(I row_index, I col_index) const {
+            if (row_index >= _row_limit) {
+                throw std::out_of_range("Row index out of range");
+            }
+            if (col_index >= _column_limit) {
+                throw std::out_of_range("Column index out of range");
+            }
+            return _rows[row_index].contains(col_index);
+        }
+
+        void remove(I row_index, I col_index) {
+            if (row_index >= _row_limit) {
+                throw std::out_of_range("Row index out of range");
+            }
+            if (col_index >= _column_limit) {
+                throw std::out_of_range("Column index out of range");
+            }
+            _rows[row_index].remove(col_index);
         }
 
     private:
