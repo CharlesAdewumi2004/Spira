@@ -14,6 +14,40 @@ namespace spira::layout {
     template<concepts::Indexable I, concepts::Valueable V>
     class aos {
         public:
+            struct Iterator {
+                using value_type        = elementPair<I,V>;
+                using difference_type   = std::ptrdiff_t;
+                using pointer           = value_type*;
+                using reference         = value_type&;
+                using iterator_category = std::contiguous_iterator_tag;
+
+                pointer ptr{};
+
+                explicit constexpr Iterator(pointer p) noexcept : ptr(p) {}
+
+                constexpr reference operator*() const noexcept { return *ptr; }
+                constexpr pointer   operator->() const noexcept { return  ptr; }
+                constexpr reference operator[](difference_type n) const noexcept { return ptr[n]; }
+
+                constexpr Iterator& operator++() noexcept { ++ptr; return *this; }
+                constexpr Iterator  operator++(int) noexcept { auto t = *this; ++(*this); return t; }
+                constexpr Iterator& operator--() noexcept { --ptr; return *this; }
+                constexpr Iterator  operator--(int) noexcept { auto t = *this; --(*this); return t; }
+
+                constexpr Iterator& operator+=(difference_type n) noexcept { ptr += n; return *this; }
+                constexpr Iterator& operator-=(difference_type n) noexcept { ptr -= n; return *this; }
+                friend constexpr Iterator operator+(Iterator it, difference_type n) noexcept { it += n; return it; }
+                friend constexpr Iterator operator+(difference_type n, Iterator it) noexcept { it += n; return it; }
+                friend constexpr Iterator operator-(Iterator it, difference_type n) noexcept { it -= n; return it; }
+
+                friend constexpr difference_type operator-(Iterator a, Iterator b) noexcept {
+                    return a.ptr - b.ptr;
+                }
+
+                friend constexpr bool operator==(const Iterator&, const Iterator&) noexcept = default;
+                friend constexpr auto operator<=>(const Iterator&, const Iterator&) noexcept = default;
+            };
+
             [[nodiscard]] bool empty() const noexcept {
                 return elements.empty();
             }
@@ -55,6 +89,15 @@ namespace spira::layout {
                 );
                 return static_cast<size_t>(distance(elements.begin(), it));
             }
+
+            Iterator begin() {
+                return Iterator(elements.data());
+            }
+
+            Iterator end() {
+                return Iterator(elements.data() + elements.size());
+            }
+
     private:
         std::vector<elementPair<I, V>> elements;
     };
