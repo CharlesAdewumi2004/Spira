@@ -18,7 +18,7 @@ endif()
 # If your library is header-only right now, use INTERFACE:
 add_library(spira INTERFACE)
 target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
-target_compile_features(spira INTERFACE cxx_std_20)
+target_compile_features(spira INTERFACE cxx_std_23)
 
 # If you later add .cpp sources to the library, switch to STATIC/OBJECT and list them.
 # DO NOT put a main() source inside the library.
@@ -39,8 +39,9 @@ enable_testing()
 
 add_executable(unit_tests
         tests/test.cpp
-        # add more test sources here
-)
+        tests/aos_test.cpp
+        tests/soa_test.cpp
+        )
 target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
 
 # Warnings & sanitizers for tests (nice in Debug)

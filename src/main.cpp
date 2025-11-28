@@ -8,5 +8,4 @@ int main() {
     m.add(1,1,1000000000000000000);
     const int val = m.get(1,1);
     printf("%d", val);
-
 }

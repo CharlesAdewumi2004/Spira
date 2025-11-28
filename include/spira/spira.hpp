@@ -1,6 +1,5 @@
 #pragma once
-#include <iostream>
-
+#include "containers/matrix.hpp"
 
 namespace spira {
 
