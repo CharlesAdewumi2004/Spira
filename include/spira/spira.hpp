@@ -1,5 +1,5 @@
 #pragma once
-#include "containers/matrix.hpp"
+#include "matrix/matrix.hpp"
 
 namespace spira {
 

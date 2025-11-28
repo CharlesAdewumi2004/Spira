@@ -6,7 +6,7 @@
 
 #include "spira/concepts.hpp"
 #include "spira/traits.hpp"
-#include "spira/layouts/layout_of.hpp"
+#include "layouts/layout_of.hpp"
 
 namespace spira{
 

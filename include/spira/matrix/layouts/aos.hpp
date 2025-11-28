@@ -4,7 +4,7 @@
 #include <cstddef>   // std::ptrdiff_t
 #include <iterator>  // iterator tags
 
-#include "spira/concepts.hpp"
+#include "../include/spira/concepts.hpp"
 
 namespace spira::layout {
 

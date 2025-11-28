@@ -5,7 +5,7 @@
 #include <iterator>  // iterator tags
 #include <utility>   // std::pair
 
-#include "spira/concepts.hpp"
+#include "../include/spira/concepts.hpp"
 
 namespace spira::layout {
 
