@@ -36,7 +36,7 @@ namespace spira
         void remove(I row_index, I col_index);
 
         template <class Func>
-        void for_each_nnz(const Func &&f) const;
+        void for_each_row(Func &&f) const;
 
     private:
         std::vector<row<Layout, I, V>> _rows;
@@ -196,11 +196,12 @@ namespace spira
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     template <class Func>
-    void matrix<Layout, I, V>::for_each_nnz(const Func &&f) const
+    void matrix<Layout, I, V>::for_each_row(Func &&f) const
     {
-        for(auto const &row : _rows){
-            row.for_each_nnz(f);
+        for (size_t i = 0; i < _row_limit; i++)
+        {
+            f(_rows[i], i);
         }
     }
 
-} 
+}

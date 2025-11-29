@@ -39,6 +39,7 @@ enable_testing()
 
 add_executable(unit_tests
         tests/test.cpp
+        tests/spmv_test.cpp
         tests/aos_test.cpp
         tests/soa_test.cpp
         )

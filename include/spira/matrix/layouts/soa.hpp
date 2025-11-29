@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>  // ptrdiff_t
 #include <iterator> // iterator tags
-#include <utility>  // std::pair
+#include <utility> 
 
 #include "../include/spira/concepts.hpp"
 

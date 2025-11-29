@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <vector>
 #include <algorithm>
+#include <iterator>
 
 #include "spira/concepts.hpp"
 #include "spira/traits.hpp"
@@ -35,8 +36,14 @@ namespace spira{
         [[nodiscard]] bool contains(I col) const;
         [[nodiscard]] const V *get(I col) const;
 
-        template <class Func>
-        void for_each_nnz(const Func &&f) const;
+
+        auto begin() noexcept { return storage_.begin(); }
+        auto end() noexcept { return storage_.end();}
+        auto begin() const noexcept { return storage_.begin(); }
+        auto end() const noexcept { return storage_.end(); }
+        auto cbegin() const noexcept { return storage_.cbegin(); }
+        auto cend() const noexcept { return  storage_.cend();}
+
 
     private:
         layout_policy storage_;
@@ -215,14 +222,5 @@ namespace spira{
         return nullptr;
     }
 
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    template <class Func>
-    void row<LayoutTag, I, V>::for_each_nnz(const Func &&f) const
-    {
-        for (auto it = storage_.cbegin(); it != storage_.cend(); it++)
-        {
-            auto [col, value] = *it;
-            f(col, value);
-        }
-    }
+   
 };
