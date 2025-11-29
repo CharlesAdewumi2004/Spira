@@ -1,4 +1,8 @@
 #pragma once
+#include "matrix/matrix.hpp"
+#include "algorithms/spmv.hpp"
+
 namespace spira {
-int add(int a, int b);
+
 }
+

@@ -1,7 +1,10 @@
 build/
 cmake-build-*/
+.vscode
+.idea
 *.o
 *.obj
 *.a
 *.so
 *.dylib
+*.json
