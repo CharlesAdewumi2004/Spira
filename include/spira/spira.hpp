@@ -1,7 +1,7 @@
 #pragma once
+#include "matrix/matrix.hpp"
+#include "algorithms/spmv.hpp"
 
-#include "element.hpp"
-#include <iostream>
 namespace spira {
 
 }

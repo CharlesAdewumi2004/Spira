@@ -1,7 +1,9 @@
 build/
 cmake-build-*/
+.idea
 *.o
 *.obj
 *.a
 *.so
 *.dylib
+*.json
