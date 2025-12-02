@@ -22,9 +22,11 @@ add_library(spira INTERFACE)
 target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
 target_compile_features(spira INTERFACE cxx_std_23)
 
+# We’ll use FetchContent for both GTest and Benchmark
+include(FetchContent)
+
 # ---------- Tests ----------
 if (SPIRA_BUILD_TESTS)
-  include(FetchContent)
   FetchContent_Declare(
       googletest
       URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -64,15 +66,44 @@ endif()
 
 # ---------- Benchmarks ----------
 if (SPIRA_BUILD_BENCHMARKS)
+  # Fetch Google Benchmark (like we do for GTest)
+  FetchContent_Declare(
+      benchmark
+      GIT_REPOSITORY https://github.com/google/benchmark.git
+      GIT_TAG        v1.8.4        # or "main" if you prefer
+  )
+  # Don’t build benchmark’s own tests
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(benchmark)
+
+  # Benchmark executable(s)
   add_executable(spira_bench_row
-    benchmarks/benchmarks.cpp
+      bench/BM_spmv.cpp
+      bench/BM_streamGetOperation.cpp
+      bench/BM_streamAddOperation.cpp
+      bench/BM_main.cpp
+      bench/BM_addOperation.cpp
+      bench/BM_getOperation.cpp
   )
 
-  target_link_libraries(spira_bench_row PRIVATE spira)
+  target_link_libraries(spira_bench_row
+      PRIVATE spira benchmark::benchmark
+  )
+
+  # Match your project standard
+  target_compile_features(spira_bench_row PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(spira_bench_row PRIVATE -O3 -march=native -DNDEBUG)
-  elseif (MSVC)
-    target_compile_options(spira_bench_row PRIVATE /O2)
+    target_compile_options(spira_bench_row PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(spira_bench_row PRIVATE
+        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+    )
+    target_link_options(spira_bench_row PRIVATE
+        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+    )
+  endif()
+
+  if (UNIX AND NOT APPLE)
+    target_link_libraries(spira_bench_row PRIVATE pthread)
   endif()
 endif()

@@ -15,23 +15,23 @@ namespace spira
 
         explicit matrix(size_t const row_limit, size_t const column_limit);
 
-        [[nodiscard]] std::pair<size_t, size_t> get_shape() const noexcept;
-        [[nodiscard]] size_t n_rows() const noexcept;
-        [[nodiscard]] size_t n_cols() const noexcept;
-        [[nodiscard]] size_t row_nnz(I row_index) const;
-        [[nodiscard]] bool empty() const noexcept;
-        [[nodiscard]] size_t nnz() const noexcept;
+        std::pair<size_t, size_t> get_shape() const noexcept;
+        size_t n_rows() const noexcept;
+        size_t n_cols() const noexcept;
+        size_t row_nnz(I row_index) const;
+        bool empty() const noexcept;
+        size_t nnz() const noexcept;
 
-        void add(I row_index, I col_index, V &&val);
+        void add(I row_index, I col_index, const V &val);
 
-        [[nodiscard]] V get(I row_index, I col_index) const;
+        V get(I row_index, I col_index) const;
 
         void clear() noexcept;
 
         template <class PairRange>
         void set_row(I row_index, const PairRange &elems);
 
-        [[nodiscard]] bool contains(I row_index, I col_index) const;
+        bool contains(I row_index, I col_index) const;
 
         void remove(I row_index, I col_index);
 
@@ -113,7 +113,7 @@ namespace spira
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::add(I row_index, I col_index, V &&val)
+    void matrix<Layout, I, V>::add(I row_index, I col_index, const V &val)
     {
         if (row_index >= _row_limit)
         {
