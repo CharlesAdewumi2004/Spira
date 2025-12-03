@@ -7,7 +7,7 @@
 #define columnsSize 10000
 
 template<class V>
-static void BM_soa_streamGetOperation(benchmark::State& state){
+static void BM_soa_getOperation(benchmark::State& state){
     using I = size_t;
     using Layout = spira::layout::tags::soa_tag;
     
@@ -55,7 +55,7 @@ static void BM_soa_streamGetOperation(benchmark::State& state){
 }
 
 template<class V>
-static void BM_aos_streamGetOperation(benchmark::State& state){
+static void BM_aos_getOperation(benchmark::State& state){
     using I = size_t;
     using Layout = spira::layout::tags::aos_tag;
     
@@ -102,17 +102,17 @@ static void BM_aos_streamGetOperation(benchmark::State& state){
     }
 }
 
-BENCHMARK_TEMPLATE(BM_soa_streamGetOperation, float)
+BENCHMARK_TEMPLATE(BM_aos_getOperation, float)
     ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_soa_streamGetOperation, double)
+BENCHMARK_TEMPLATE(BM_aos_getOperation, double)
     ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_soa_streamGetOperation, std::complex<double>)
+BENCHMARK_TEMPLATE(BM_aos_getOperation, std::complex<double>)
     ->Args({1000, rowsSize, columnsSize});
 
-BENCHMARK_TEMPLATE(BM_aos_streamGetOperation, float)
+BENCHMARK_TEMPLATE(BM_soa_getOperation, float)
     ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_aos_streamGetOperation, double)
+BENCHMARK_TEMPLATE(BM_soa_getOperation, double)
     ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_aos_streamGetOperation, std::complex<double>)
+BENCHMARK_TEMPLATE(BM_soa_getOperation, std::complex<double>)
     ->Args({1000, rowsSize, columnsSize});
 
