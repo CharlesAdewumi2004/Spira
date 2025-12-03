@@ -66,17 +66,19 @@ endif()
 
 # ---------- Benchmarks ----------
 if (SPIRA_BUILD_BENCHMARKS)
-  # Fetch Google Benchmark (like we do for GTest)
+
+  # Fetch Google Benchmark
   FetchContent_Declare(
       benchmark
       GIT_REPOSITORY https://github.com/google/benchmark.git
-      GIT_TAG        v1.8.4        # or "main" if you prefer
+      GIT_TAG        v1.8.4
   )
-  # Don’t build benchmark’s own tests
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
-  # Benchmark executable(s)
+  # ------------------------------
+  # 1. Main full benchmark suite
+  # ------------------------------
   add_executable(spira_bench_row
       bench/BM_spmv.cpp
       bench/BM_streamGetOperation.cpp
@@ -87,10 +89,9 @@ if (SPIRA_BUILD_BENCHMARKS)
   )
 
   target_link_libraries(spira_bench_row
-      PRIVATE spira benchmark::benchmark
+      PRIVATE spira benchmark::benchmark pthread
   )
 
-  # Match your project standard
   target_compile_features(spira_bench_row PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -103,7 +104,29 @@ if (SPIRA_BUILD_BENCHMARKS)
     )
   endif()
 
-  if (UNIX AND NOT APPLE)
-    target_link_libraries(spira_bench_row PRIVATE pthread)
+  # ------------------------------
+  # 2. SpMV-only benchmark executable
+  # ------------------------------
+  add_executable(BM_spmv
+      bench/BM_spmv.cpp
+      bench/BM_main.cpp
+  )
+
+  target_link_libraries(BM_spmv
+      PRIVATE spira benchmark::benchmark pthread
+  )
+
+  target_compile_features(BM_spmv PRIVATE cxx_std_23)
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(BM_spmv PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(BM_spmv PRIVATE
+        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+    )
+    target_link_options(BM_spmv PRIVATE
+        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+    )
   endif()
-endif()
+
+endif() # SPIRA_BUILD_BENCHMARKS
+

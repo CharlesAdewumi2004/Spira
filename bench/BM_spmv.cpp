@@ -3,10 +3,10 @@
 #include <random>
 #include <vector>
 
-#define rowsSize 10000
-#define columnsSize 10000
-#define maxMatrixValue 1000
-#define minMaxtrixValue -1000
+#define rowsSize 100000
+#define columnsSize 100000
+#define maxMatrixValue 10000
+#define minMaxtrixValue -10000
 
 
 template<class V>
