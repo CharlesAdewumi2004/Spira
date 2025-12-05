@@ -23,6 +23,6 @@
     "vim.cursorStylePerMode.normal": "block",
     "vim.cursorStylePerMode.insert": "line",
     "vim.cursorStylePerMode.visual": "block",
-    "vim.showMarks": true
+    "vim.showMarks": true,
 
 }

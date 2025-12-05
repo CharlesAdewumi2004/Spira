@@ -79,27 +79,28 @@ if (SPIRA_BUILD_BENCHMARKS)
   # ------------------------------
   # 1. Main full benchmark suite
   # ------------------------------
-  add_executable(spira_bench_row
+  add_executable(BM_insert_and_gets
       bench/BM_spmv.cpp
       bench/BM_streamGetOperation.cpp
       bench/BM_streamAddOperation.cpp
       bench/BM_main.cpp
       bench/BM_addOperation.cpp
       bench/BM_getOperation.cpp
+      bench/config.hpp
   )
 
-  target_link_libraries(spira_bench_row
+  target_link_libraries(BM_insert_and_gets
       PRIVATE spira benchmark::benchmark pthread
   )
 
-  target_compile_features(spira_bench_row PRIVATE cxx_std_23)
+  target_compile_features(BM_insert_and_gets PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(spira_bench_row PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(spira_bench_row PRIVATE
+    target_compile_options(BM_insert_and_gets PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(BM_insert_and_gets PRIVATE
         $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
     )
-    target_link_options(spira_bench_row PRIVATE
+    target_link_options(BM_insert_and_gets PRIVATE
         $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
     )
   endif()
@@ -110,6 +111,7 @@ if (SPIRA_BUILD_BENCHMARKS)
   add_executable(BM_spmv
       bench/BM_spmv.cpp
       bench/BM_main.cpp
+      bench/config.hpp
   )
 
   target_link_libraries(BM_spmv

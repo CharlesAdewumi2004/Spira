@@ -1,24 +1,21 @@
-#include <benchmark/benchmark.h>
-#include "spira/spira.hpp"
-#include <random>
-#include <vector>
+#include "config.hpp"
 
-#define rowsSize 10000
-#define columnsSize 10000
+template <class V, class Layout>
+static void BM_getOperation(benchmark::State &state)
+{
+    using I = std::size_t;
 
-template<class V>
-static void BM_soa_getOperation(benchmark::State& state){
-    using I = size_t;
-    using Layout = spira::layout::tags::soa_tag;
-    
-    std::size_t rows          = state.range(0);
-    std::size_t cols          = state.range(1);
-    std::size_t n_coordinates = state.range(2); 
-    
-    spira::matrix<Layout, I, V> m(rowsSize, columnsSize);
-    for(size_t i; i < rowsSize; i++){
-        for(size_t j; j < columnsSize; j++){
-            m.add(i,j,0.0);
+    const std::size_t n_coordinates = static_cast<std::size_t>(state.range(0));
+    const std::size_t rows = static_cast<std::size_t>(state.range(1));
+    const std::size_t cols = static_cast<std::size_t>(state.range(2));
+
+    spira::matrix<Layout, I, V> m(rows, cols);
+
+    for (std::size_t i = 0; i < rows; ++i)
+    {
+        for (std::size_t j = 0; j < cols; ++j)
+        {
+            m.add(i, j, V{});
         }
     }
 
@@ -31,7 +28,8 @@ static void BM_soa_getOperation(benchmark::State& state){
     xs.reserve(n_coordinates);
     ys.reserve(n_coordinates);
 
-    for(size_t i = 0; i < n_coordinates; i++){
+    for (std::size_t k = 0; k < n_coordinates; ++k)
+    {
         xs.push_back(row_dist(rng));
         ys.push_back(col_dist(rng));
     }
@@ -41,78 +39,67 @@ static void BM_soa_getOperation(benchmark::State& state){
 
     std::size_t idx = 0;
 
-    for (auto _ : state) {
+    for (auto _ : state)
+    {
         I x = xs[idx];
         I y = ys[idx];
 
         idx++;
-        if (idx == n_coordinates) idx = 0;
-
-        m.get(x,y);
-
-        benchmark::ClobberMemory();
-    }
-}
-
-template<class V>
-static void BM_aos_getOperation(benchmark::State& state){
-    using I = size_t;
-    using Layout = spira::layout::tags::aos_tag;
-    
-    std::size_t rows          = state.range(0);
-    std::size_t cols          = state.range(1);
-    std::size_t n_coordinates = state.range(2); 
-    
-    spira::matrix<Layout, I, V> m(rowsSize, columnsSize);
-    for(size_t i; i < rowsSize; i++){
-        for(size_t j; j < columnsSize; j++){
-            m.add(i,j,0.0);
+        if (idx == n_coordinates)
+        {
+            idx = 0;
         }
-    }
 
-    std::mt19937_64 rng(12345);
-    std::uniform_int_distribution<I> row_dist(0, rows - 1);
-    std::uniform_int_distribution<I> col_dist(0, cols - 1);
-
-    std::vector<I> xs;
-    std::vector<I> ys;
-    xs.reserve(n_coordinates);
-    ys.reserve(n_coordinates);
-
-    for(size_t i = 0; i < n_coordinates; i++){
-        xs.push_back(row_dist(rng));
-        ys.push_back(col_dist(rng));
-    }
-
-    benchmark::DoNotOptimize(xs.data());
-    benchmark::DoNotOptimize(ys.data());
-
-    std::size_t idx = 0;
-
-    for (auto _ : state) {
-        I x = xs[idx];
-        I y = ys[idx];
-
-        idx++;
-        if (idx == n_coordinates) idx = 0;
-
-        m.get(x,y);
-
+        benchmark::DoNotOptimize(m.get(x, y));
         benchmark::ClobberMemory();
     }
+
+    // One get per iteration of the outer Google Benchmark loop
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 
-BENCHMARK_TEMPLATE(BM_aos_getOperation, float)
-    ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_aos_getOperation, double)
-    ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_aos_getOperation, std::complex<double>)
-    ->Args({1000, rowsSize, columnsSize});
+// --- registrations: GET AoS/SoA, weak + strong, float/double/complex ---------
 
-BENCHMARK_TEMPLATE(BM_soa_getOperation, float)
-    ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_soa_getOperation, double)
-    ->Args({1000, rowsSize, columnsSize});
-BENCHMARK_TEMPLATE(BM_soa_getOperation, std::complex<double>)
-    ->Args({1000, rowsSize, columnsSize});
+// AOS weak
+BENCHMARK_TEMPLATE(BM_getOperation, float, AoS)
+    ->Apply(weakScaling)
+    ->Name("aos-get-float-weak");
+BENCHMARK_TEMPLATE(BM_getOperation, double, AoS)
+    ->Apply(weakScaling)
+    ->Name("aos-get-double-weak");
+BENCHMARK_TEMPLATE(BM_getOperation, std::complex<double>, AoS)
+    ->Apply(weakScaling)
+    ->Name("aos-get-complex-weak");
 
+// SOA weak
+BENCHMARK_TEMPLATE(BM_getOperation, float, SoA)
+    ->Apply(weakScaling)
+    ->Name("soa-get-float-weak");
+BENCHMARK_TEMPLATE(BM_getOperation, double, SoA)
+    ->Apply(weakScaling)
+    ->Name("soa-get-double-weak");
+BENCHMARK_TEMPLATE(BM_getOperation, std::complex<double>, SoA)
+    ->Apply(weakScaling)
+    ->Name("soa-get-complex-weak");
+
+// AOS strong
+BENCHMARK_TEMPLATE(BM_getOperation, float, AoS)
+    ->Apply(strongScaling)
+    ->Name("aos-get-float-strong");
+BENCHMARK_TEMPLATE(BM_getOperation, double, AoS)
+    ->Apply(strongScaling)
+    ->Name("aos-get-double-strong");
+BENCHMARK_TEMPLATE(BM_getOperation, std::complex<double>, AoS)
+    ->Apply(strongScaling)
+    ->Name("aos-get-complex-strong");
+
+// SOA strong
+BENCHMARK_TEMPLATE(BM_getOperation, float, SoA)
+    ->Apply(strongScaling)
+    ->Name("soa-get-float-strong");
+BENCHMARK_TEMPLATE(BM_getOperation, double, SoA)
+    ->Apply(strongScaling)
+    ->Name("soa-get-double-strong");
+BENCHMARK_TEMPLATE(BM_getOperation, std::complex<double>, SoA)
+    ->Apply(strongScaling)
+    ->Name("soa-get-complex-strong");
