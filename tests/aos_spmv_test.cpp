@@ -10,7 +10,7 @@ namespace aosTests
     using Index = std::size_t;
     using Value = double;
     using TestLayoutTag = spira::layout::tags::aos_tag;
-
+    
     using Matrix = spira::matrix<TestLayoutTag, Index, Value>;
 
     namespace
