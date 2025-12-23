@@ -1,4 +1,5 @@
 build/
+build_release/
 cmake-build-*/
 .vscode
 .idea
@@ -8,3 +9,4 @@ cmake-build-*/
 *.so
 *.dylib
 *.json
+perf*

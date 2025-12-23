@@ -25,6 +25,19 @@ target_compile_features(spira INTERFACE cxx_std_23)
 # We’ll use FetchContent for both GTest and Benchmark
 include(FetchContent)
 
+# ---------- Perf-friendly flags for Debug / RelWithDebInfo ----------
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  # CMake already adds -g to Debug and RelWithDebInfo by default,
+  # so we only need to force frame pointers.
+  set(CMAKE_CXX_FLAGS_DEBUG
+      "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
+
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
+      "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
+endif()
+
+
+
 # ---------- Tests ----------
 if (SPIRA_BUILD_TESTS)
   FetchContent_Declare(
@@ -49,10 +62,10 @@ if (SPIRA_BUILD_TESTS)
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(unit_tests PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
     target_link_options(unit_tests PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
   endif()
 
@@ -76,40 +89,10 @@ if (SPIRA_BUILD_BENCHMARKS)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
-  # ------------------------------
-  # 1. Main full benchmark suite
-  # ------------------------------
-  add_executable(spira_bench_row
-      bench/BM_spmv.cpp
-      bench/BM_streamGetOperation.cpp
-      bench/BM_streamAddOperation.cpp
-      bench/BM_main.cpp
-      bench/BM_addOperation.cpp
-      bench/BM_getOperation.cpp
-  )
-
-  target_link_libraries(spira_bench_row
-      PRIVATE spira benchmark::benchmark pthread
-  )
-
-  target_compile_features(spira_bench_row PRIVATE cxx_std_23)
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(spira_bench_row PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(spira_bench_row PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
-    )
-    target_link_options(spira_bench_row PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
-    )
-  endif()
-
-  # ------------------------------
-  # 2. SpMV-only benchmark executable
-  # ------------------------------
   add_executable(BM_spmv
-      bench/BM_spmv.cpp
-      bench/BM_main.cpp
+      bench/google-benchmark/BM_spmv.cpp
+      bench/google-benchmark/BM_main.cpp
+      bench/google-benchmark/config.hpp
   )
 
   target_link_libraries(BM_spmv
@@ -120,13 +103,58 @@ if (SPIRA_BUILD_BENCHMARKS)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(BM_spmv PRIVATE -Wall -Wextra -Wpedantic)
+    # sanitizers only in Debug; frame pointers + -g for Debug/RelWithDebInfo are global
     target_compile_options(BM_spmv PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
     target_link_options(BM_spmv PRIVATE
-        $<$<CONFIG:Debug>:-fno-omit-frame-pointer -fsanitize=address,undefined>
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+  endif()
+
+  add_executable(BM_insert_and_gets_stream
+      bench/google-benchmark/BM_streamGetOperation.cpp
+      bench/google-benchmark/BM_streamAddOperation.cpp
+      bench/google-benchmark/BM_main.cpp
+      bench/google-benchmark/config.hpp
+  )
+
+  target_link_libraries(BM_insert_and_gets_stream
+      PRIVATE spira benchmark::benchmark pthread
+  )
+
+  target_compile_features(BM_insert_and_gets_stream PRIVATE cxx_std_23)
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(BM_insert_and_gets_stream PRIVATE -Wall -Wextra -Wpedantic)
+    # sanitizers only for Debug; frame pointers handled globally above
+    target_compile_options(BM_insert_and_gets_stream PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+    target_link_options(BM_insert_and_gets_stream PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+  endif()
+
+  add_executable(BM_perf_spmv
+      bench/perf-benchmark/benchmark_perf_spmv.cpp
+  )
+
+  target_link_libraries(BM_perf_spmv
+      PRIVATE spira benchmark::benchmark pthread
+  )
+
+  target_compile_features(BM_perf_spmv PRIVATE cxx_std_23)
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(BM_perf_spmv PRIVATE -Wall -Wextra -Wpedantic)
+    # sanitizers only in Debug; frame pointers + -g for Debug/RelWithDebInfo are global
+    target_compile_options(BM_perf_spmv PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
+    )
+    target_link_options(BM_perf_spmv PRIVATE
+        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
   endif()
 
 endif() # SPIRA_BUILD_BENCHMARKS
-
