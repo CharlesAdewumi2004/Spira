@@ -36,14 +36,12 @@ namespace spira{
         [[nodiscard]] bool contains(I col) const;
         [[nodiscard]] const V *get(I col) const;
 
-
         auto begin() noexcept { return storage_.begin(); }
         auto end() noexcept { return storage_.end();}
         auto begin() const noexcept { return storage_.begin(); }
         auto end() const noexcept { return storage_.end(); }
         auto cbegin() const noexcept { return storage_.cbegin(); }
         auto cend() const noexcept { return  storage_.cend();}
-
 
     private:
         layout_policy storage_;
