@@ -9,7 +9,8 @@
 #include "spira/traits.hpp"
 #include "layouts/layout_of.hpp"
 
-namespace spira{
+namespace spira
+{
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     class row
@@ -36,21 +37,19 @@ namespace spira{
         [[nodiscard]] bool contains(I col) const;
         [[nodiscard]] const V *get(I col) const;
 
+        [[nodiscard]] V accumlate() const noexcept;
+
         auto begin() noexcept { return storage_.begin(); }
-        auto end() noexcept { return storage_.end();}
+        auto end() noexcept { return storage_.end(); }
         auto begin() const noexcept { return storage_.begin(); }
         auto end() const noexcept { return storage_.end(); }
         auto cbegin() const noexcept { return storage_.cbegin(); }
-        auto cend() const noexcept { return  storage_.cend();}
+        auto cend() const noexcept { return storage_.cend(); }
 
     private:
         layout_policy storage_;
         size_t const column_limit_;
     };
-
-    // -----------------------------------------------------------------------------
-    // Implementation
-    // -----------------------------------------------------------------------------
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     row<LayoutTag, I, V>::row()
@@ -220,5 +219,15 @@ namespace spira{
         return nullptr;
     }
 
-   
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    V row<LayoutTag, I, V>::accumlate() const noexcept
+    {
+        V acc = traits::ValueTraits<V>::zero();
+        for (auto const &[c, v] : storage_)
+        {
+            acc += v;
+        }
+        return acc;
+    }
+
 };

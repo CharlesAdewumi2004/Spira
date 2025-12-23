@@ -431,4 +431,104 @@ namespace aosTests
         EXPECT_THROW(m.contains(2, 0), std::out_of_range);
         EXPECT_THROW(m.contains(0, 2), std::out_of_range);
     }
+
+    // ============================================================================
+    // accumulate() TESTS
+    // ============================================================================
+
+    TEST(RowAccumulateTests, EmptyRowAccumulateReturnsZero)
+    {
+        Row r;
+
+        const value_t zero = spira::traits::ValueTraits<value_t>::zero();
+        EXPECT_DOUBLE_EQ(r.accumlate(), zero);
+    }
+
+    TEST(RowAccumulateTests, AccumulateSumsValuesFromSetRow)
+    {
+        Row r(/*reserve_hint*/ 8, /*column_limit*/ 10);
+
+        std::vector<std::pair<index_t, value_t>> elems = {
+            {0, 1.25},
+            {3, 2.50},
+            {7, 3.75},
+        };
+
+        r.set_row(elems);
+
+        // 1.25 + 2.50 + 3.75 = 7.50
+        EXPECT_DOUBLE_EQ(r.accumlate(), 7.50);
+    }
+
+    TEST(RowAccumulateTests, AccumulateIgnoresOutOfRangeAndZeroViaSetRow)
+    {
+        Row r(/*reserve_hint*/ 8, /*column_limit*/ 5);
+
+        const value_t zero = spira::traits::ValueTraits<value_t>::zero();
+
+        std::vector<std::pair<index_t, value_t>> elems = {
+            {0, 1.0},   // keep
+            {2, zero},  // drop
+            {10, 5.0},  // drop (out of range)
+            {4, 2.5},   // keep
+        };
+
+        r.set_row(elems);
+
+        // should be 1.0 + 2.5 = 3.5
+        EXPECT_DOUBLE_EQ(r.accumlate(), 3.5);
+        EXPECT_EQ(r.size(), 2u);
+    }
+
+    TEST(RowAccumulateTests, AccumulateReflectsOverwriteSemantics)
+    {
+        Row r(/*reserve_hint*/ 8, /*column_limit*/ 10);
+
+        r.add(2, 1.0);
+        r.add(2, 4.0); // overwrite
+
+        EXPECT_DOUBLE_EQ(r.accumlate(), 4.0);
+        EXPECT_EQ(r.size(), 1u);
+    }
+
+    TEST(RowAccumulateTests, AccumulateAfterRemoveUpdatesSum)
+    {
+        Row r(/*reserve_hint*/ 8, /*column_limit*/ 10);
+
+        r.add(1, 1.0);
+        r.add(2, 2.0);
+        r.add(3, 3.0);
+
+        EXPECT_DOUBLE_EQ(r.accumlate(), 6.0);
+
+        r.remove(2);
+        EXPECT_DOUBLE_EQ(r.accumlate(), 4.0); // 1.0 + 3.0
+    }
+
+    TEST(RowAccumulateTests, AccumulateIsCallableOnConstRow)
+    {
+        Row r(/*reserve_hint*/ 8, /*column_limit*/ 10);
+        r.add(1, 2.0);
+        r.add(3, 5.0);
+
+        const Row& cr = r;
+        EXPECT_DOUBLE_EQ(cr.accumlate(), 7.0);
+    }
+
+    // ============================================================================
+    // MATRIX accumulate()-style TEST (via row accumulation)
+    // ============================================================================
+
+    TEST(MatrixAccumulateTests, RowAccumulateMatchesMatrixRowSum)
+    {
+        Matrix m(3, 6);
+
+        // put values into row 1
+        m.add(1, 0, 1.0);
+        m.add(1, 2, 2.0);
+        m.add(1, 5, 3.5);
+
+        EXPECT_DOUBLE_EQ(m.accumlate(1), 6.5);
+        EXPECT_EQ(m.row_nnz(1), 3u);
+    }
 }

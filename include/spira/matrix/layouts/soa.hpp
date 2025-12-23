@@ -180,6 +180,7 @@ namespace spira::layout
                 val_ptr += n;
                 return *this;
             }
+            
             const_iterator &operator-=(difference_type n) noexcept
             {
                 col_ptr -= n;

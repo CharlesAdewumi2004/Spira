@@ -38,6 +38,8 @@ namespace spira
         template <class Func>
         void for_each_row(Func &&f) const;
 
+        V accumlate(I row_index) const;
+
     private:
         std::vector<row<Layout, I, V>> _rows;
         size_t const _row_limit;
@@ -202,6 +204,14 @@ namespace spira
         {
             f(_rows[i], i);
         }
+    }
+
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    V matrix<Layout, I, V>::accumlate(I row_index) const{
+        if(row_index >= _row_limit){
+            throw std::out_of_range("Row index out of range");
+        }
+        return _rows[row_index].accumlate();
     }
 
 }
