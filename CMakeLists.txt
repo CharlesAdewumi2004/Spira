@@ -22,7 +22,7 @@ add_library(spira INTERFACE)
 target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
 target_compile_features(spira INTERFACE cxx_std_23)
 
-# We’ll use FetchContent for both GTest and Benchmark
+# We’ll use FetchContent for GTest, Benchmark, and Boundcraft
 include(FetchContent)
 
 # ---------- Perf-friendly flags for Debug / RelWithDebInfo ----------
@@ -36,7 +36,22 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
       "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
 endif()
 
+# ---------- Boundcraft (your lower_bound/gallop lib) ----------
+# NOTE: Boundcraft repo *already* defines a CMake target named `boundcraft`
+# (typically as an INTERFACE library). So we must NOT re-add it here.
+FetchContent_Declare(
+  boundcraft_repo
+  GIT_REPOSITORY https://github.com/CharlesAdewumi2004/hybridSearch.git
+  GIT_TAG        main
+)
+FetchContent_MakeAvailable(boundcraft_repo)
 
+# Safety: if repo changes and stops providing `boundcraft`, create one.
+if (NOT TARGET boundcraft)
+  add_library(boundcraft INTERFACE)
+  target_include_directories(boundcraft INTERFACE ${boundcraft_repo_SOURCE_DIR}/include)
+  target_compile_features(boundcraft INTERFACE cxx_std_23)
+endif()
 
 # ---------- Tests ----------
 if (SPIRA_BUILD_TESTS)
@@ -53,11 +68,12 @@ if (SPIRA_BUILD_TESTS)
   add_executable(unit_tests
       tests/test.cpp
       tests/soa_spmv_test.cpp
-      tests/aos_spmv_test.cpp 
+      tests/aos_spmv_test.cpp
       tests/aos_test.cpp
       tests/soa_test.cpp
   )
-  target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
+
+  target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -96,14 +112,12 @@ if (SPIRA_BUILD_BENCHMARKS)
   )
 
   target_link_libraries(BM_spmv
-      PRIVATE spira benchmark::benchmark pthread
+      PRIVATE spira boundcraft benchmark::benchmark pthread
   )
-
   target_compile_features(BM_spmv PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(BM_spmv PRIVATE -Wall -Wextra -Wpedantic)
-    # sanitizers only in Debug; frame pointers + -g for Debug/RelWithDebInfo are global
     target_compile_options(BM_spmv PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
@@ -120,14 +134,12 @@ if (SPIRA_BUILD_BENCHMARKS)
   )
 
   target_link_libraries(BM_insert_and_gets_stream
-      PRIVATE spira benchmark::benchmark pthread
+      PRIVATE spira boundcraft benchmark::benchmark pthread
   )
-
   target_compile_features(BM_insert_and_gets_stream PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(BM_insert_and_gets_stream PRIVATE -Wall -Wextra -Wpedantic)
-    # sanitizers only for Debug; frame pointers handled globally above
     target_compile_options(BM_insert_and_gets_stream PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
@@ -141,14 +153,12 @@ if (SPIRA_BUILD_BENCHMARKS)
   )
 
   target_link_libraries(BM_perf_spmv
-      PRIVATE spira benchmark::benchmark pthread
+      PRIVATE spira boundcraft benchmark::benchmark pthread
   )
-
   target_compile_features(BM_perf_spmv PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(BM_perf_spmv PRIVATE -Wall -Wextra -Wpedantic)
-    # sanitizers only in Debug; frame pointers + -g for Debug/RelWithDebInfo are global
     target_compile_options(BM_perf_spmv PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )

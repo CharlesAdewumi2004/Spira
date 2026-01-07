@@ -1,8 +1,9 @@
 #pragma once
 #include <vector>
 #include <algorithm>
-#include <cstddef>  // std::ptrdiff_t
-#include <iterator> // iterator tags
+#include <cstddef>  
+#include <iterator> 
+#include "Boundcraft/boundcraft.hpp"
 
 #include "../include/spira/concepts.hpp"
 
@@ -194,10 +195,7 @@ namespace spira::layout
 
         [[nodiscard]] size_t lower_bound(I col) const noexcept
         {
-            auto it = std::lower_bound(
-                elements.begin(), elements.end(), col,
-                [](auto const &e, I key)
-                { return e.column < key; });
+            auto it = std::lower_bound( elements.begin(), elements.end(), col, [](auto const &e, I key){ return e.column < key; });
             return static_cast<size_t>(std::distance(elements.begin(), it));
         }
 
@@ -208,7 +206,7 @@ namespace spira::layout
         const_iterator end() const noexcept { return cend(); }
         const_iterator cbegin() const noexcept { return const_iterator(elements.data()); }
         const_iterator cend() const noexcept { return const_iterator(elements.data() + elements.size()); }
-
+ 
     private:
         std::vector<elementPair<I, V>> elements;
     };
