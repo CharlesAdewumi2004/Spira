@@ -39,15 +39,15 @@ namespace spira
 
         [[nodiscard]] V accumlate() const noexcept;
 
-        auto begin() noexcept { return storage_.begin(); }
-        auto end() noexcept { return storage_.end(); }
-        auto begin() const noexcept { return storage_.begin(); }
-        auto end() const noexcept { return storage_.end(); }
-        auto cbegin() const noexcept { return storage_.cbegin(); }
-        auto cend() const noexcept { return storage_.cend(); }
+        auto begin() noexcept { return slab.begin(); }
+        auto end() noexcept { return slab.end(); }
+        auto begin() const noexcept { return slab.begin(); }
+        auto end() const noexcept { return slab.end(); }
+        auto cbegin() const noexcept { return slab.cbegin(); }
+        auto cend() const noexcept { return slab.cend(); }
 
     private:
-        layout_policy storage_;
+        layout_policy slab;
         size_t const column_limit_;
     };
 
@@ -61,37 +61,37 @@ namespace spira
     row<LayoutTag, I, V>::row(std::size_t reserve_hint, size_t const column_limit)
         : column_limit_(column_limit)
     {
-        storage_.reserve(reserve_hint);
+        slab.reserve(reserve_hint);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     bool row<LayoutTag, I, V>::empty() const noexcept
     {
-        return storage_.empty();
+        return slab.empty();
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     std::size_t row<LayoutTag, I, V>::size() const noexcept
     {
-        return storage_.size();
+        return slab.size();
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     std::size_t row<LayoutTag, I, V>::capacity() const noexcept
     {
-        return storage_.capacity();
+        return slab.capacity();
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::reserve(std::size_t n)
     {
-        storage_.reserve(n);
+        slab.reserve(n);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::clear() noexcept
     {
-        storage_.clear();
+        slab.clear();
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
@@ -101,24 +101,24 @@ namespace spira
             return;
 
         const bool is_zero = traits::ValueTraits<V>::is_zero(val);
-        std::size_t pos = storage_.lower_bound(col);
+        std::size_t pos = slab.lower_bound(col);
 
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
+        if (pos < slab.size() && slab.key_at(pos) == col)
         {
             if (is_zero)
             {
-                storage_.erase_at(pos);
+                slab.erase_at(pos);
             }
             else
             {
-                storage_.value_at(pos) = val;
+                slab.value_at(pos) = val;
             }
         }
         else
         {
             if (!is_zero)
             {
-                storage_.insert_at(pos, col, val);
+                slab.insert_at(pos, col, val);
             }
         }
     }
@@ -129,10 +129,10 @@ namespace spira
         if (col >= column_limit_)
             return;
 
-        std::size_t pos = storage_.lower_bound(col);
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
+        std::size_t pos = slab.lower_bound(col);
+        if (pos < slab.size() && slab.key_at(pos) == col)
         {
-            storage_.erase_at(pos);
+            slab.erase_at(pos);
         }
     }
 
@@ -184,12 +184,12 @@ namespace spira
             i = j;
         }
 
-        storage_.clear();
-        storage_.reserve(cleaned.size());
+        slab.clear();
+        slab.reserve(cleaned.size());
 
         for (auto &[c, v] : cleaned)
         {
-            storage_.insert_at(storage_.size(), c, v);
+            slab.insert_at(slab.size(), c, v);
         }
     }
 
@@ -199,8 +199,8 @@ namespace spira
         if (col >= column_limit_)
             return false;
 
-        std::size_t pos = storage_.lower_bound(col);
-        return (pos < storage_.size() && storage_.key_at(pos) == col);
+        std::size_t pos = slab.lower_bound(col);
+        return (pos < slab.size() && slab.key_at(pos) == col);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
@@ -209,11 +209,11 @@ namespace spira
         if (col >= column_limit_)
             return nullptr;
 
-        std::size_t pos = storage_.lower_bound(col);
+        std::size_t pos = slab.lower_bound(col);
 
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
+        if (pos < slab.size() && slab.key_at(pos) == col)
         {
-            return &storage_.value_at(pos);
+            return &slab.value_at(pos);
         }
 
         return nullptr;
@@ -223,7 +223,7 @@ namespace spira
     V row<LayoutTag, I, V>::accumlate() const noexcept
     {
         V acc = traits::ValueTraits<V>::zero();
-        for (auto const &[c, v] : storage_)
+        for (auto const &[c, v] : slab)
         {
             acc += v;
         }

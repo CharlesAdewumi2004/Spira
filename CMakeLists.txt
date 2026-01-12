@@ -41,7 +41,7 @@ endif()
 # (typically as an INTERFACE library). So we must NOT re-add it here.
 FetchContent_Declare(
   boundcraft_repo
-  GIT_REPOSITORY https://github.com/CharlesAdewumi2004/hybridSearch.git
+  GIT_REPOSITORY https://github.com/CharlesAdewumi2004/Boundcraft.git
   GIT_TAG        main
 )
 FetchContent_MakeAvailable(boundcraft_repo)
