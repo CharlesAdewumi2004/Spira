@@ -1,6 +1,6 @@
 #pragma once
 
-#include "traits.hpp"
+#include <spira/traits.hpp>
 #include <concepts>
 
 namespace spira::concepts{

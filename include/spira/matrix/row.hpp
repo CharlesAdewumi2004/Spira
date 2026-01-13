@@ -19,6 +19,8 @@ namespace spira
     public:
         using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
 
+        //using buffer_layout_policy = buffer::traits::traits_of_type<LayoutTag, I, V, >
+
         row();
         explicit row(std::size_t reserve_hint, size_t const column_limit);
 

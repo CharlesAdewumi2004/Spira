@@ -1,6 +1,6 @@
 #pragma once
-#include "matrix/matrix.hpp"
-#include "algorithms/spmv.hpp"
+#include <spira/matrix/matrix.hpp>
+#include <spira/algorithms/spmv.hpp>
 
 namespace spira {
 

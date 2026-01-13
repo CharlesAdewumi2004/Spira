@@ -41,8 +41,9 @@ namespace spira::buffer::impls
         [[nodiscard]] const entry_type *begin() const noexcept { return buf_.data(); }
         [[nodiscard]] const entry_type *end() const noexcept { return buf_.data() + sz_; }
 
-        void push_back(const I &col, const V &v)
+        void push_back(const I &col, const V &v) noexcept(std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
+            assert(sz_ < N && "aos_buffer overflow: caller must ensure capacity");
             buf_[sz_++] = entry_type{col, v};
         }
 

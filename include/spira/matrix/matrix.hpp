@@ -1,6 +1,6 @@
 #pragma once
 
-#include "row.hpp"
+#include <spira/matrix/row.hpp>
 
 namespace spira
 {
@@ -45,10 +45,6 @@ namespace spira
         size_t const _row_limit;
         size_t const _column_limit;
     };
-
-    // -----------------------------------------------------------------------------
-    // Implementation
-    // -----------------------------------------------------------------------------
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     matrix<Layout, I, V>::matrix(size_t const row_limit, size_t const column_limit)
