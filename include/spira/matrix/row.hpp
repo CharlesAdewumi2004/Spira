@@ -43,6 +43,8 @@ namespace spira
 
         [[nodiscard]] V accumlate() const noexcept;
 
+        void merge();
+
         auto begin() noexcept { return slab.begin(); }
         auto end() noexcept { return slab.end(); }
         auto begin() const noexcept { return slab.begin(); }
@@ -53,6 +55,7 @@ namespace spira
     private:
         layout_policy slab;
         buffer_layout_policy buffer;
+        std::vector<layout_policy> runs;
         size_t const column_limit_;
     };
 
@@ -98,7 +101,20 @@ namespace spira
     {
         slab.clear();
     }
+/*
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void row<LayoutTag, I, V>::add(I col, const V &val){
+        if(buffer.remainingCapacity() == 0){
+            merge();
+        }
+        buffer.push_back(col, val);
+    }
 
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void row<LayoutTag, I, V>::merge(){
+        
+    }
+*/
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::add(I col, const V &val)
     {
@@ -236,4 +252,5 @@ namespace spira
         return acc;
     }
 
+    
 };
