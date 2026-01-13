@@ -5,9 +5,10 @@
 #include <algorithm>
 #include <iterator>
 
-#include "spira/concepts.hpp"
-#include "spira/traits.hpp"
-#include "layouts/layout_of.hpp"
+#include <spira/concepts.hpp>
+#include <spira/traits.hpp>
+#include <spira/matrix/layouts/layout_of.hpp>
+#include <spira/matrix/buffer/buffer.hpp>
 
 namespace spira
 {
@@ -98,8 +99,9 @@ namespace spira
     void row<LayoutTag, I, V>::add(I col, const V &val)
     {
         if (col >= column_limit_)
+        {
             return;
-
+        }
         const bool is_zero = traits::ValueTraits<V>::is_zero(val);
         std::size_t pos = slab.lower_bound(col);
 
