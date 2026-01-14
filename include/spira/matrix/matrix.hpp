@@ -41,8 +41,11 @@ namespace spira
 
         V accumlate(I row_index) const;
 
+        void set_mode(mode::matrix_mode new_mode);
+        mode::matrix_mode mode() const noexcept;
+
     private:
-        mode::matrix_mode mode_;
+        mode::matrix_mode mode_ = mode::matrix_mode::balanced;
         std::vector<row<Layout, I, V>> row_;
         size_t const row_limit_;
         size_t const column_limit_;
@@ -157,17 +160,6 @@ namespace spira
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    template <class PairRange>
-    void matrix<Layout, I, V>::set_row(I row_index, const PairRange &elems)
-    {
-        if (row_index >= row_limit_)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        row_[row_index].set_row(elems);
-    }
-
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
     bool matrix<Layout, I, V>::contains(I row_index, I col_index) const
     {
         if (row_index >= row_limit_)
@@ -181,19 +173,6 @@ namespace spira
         return row_[row_index].contains(col_index);
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::remove(I row_index, I col_index)
-    {
-        if (row_index >= row_limit_)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= column_limit_)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        row_[row_index].remove(col_index);
-    }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     template <class Func>
@@ -211,6 +190,19 @@ namespace spira
             throw std::out_of_range("Row index out of range");
         }
         return row_[row_index].accumlate();
+    }
+    
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    mode::matrix_mode matrix<Layout, I, V>::mode() const noexcept{
+            return mode_;
+    }
+
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    void matrix<Layout, I, V>::set_mode(mode::matrix_mode new_mode){
+        mode_ = new_mode;
+        for(auto &row : row_){
+            row.set_mode(new_mode);
+        }
     }
 
 }

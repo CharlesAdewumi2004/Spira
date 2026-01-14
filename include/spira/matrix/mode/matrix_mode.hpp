@@ -10,6 +10,4 @@ namespace spira::mode
         insert_heavy
     };
 
-   
-
 }

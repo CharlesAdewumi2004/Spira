@@ -1,18 +1,22 @@
 #pragma once
 
 #include <array>
+#include <cassert>
 #include <cstddef>
-#include <iterator>
+#include <type_traits>
 #include <utility>
+#include <vector>
+
+#include <spira/matrix/layouts/aos.hpp>
 
 namespace spira::buffer::impls
 {
-
     template <class I, class V, std::size_t N>
     class soa_buffer
     {
     public:
         using size_type = std::size_t;
+        using entry_type = spira::layout::elementPair<I, V>;
 
         struct entry_ref
         {
@@ -32,19 +36,33 @@ namespace spira::buffer::impls
 
         void clear() noexcept { sz_ = 0; }
 
-        [[nodiscard]] const I key_at(size_type idx) const noexcept { return col_[idx]; }
+        [[nodiscard]] const I &key_at(size_type idx) const noexcept { return col_[idx]; }
         [[nodiscard]] V &value_at(size_type idx) noexcept { return val_[idx]; }
         [[nodiscard]] const V &value_at(size_type idx) const noexcept { return val_[idx]; }
 
         [[nodiscard]] entry_ref at(size_type idx) noexcept { return {col_[idx], val_[idx]}; }
         [[nodiscard]] entry_cref at(size_type idx) const noexcept { return {col_[idx], val_[idx]}; }
 
-        void push_back(const I &col, const V &v) noexcept(std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
+        void push_back(const I &col, const V &v) noexcept(
+            std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
-            assert(sz_ < N && "aos_buffer overflow: caller must ensure capacity");
+            assert(sz_ < N && "soa_buffer overflow: caller must ensure capacity");
             col_[sz_] = col;
             val_[sz_] = v;
             ++sz_;
+        }
+
+
+        [[nodiscard]] std::vector<entry_type> flush_buffer()
+        {
+            std::vector<entry_type> chunk;
+            chunk.reserve(sz_);
+            for (size_type i = 0; i < sz_; ++i)
+            {
+                chunk.push_back(entry_type{col_[i], val_[i]});
+            }
+            clear();
+            return chunk;
         }
 
         class iterator
@@ -52,7 +70,7 @@ namespace spira::buffer::impls
         public:
             using iterator_category = std::random_access_iterator_tag;
             using difference_type = std::ptrdiff_t;
-            using value_type = entry_ref; // proxy-ish
+            using value_type = entry_ref;
             using reference = entry_ref;
 
             iterator() = default;
@@ -114,7 +132,10 @@ namespace spira::buffer::impls
                 it -= n;
                 return it;
             }
-            friend difference_type operator-(const iterator &a, const iterator &b) noexcept { return a.c_ - b.c_; }
+            friend difference_type operator-(const iterator &a, const iterator &b) noexcept
+            {
+                return a.c_ - b.c_;
+            }
 
             friend bool operator==(const iterator &a, const iterator &b) noexcept { return a.c_ == b.c_; }
             friend bool operator!=(const iterator &a, const iterator &b) noexcept { return !(a == b); }
@@ -126,8 +147,8 @@ namespace spira::buffer::impls
             reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
         private:
-            I *c_ = nullptr;
-            V *v_ = nullptr;
+            I *c_{nullptr};
+            V *v_{nullptr};
         };
 
         class const_iterator
@@ -197,7 +218,10 @@ namespace spira::buffer::impls
                 it -= n;
                 return it;
             }
-            friend difference_type operator-(const const_iterator &a, const const_iterator &b) noexcept { return a.c_ - b.c_; }
+            friend difference_type operator-(const const_iterator &a, const const_iterator &b) noexcept
+            {
+                return a.c_ - b.c_;
+            }
 
             friend bool operator==(const const_iterator &a, const const_iterator &b) noexcept { return a.c_ == b.c_; }
             friend bool operator!=(const const_iterator &a, const const_iterator &b) noexcept { return !(a == b); }
@@ -209,8 +233,8 @@ namespace spira::buffer::impls
             reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
         private:
-            const I *c_ = nullptr;
-            const V *v_ = nullptr;
+            const I *c_{nullptr};
+            const V *v_{nullptr};
         };
 
         [[nodiscard]] iterator begin() noexcept { return iterator(col_.data(), val_.data()); }
@@ -225,7 +249,7 @@ namespace spira::buffer::impls
     private:
         std::array<I, N> col_{};
         std::array<V, N> val_{};
-        size_type sz_ = 0;
+        size_type sz_{0};
     };
 
 }

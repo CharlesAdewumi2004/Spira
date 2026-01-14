@@ -1,25 +1,21 @@
 #pragma once
 
 #include <array>
-#include <cstddef>
-#include <utility>
 #include <cassert>
+#include <cstddef>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <spira/matrix/layouts/aos.hpp>
 
 namespace spira::buffer::impls
 {
-
-    template <class I, class V>
-    struct bufferElementPair
-    {
-        I column;
-        V value;
-    };
-
     template <class I, class V, std::size_t N>
     class aos_buffer
     {
     public:
-        using entry_type = bufferElementPair<I, V>;
+        using entry_type = spira::layout::elementPair<I, V>;
         using size_type = std::size_t;
 
         [[nodiscard]] bool empty() const noexcept { return sz_ == 0; }
@@ -29,27 +25,43 @@ namespace spira::buffer::impls
 
         void clear() noexcept { sz_ = 0; }
 
-        [[nodiscard]] const I key_at(size_type idx) const noexcept { return buf_[idx].column; }
+        [[nodiscard]] const I &key_at(size_type idx) const noexcept { return buf_[idx].column; }
         [[nodiscard]] V &value_at(size_type idx) noexcept { return buf_[idx].value; }
         [[nodiscard]] const V &value_at(size_type idx) const noexcept { return buf_[idx].value; }
 
         [[nodiscard]] entry_type *data() noexcept { return buf_.data(); }
         [[nodiscard]] const entry_type *data() const noexcept { return buf_.data(); }
 
+        // NOTE: begin/end expose only the live region [0, sz_)
         [[nodiscard]] entry_type *begin() noexcept { return buf_.data(); }
         [[nodiscard]] entry_type *end() noexcept { return buf_.data() + sz_; }
         [[nodiscard]] const entry_type *begin() const noexcept { return buf_.data(); }
         [[nodiscard]] const entry_type *end() const noexcept { return buf_.data() + sz_; }
+        [[nodiscard]] const entry_type *cbegin() const noexcept { return begin(); }
+        [[nodiscard]] const entry_type *cend() const noexcept { return end(); }
 
-        void push_back(const I &col, const V &v) noexcept(std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
+        void push_back(const I &col, const V &v) noexcept(
+            std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
             assert(sz_ < N && "aos_buffer overflow: caller must ensure capacity");
             buf_[sz_++] = entry_type{col, v};
         }
 
+        [[nodiscard]] std::vector<entry_type> flush_buffer()
+        {
+            std::vector<entry_type> chunk;
+            chunk.reserve(sz_);
+            // Copy only live entries
+            for (size_type i = 0; i < sz_; ++i)
+            {
+                chunk.push_back(buf_[i]);
+            }
+            clear();
+            return chunk;
+        }
+
     private:
         std::array<entry_type, N> buf_{};
-        size_type sz_ = 0;
+        size_type sz_{0};
     };
-
 }
