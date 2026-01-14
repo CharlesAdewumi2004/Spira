@@ -1,9 +1,10 @@
 #pragma once
 #include <vector>
 #include <algorithm>
-#include <cstddef>  // ptrdiff_t
-#include <iterator> // iterator tags
-#include <utility> 
+#include <cstddef>
+#include <iterator>
+#include <utility>
+#include <boundcraft/searcher.hpp>
 
 #include "../include/spira/concepts.hpp"
 
@@ -16,8 +17,8 @@ namespace spira::layout
     public:
         struct iterator
         {
-            using iterator_concept = std::random_access_iterator_tag;  // C++20
-            using iterator_category = std::random_access_iterator_tag; // legacy
+            using iterator_concept = std::random_access_iterator_tag; 
+            using iterator_category = std::random_access_iterator_tag; 
             using difference_type = std::ptrdiff_t;
             using value_type = std::pair<I, V>;
 
@@ -234,29 +235,20 @@ namespace spira::layout
         [[nodiscard]] V &value_at(std::size_t idx) noexcept { return values[idx]; }
         [[nodiscard]] const V &value_at(std::size_t idx) const noexcept { return values[idx]; }
 
-        void set_at(std::size_t idx, I col, V val)
-        {
-            columns[idx] = col;
-            values[idx] = val;
-        }
+
         void insert_at(std::size_t idx, I col, V val)
         {
             columns.insert(columns.begin() + idx, col);
             values.insert(values.begin() + idx, val);
         }
-        void erase_at(std::size_t idx)
-        {
-            columns.erase(columns.begin() + idx);
-            values.erase(values.begin() + idx);
-        }
 
         [[nodiscard]] std::size_t lower_bound(I col) const noexcept
         {
-            auto it = std::lower_bound(columns.begin(), columns.end(), col);
+            auto s = boundcraft::searcher<boundcraft::policy::hybrid<32>>();
+            auto it = s.lower_bound(columns.begin(), columns.end(), col);
             return static_cast<std::size_t>(it - columns.begin());
         }
 
-        // iterators
         iterator begin() noexcept { return iterator(columns.data(), values.data()); }
         iterator end() noexcept { return iterator(columns.data() + columns.size(), values.data() + values.size()); }
 

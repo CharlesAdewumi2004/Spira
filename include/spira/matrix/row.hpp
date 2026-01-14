@@ -162,17 +162,9 @@ namespace spira
         const bool buffer_has_live =
             std::visit([&](auto const &buf) -> bool
                        {
-                       for (auto const &e : buf)
+                       for (std::size_t i = 0; i < buf.size(); ++i)
                        {
-                           const V &v =[&]() -> const V &
-                           {
-                               if constexpr (requires { e.value; })
-                                   return e.value;
-                               else
-                                   return e.second;
-                           }();
-
-                           if (!traits::ValueTraits<V>::is_zero(v))
+                           if (!traits::ValueTraits<V>::is_zero(buf.value_at(i)))
                                return true;
                        }
                        return false; },

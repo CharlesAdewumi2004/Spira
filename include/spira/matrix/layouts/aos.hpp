@@ -178,24 +178,15 @@ namespace spira::layout
         [[nodiscard]] V &value_at(size_t idx) noexcept { return elements[idx].value; }
         [[nodiscard]] const V &value_at(size_t idx) const noexcept { return elements[idx].value; }
 
-        void set_at(size_t index, I col, const V &val)
-        {
-            elements[index] = elementPair<I, V>{col, val};
-        }
-
         void insert_at(size_t index, I col, const V &val)
         {
             elements.insert(elements.begin() + index, elementPair<I, V>{col, val});
         }
 
-        void erase_at(size_t index)
-        {
-            elements.erase(elements.begin() + index);
-        }
-
         [[nodiscard]] size_t lower_bound(I col) const noexcept
         {
-            auto it = std::lower_bound( elements.begin(), elements.end(), col, [](auto const &e, I key){ return e.column < key; });
+            auto s = boundcraft::searcher<boundcraft::policy::hybrid<32>>();
+            auto it = s.lower_bound(elements.begin(), elements.end(), col, [](auto const &e, I key){ return e.column < key; });
             return static_cast<size_t>(std::distance(elements.begin(), it));
         }
 

@@ -44,9 +44,11 @@ namespace spira
         void set_mode(mode::matrix_mode new_mode);
         mode::matrix_mode mode() const noexcept;
 
+        void flush();
+
     private:
         mode::matrix_mode mode_ = mode::matrix_mode::balanced;
-        std::vector<row<Layout, I, V>> row_;
+        std::vector<row<Layout, I, V>> rows_;
         size_t const row_limit_;
         size_t const column_limit_;
     };
@@ -57,10 +59,10 @@ namespace spira
           column_limit_(column_limit)
     {
         mode_ = mode::matrix_mode::balanced;
-        row_.reserve(row_limit_);
+        rows_.reserve(row_limit_);
         for (size_t i = 0; i < row_limit_; i++)
         {
-            row_.emplace_back(column_limit, column_limit);
+            rows_.emplace_back(column_limit, column_limit);
         }
     }
 
@@ -89,13 +91,13 @@ namespace spira
         {
             throw std::out_of_range("Input is out of range of the matrix");
         }
-        return row_[row_index].size();
+        return rows_[row_index].size();
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     bool matrix<Layout, I, V>::empty() const noexcept
     {
-        for (auto const &row : row_)
+        for (auto const &row : rows_)
         {
             if (row.size() != 0)
             {
@@ -109,7 +111,7 @@ namespace spira
     size_t matrix<Layout, I, V>::nnz() const noexcept
     {
         size_t entries = 0;
-        for (auto const &row : row_)
+        for (auto const &row : rows_)
         {
             entries += row.size();
         }
@@ -127,7 +129,7 @@ namespace spira
         {
             throw std::out_of_range("Column index out of range");
         }
-        row_[row_index].add(col_index, val);
+        rows_[row_index].add(col_index, val);
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
@@ -142,7 +144,7 @@ namespace spira
             throw std::out_of_range("Column index out of range");
         }
 
-        V const *val = row_[row_index].get(col_index);
+        V const *val = rows_[row_index].get(col_index);
         if (val == nullptr)
         {
             return spira::traits::ValueTraits<V>::zero();
@@ -153,7 +155,7 @@ namespace spira
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void matrix<Layout, I, V>::clear() noexcept
     {
-        for (auto &row : row_)
+        for (auto &row : rows_)
         {
             row.clear();
         }
@@ -170,7 +172,7 @@ namespace spira
         {
             throw std::out_of_range("Column index out of range");
         }
-        return row_[row_index].contains(col_index);
+        return rows_[row_index].contains(col_index);
     }
 
 
@@ -180,7 +182,7 @@ namespace spira
     {
         for (size_t i = 0; i < row_limit_; i++)
         {
-            f(row_[i], i);
+            f(rows_[i], i);
         }
     }
 
@@ -189,7 +191,7 @@ namespace spira
         if(row_index >= row_limit_){
             throw std::out_of_range("Row index out of range");
         }
-        return row_[row_index].accumlate();
+        return rows_[row_index].accumlate();
     }
     
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
@@ -200,8 +202,15 @@ namespace spira
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void matrix<Layout, I, V>::set_mode(mode::matrix_mode new_mode){
         mode_ = new_mode;
-        for(auto &row : row_){
+        for(auto &row : rows_){
             row.set_mode(new_mode);
+        }
+    }
+
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    void matrix<Layout, I, V>::flush(){
+        for(auto &row : rows_){
+            row.flush();
         }
     }
 
