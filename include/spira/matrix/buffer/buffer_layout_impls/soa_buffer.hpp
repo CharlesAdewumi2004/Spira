@@ -84,7 +84,7 @@ namespace spira::buffer::impls
             return chunk;
         }
 
-        void deduplicate(){
+        void deduplicate() const noexcept {
             std::array<I, N> tmpCol;
             std::array<V, N> tmpVal;
             size_t out = 0;
@@ -113,7 +113,7 @@ namespace spira::buffer::impls
             sz_ = out;
         }
 
-        V accumlate() const noexcept{
+        V accumulate() const noexcept {
             deduplicate();
             
             V acc = traits::ValueTraits<V>::zero();
@@ -307,9 +307,9 @@ namespace spira::buffer::impls
         [[nodiscard]] const_iterator cend() const noexcept { return end(); }
 
     private:
-        std::array<I, N> col_{};
-        std::array<V, N> val_{};
-        size_type sz_{0};
+        mutable std::array<I, N> col_{};
+        mutable std::array<V, N> val_{};
+        mutable size_type sz_{0};
     };
 
 }

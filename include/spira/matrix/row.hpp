@@ -52,7 +52,7 @@ namespace spira
         [[nodiscard]] bool contains(I col) const;
         [[nodiscard]] const V *get(I col) const;
 
-        [[nodiscard]] V accumlate() const noexcept;
+        [[nodiscard]] V accumulate() const noexcept;
 
         void flush() const;
 
@@ -283,12 +283,12 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    V row<LayoutTag, I, V>::accumlate() const noexcept
+    V row<LayoutTag, I, V>::accumulate() const noexcept
     {
         V acc = traits::ValueTraits<V>::zero();
 
         acc += std::visit([](auto const &buf)
-                          { return buf.accumlate(); }, buffer_);
+                          { return buf.accumulate(); }, buffer_);
 
         for (auto const &run : runs_)
             for (auto const &[c, v] : run)

@@ -34,7 +34,7 @@ namespace spira
         template <class Func>
         void for_each_row(Func &&f) const;
 
-        V accumlate(I row_index) const;
+        V accumulate(I row_index) const;
 
         void set_mode(mode::matrix_mode new_mode);
         mode::matrix_mode mode() const noexcept;
@@ -183,11 +183,11 @@ namespace spira
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    V matrix<Layout, I, V>::accumlate(I row_index) const{
+    V matrix<Layout, I, V>::accumulate(I row_index) const{
         if(row_index >= row_limit_){
             throw std::out_of_range("Row index out of range");
         }
-        return rows_[row_index].accumlate();
+        return rows_[row_index].accumulate();
     }
     
     template <class Layout, concepts::Indexable I, concepts::Valueable V>

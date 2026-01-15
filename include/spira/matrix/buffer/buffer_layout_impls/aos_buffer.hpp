@@ -20,7 +20,11 @@ namespace spira::buffer::impls
         using size_type = std::size_t;
 
         [[nodiscard]] bool empty() const noexcept { return sz_ == 0; }
-        [[nodiscard]] size_type size() const noexcept { return sz_; }
+        [[nodiscard]] size_type size() const noexcept
+        {
+            deduplicate();
+            return sz_;
+        }
         [[nodiscard]] static constexpr size_type capacity() noexcept { return N; }
         [[nodiscard]] size_type remaining_capacity() const noexcept { return N - sz_; }
 
@@ -80,46 +84,53 @@ namespace spira::buffer::impls
             return chunk;
         }
 
-        void deduplicate(){
+        void deduplicate() const noexcept
+        {
             std::array<entry_type, N> tmp;
             size_t out = 0;
 
-            for(size_t i = sz_; i-- > 0;){
+            for (size_t i = sz_; i-- > 0;)
+            {
                 bool seen = false;
 
-                for(size_t j = 0; j < out; j++){
-                    if(tmp[j].column == buf_[i].column){
+                for (size_t j = 0; j < out; j++)
+                {
+                    if (tmp[j].column == buf_[i].column)
+                    {
                         seen = true;
                         break;
                     }
                 }
 
-                if(seen == false){
+                if (seen == false)
+                {
                     tmp[out++] = buf_[i];
                 }
             }
 
-            for(size_t i = 0; i < out; i++){
+            for (size_t i = 0; i < out; i++)
+            {
                 buf_[i] = tmp[i];
-
             }
 
             sz_ = out;
         }
 
-        V accumlate() const noexcept{
+        V accumulate() const noexcept
+        {
             deduplicate();
-            
+
             V acc = traits::ValueTraits<V>::zero();
 
-            for(size_t i = 0; i < sz_; i++){
-                acc += buf_[i];
+            for (size_t i = 0; i < sz_; i++)
+            {
+                acc += buf_[i].value;
             }
             return acc;
         }
 
     private:
-        std::array<entry_type, N> buf_{};
-        size_type sz_{0};
+        mutable std::array<entry_type, N> buf_{};
+        mutable size_type sz_{0};
     };
 }
