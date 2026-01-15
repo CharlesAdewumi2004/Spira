@@ -54,7 +54,6 @@ namespace spira
 
         [[nodiscard]] V accumlate() const noexcept;
 
-        // logically-const: may materialize pending inserts
         void flush() const;
 
         template <class Fn>
@@ -97,8 +96,17 @@ namespace spira
                 return e.second;
         }
 
-        void normalize_chunk(std::vector<entry_type> &chunk) const;
+        template <class Fn>
+        void iterate_over_elements(Fn &&f) const noexcept
+        {
+            for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
+            {
+                auto &&[col, val] = *it;
+                f(col, val);
+            }
+        }
 
+        void normalize_chunk(std::vector<entry_type> &chunk) const;
         void merge_sorted_chunk_into_slab(std::vector<entry_type> const &chunk) const;
         void push_chunk_as_run(std::vector<entry_type> const &chunk) const;
         bool should_compact() const;
@@ -535,11 +543,21 @@ namespace spira
                 flush();
             }
 
-            for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
+            iterate_over_elements(f);
+        }
+        else if (mode_ == mode::matrix_mode::balanced || mode_ == mode::matrix_mode::insert_heavy)
+        {
+            if (dirty_)
             {
-                auto &&[col, val] = *it;
-                f(col, val);
+                flush();
             }
+
+            if (!runs_.empty())
+            {
+                compact_runs_into_slab();
+            }
+
+            iterate_over_elements(f);
         }
     }
 
