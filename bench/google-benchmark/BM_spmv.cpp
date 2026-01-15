@@ -10,6 +10,7 @@ static void BM_spmv(benchmark::State &state)
     const std::size_t cols = static_cast<std::size_t>(state.range(2));
 
     spira::matrix<Layout, I, V> m(rows, cols);
+    m.set_mode(spira::mode::matrix_mode::insert_heavy);
     std::vector<V> x;
     std::vector<V> y(rows, V{});
 
@@ -30,6 +31,7 @@ static void BM_spmv(benchmark::State &state)
         m.add(row_dist(rng), col_dist(rng), static_cast<V>(num_dist(rng)));
     }
 
+    m.set_mode(spira::mode::matrix_mode::spmv);
     benchmark::DoNotOptimize(x.data());
     benchmark::DoNotOptimize(y.data());
 

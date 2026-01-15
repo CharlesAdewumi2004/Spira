@@ -1,5 +1,5 @@
 #include <benchmark/benchmark.h>
-#include "spira/spira.hpp"
+#include <spira/spira.hpp>
 #include <random>
 #include <vector>
 #define maxMatrixValue 10000
