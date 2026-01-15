@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 #include <spira/matrix/layouts/aos.hpp>
 
@@ -47,17 +48,74 @@ namespace spira::buffer::impls
             buf_[sz_++] = entry_type{col, v};
         }
 
+        bool contains(I col) const noexcept
+        {
+            for (size_type i = sz_; i-- > 0;)
+            {
+                if (buf_[i].column == col)
+                    return true;
+            }
+            return false;
+        }
+
+        const V *get_ptr(I col) const noexcept
+        {
+            for (size_type i = sz_; i-- > 0;)
+            {
+                if (buf_[i].column == col)
+                    return &buf_[i].value;
+            }
+            return nullptr;
+        }
+
         [[nodiscard]] std::vector<entry_type> flush_buffer()
         {
             std::vector<entry_type> chunk;
             chunk.reserve(sz_);
-            // Copy only live entries
             for (size_type i = 0; i < sz_; ++i)
             {
                 chunk.push_back(buf_[i]);
             }
             clear();
             return chunk;
+        }
+
+        void deduplicate(){
+            std::array<entry_type, N> tmp;
+            size_t out = 0;
+
+            for(size_t i = sz_; i-- > 0;){
+                bool seen = false;
+
+                for(size_t j = 0; j < out; j++){
+                    if(tmp[j].column == buf_[i].column){
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if(seen == false){
+                    tmp[out++] = buf_[i];
+                }
+            }
+
+            for(size_t i = 0; i < out; i++){
+                buf_[i] = tmp[i];
+
+            }
+
+            sz_ = out;
+        }
+
+        V accumlate() const noexcept{
+            deduplicate();
+            
+            V acc = traits::ValueTraits<V>::zero();
+
+            for(size_t i = 0; i < sz_; i++){
+                acc += buf_[i];
+            }
+            return acc;
         }
 
     private:

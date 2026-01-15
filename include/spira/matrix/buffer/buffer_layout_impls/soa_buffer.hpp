@@ -52,6 +52,25 @@ namespace spira::buffer::impls
             ++sz_;
         }
 
+        bool contains(I col) const noexcept
+        {
+            for (size_type i = sz_; i-- > 0;)
+            {
+                if (col_[i] == col)
+                    return true;
+            }
+            return false;
+        }
+
+        const V *get_ptr(I col) const noexcept
+        {
+            for (size_type i = sz_; i-- > 0;)
+            {
+                if (col_[i] == col)
+                    return &val_[i];
+            }
+            return nullptr;
+        }
 
         [[nodiscard]] std::vector<entry_type> flush_buffer()
         {
@@ -63,6 +82,47 @@ namespace spira::buffer::impls
             }
             clear();
             return chunk;
+        }
+
+        void deduplicate(){
+            std::array<I, N> tmpCol;
+            std::array<V, N> tmpVal;
+            size_t out = 0;
+
+            for(size_t i = sz_; i-- > 0;){
+                bool seen = false;
+
+                for(size_t j = 0; j < out; j++){
+                    if(tmpCol[j] == col_[i]){
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if(seen == false){
+                    tmpVal[out] = val_[i];
+                    tmpCol[out++] = col_[i];
+                }
+            }
+
+            for(size_t i = 0; i < out; i++){
+                val_[i] = tmpVal[i];
+                col_[i] = tmpCol[i];
+            }
+
+            sz_ = out;
+        }
+
+        V accumlate() const noexcept{
+            deduplicate();
+            
+            V acc = traits::ValueTraits<V>::zero();
+
+            for(size_t i = 0; i < sz_; i++){
+                acc += val_[i];
+            }
+
+            return acc;
         }
 
         class iterator

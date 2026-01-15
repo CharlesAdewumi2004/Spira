@@ -12,6 +12,7 @@
 #include <spira/matrix/mode/matrix_mode.hpp>
 #include <spira/matrix/mode/mode_traits.hpp> // expects: mode::mode_policy + mode::policy_for(matrix_mode)
 #include <spira/traits.hpp>
+#include <spira/config.hpp>
 
 namespace spira
 {
@@ -23,10 +24,9 @@ namespace spira
         using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
         using entry_type = spira::layout::elementPair<I, V>;
 
-        using small_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, 32>;
-        using balanced_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, 64>;
-        using insert_heavy_buffer =
-            buffer::traits::traits_of_type<LayoutTag, I, V, 2048>;
+        using small_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::spmv.buffersize>;
+        using balanced_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::balanced.buffersize>;
+        using insert_heavy_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::insert_heavy.buffersize>;
 
         using buffer_variant =
             std::variant<small_buffer, balanced_buffer, insert_heavy_buffer>;
@@ -35,7 +35,7 @@ namespace spira
         explicit row(std::size_t reserve_hint, std::size_t column_limit);
 
         [[nodiscard]] mode::matrix_mode mode() const noexcept { return mode_; }
-        [[nodiscard]] mode::mode_policy const &traits() const noexcept
+        [[nodiscard]] config::mode_policy const &traits() const noexcept
         {
             return traits_;
         }
@@ -105,7 +105,7 @@ namespace spira
         std::vector<layout_policy> runs_{};
 
         mode::matrix_mode mode_{mode::matrix_mode::balanced};
-        mode::mode_policy traits_{mode::policy_for(mode::matrix_mode::balanced)};
+        config::mode_policy traits_{mode::policy_for(mode::matrix_mode::balanced)};
 
         std::size_t column_limit_{0};
     };
@@ -213,7 +213,7 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::add(I col, const V &val)
     {
-        if (col >= static_cast<I>(column_limit_))
+        if (static_cast<size_t>(col) >= column_limit_)
         {
             return;
         }
@@ -233,24 +233,48 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     bool row<LayoutTag, I, V>::contains(I col) const
     {
-        if (col >= static_cast<I>(column_limit_))
+        if (static_cast<size_t>(col) >= column_limit_)
             return false;
 
-        std::size_t pos = slab_.lower_bound(col);
+        // 1) buffer
+        if (std::visit([&](auto const &buf)
+                       { return buf.contains(col); }, buffer_))
+            return true;
+
+        // 2) runs
+        for (auto const &run : runs_)
+        {
+            auto pos = run.lower_bound(col);
+            if (pos < run.size() && run.key_at(pos) == col)
+                return true;
+        }
+
+        // 3) slab
+        auto pos = slab_.lower_bound(col);
         return (pos < slab_.size() && slab_.key_at(pos) == col);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     const V *row<LayoutTag, I, V>::get(I col) const
     {
-        if (col >= static_cast<I>(column_limit_))
+        if (static_cast<size_t>(col) >= column_limit_)
             return nullptr;
 
-        std::size_t pos = slab_.lower_bound(col);
-        if (pos < slab_.size() && slab_.key_at(pos) == col)
+        if (auto p = std::visit([&](auto const &buf)
+                                { return buf.get_ptr(col); }, buffer_))
+            return p;
+
+        for (auto const &run : runs_)
         {
-            return &slab_.value_at(pos);
+            auto pos = run.lower_bound(col);
+            if (pos < run.size() && run.key_at(pos) == col)
+                return &run.value_at(pos);
         }
+
+        auto pos = slab_.lower_bound(col);
+        if (pos < slab_.size() && slab_.key_at(pos) == col)
+            return &slab_.value_at(pos);
+
         return nullptr;
     }
 
@@ -258,6 +282,17 @@ namespace spira
     V row<LayoutTag, I, V>::accumlate() const noexcept
     {
         V acc = traits::ValueTraits<V>::zero();
+
+        acc += buffer_.accumlate();
+
+        for(auto const &run : runs_){
+            for (auto const &[c, v] : run)
+        {
+            acc += v;
+        }
+
+        }
+
         for (auto const &[c, v] : slab_)
         {
             acc += v;
@@ -436,8 +471,7 @@ namespace spira
             for (auto const &r : runs_)
                 run_total += r.size();
 
-            const double ratio =
-                static_cast<double>(run_total) / static_cast<double>(slab_.size());
+            const double ratio = static_cast<double>(run_total) / static_cast<double>(slab_.size()); // issue
 
             if (ratio > traits_.compact_run_ratio)
                 return true;

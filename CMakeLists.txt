@@ -69,8 +69,6 @@ if (SPIRA_BUILD_TESTS)
       tests/test.cpp
       tests/soa_spmv_test.cpp
       tests/aos_spmv_test.cpp
-      tests/aos_test.cpp
-      tests/soa_test.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)

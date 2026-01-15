@@ -29,12 +29,7 @@ namespace spira
 
         void clear() noexcept;
 
-        template <class PairRange>
-        void set_row(I row_index, const PairRange &elems);
-
         bool contains(I row_index, I col_index) const;
-
-        void remove(I row_index, I col_index);
 
         template <class Func>
         void for_each_row(Func &&f) const;
@@ -180,6 +175,7 @@ namespace spira
     template <class Func>
     void matrix<Layout, I, V>::for_each_row(Func &&f) const
     {
+        
         for (size_t i = 0; i < row_limit_; i++)
         {
             f(rows_[i], i);
