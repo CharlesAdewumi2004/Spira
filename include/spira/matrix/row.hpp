@@ -237,8 +237,9 @@ namespace spira
                        { return buf.contains(col); }, buffer_))
             return true;
 
-        for (auto const &run : runs_)
+        for (auto it = runs_.rbegin(); it != runs_.rend(); ++it)
         {
+            auto const &run = *it;
             auto pos = run.lower_bound(col);
             if (pos < run.size() && run.key_at(pos) == col)
                 return true;
@@ -258,8 +259,9 @@ namespace spira
                                 { return buf.get_ptr(col); }, buffer_))
             return p;
 
-        for (auto const &run : runs_)
+        for (auto it = runs_.rbegin(); it != runs_.rend(); ++it)
         {
+            auto const &run = *it;
             auto pos = run.lower_bound(col);
             if (pos < run.size() && run.key_at(pos) == col)
                 return &run.value_at(pos);
@@ -528,9 +530,10 @@ namespace spira
     {
         if (mode_ == mode::matrix_mode::spmv)
         {
-
             if (dirty_)
+            {
                 flush();
+            }
 
             for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
             {
