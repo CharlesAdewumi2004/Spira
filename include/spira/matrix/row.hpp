@@ -9,6 +9,8 @@
 #include <variant>
 #include <vector>
 
+#include <iostream>
+
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
 #include <spira/matrix/buffer/buffer.hpp>
@@ -41,8 +43,16 @@ namespace spira
         void set_mode(mode::matrix_mode m);
 
         [[nodiscard]] bool empty() const noexcept;
-        [[nodiscard]] std::size_t size() const noexcept;
-        [[nodiscard]] std::size_t capacity() const noexcept;
+        [[nodiscard]] size_t size() const noexcept;
+        [[nodiscard]] size_t capacity() const noexcept;
+
+        [[nodiscard]] size_t buffer_size() const noexcept
+        {
+            return std::visit([](auto const &buf) noexcept
+                              { return buf.size(); }, buffer_);
+        }
+        [[nodiscard]] size_t number_of_runs() const noexcept { return runs_.size(); }
+        [[nodiscard]] size_t slab_size() const noexcept { return slab_.size(); }
 
         void reserve(std::size_t n);
         void clear() noexcept;
@@ -303,17 +313,21 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::flush() const
     {
+
         auto &chunk = tls_chunk();
         chunk = std::visit(
             [](auto &buf) -> std::vector<entry_type>
             { return buf.flush_buffer(); },
             buffer_);
 
-        if (chunk.empty())
+        if (chunk.empty() && runs_.empty())
+        {
+            dirty_ = false;
             return;
+        }
 
         normalize_chunk(chunk);
-        if (chunk.empty())
+        if (chunk.empty() && runs_.empty())
         {
             dirty_ = false;
             return;
@@ -325,18 +339,20 @@ namespace spira
         {
             merge_sorted_chunk_into_slab(chunk);
             chunk.clear();
-            dirty_ = false;
-            return;
         }
 
-        if (slab_.size() <= traits_.slab_merge_threshold)
+        if (slab_.size() < traits_.slab_merge_threshold)
+        {
             merge_sorted_chunk_into_slab(chunk);
+        }
         else
+        {
             push_chunk_as_run(chunk);
-
+        }
         if (should_compact())
+        {
             compact_runs_into_slab();
-
+        }
         chunk.clear();
         dirty_ = false;
     }
@@ -358,7 +374,7 @@ namespace spira
             std::size_t j = i + 1;
             while (j < chunk.size() && key_of(chunk[j]) == c)
             {
-                v = val_of(chunk[j]); // last-write-wins
+                v = val_of(chunk[j]);
                 ++j;
             }
 

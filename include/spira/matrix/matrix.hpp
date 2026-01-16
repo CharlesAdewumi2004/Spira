@@ -23,6 +23,10 @@ namespace spira
         bool empty() const noexcept;
         size_t nnz() const noexcept;
 
+        [[nodiscard]] size_t buffer_size(I row_index) const noexcept { return rows_[row_index].buffer_size(); }
+        [[nodiscard]] size_t number_of_runs(I row_index) const noexcept { return rows_[row_index].number_of_runs(); }
+        [[nodiscard]] size_t slab_size(I row_index) const noexcept{return rows_[row_index].slab_size();}
+
         void add(I row_index, I col_index, const V &val);
 
         V get(I row_index, I col_index) const;
@@ -40,6 +44,7 @@ namespace spira
         mode::matrix_mode mode() const noexcept;
 
         void flush();
+        void flush(I row_index);
 
     private:
         mode::matrix_mode mode_ = mode::matrix_mode::balanced;
@@ -170,12 +175,11 @@ namespace spira
         return rows_[row_index].contains(col_index);
     }
 
-
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     template <class Func>
     void matrix<Layout, I, V>::for_each_row(Func &&f) const
     {
-        
+
         for (size_t i = 0; i < row_limit_; i++)
         {
             f(rows_[i], i);
@@ -183,31 +187,44 @@ namespace spira
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    V matrix<Layout, I, V>::accumulate(I row_index) const{
-        if(row_index >= row_limit_){
+    V matrix<Layout, I, V>::accumulate(I row_index) const
+    {
+        if (row_index >= row_limit_)
+        {
             throw std::out_of_range("Row index out of range");
         }
         return rows_[row_index].accumulate();
     }
-    
+
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    mode::matrix_mode matrix<Layout, I, V>::mode() const noexcept{
-            return mode_;
+    mode::matrix_mode matrix<Layout, I, V>::mode() const noexcept
+    {
+        return mode_;
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::set_mode(mode::matrix_mode new_mode){
+    void matrix<Layout, I, V>::set_mode(mode::matrix_mode new_mode)
+    {
         mode_ = new_mode;
-        for(auto &row : rows_){
+        for (auto &row : rows_)
+        {
             row.set_mode(new_mode);
         }
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::flush(){
-        for(auto &row : rows_){
+    void matrix<Layout, I, V>::flush()
+    {
+        for (auto &row : rows_)
+        {
             row.flush();
         }
+    }
+
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    void matrix<Layout, I, V>::flush(I row_index)
+    {
+        rows_[row_index].flush();
     }
 
 }

@@ -30,7 +30,11 @@ namespace spira::buffer::impls
         };
 
         [[nodiscard]] bool empty() const noexcept { return sz_ == 0; }
-        [[nodiscard]] size_type size() const noexcept { return sz_; }
+        [[nodiscard]] size_type size() const noexcept
+        {
+            deduplicate();
+            return sz_;
+        }
         [[nodiscard]] static constexpr size_type capacity() noexcept { return N; }
         [[nodiscard]] size_type remaining_capacity() const noexcept { return N - sz_; }
 
@@ -84,28 +88,34 @@ namespace spira::buffer::impls
             return chunk;
         }
 
-        void deduplicate() const noexcept {
+        void deduplicate() const noexcept
+        {
             std::array<I, N> tmpCol;
             std::array<V, N> tmpVal;
             size_t out = 0;
 
-            for(size_t i = sz_; i-- > 0;){
+            for (size_t i = sz_; i-- > 0;)
+            {
                 bool seen = false;
 
-                for(size_t j = 0; j < out; j++){
-                    if(tmpCol[j] == col_[i]){
+                for (size_t j = 0; j < out; j++)
+                {
+                    if (tmpCol[j] == col_[i])
+                    {
                         seen = true;
                         break;
                     }
                 }
 
-                if(seen == false){
+                if (seen == false)
+                {
                     tmpVal[out] = val_[i];
                     tmpCol[out++] = col_[i];
                 }
             }
 
-            for(size_t i = 0; i < out; i++){
+            for (size_t i = 0; i < out; i++)
+            {
                 val_[i] = tmpVal[i];
                 col_[i] = tmpCol[i];
             }
@@ -113,12 +123,14 @@ namespace spira::buffer::impls
             sz_ = out;
         }
 
-        V accumulate() const noexcept {
+        V accumulate() const noexcept
+        {
             deduplicate();
-            
+
             V acc = traits::ValueTraits<V>::zero();
 
-            for(size_t i = 0; i < sz_; i++){
+            for (size_t i = 0; i < sz_; i++)
+            {
                 acc += val_[i];
             }
 
