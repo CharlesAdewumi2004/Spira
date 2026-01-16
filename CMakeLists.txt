@@ -66,9 +66,12 @@ if (SPIRA_BUILD_TESTS)
   enable_testing()
 
   add_executable(unit_tests
-      tests/test.cpp
-      tests/soa_spmv_test.cpp
-      tests/aos_spmv_test.cpp
+      tests/layout_and_type_constraits_tests.cpp
+      tests/matrix_tests.cpp
+      tests/flush_behaviour_tests.cpp
+      tests/mode_switch_tests.cpp
+      tests/spmv_tests.cpp
+      tests/large_matrix_stress_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)

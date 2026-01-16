@@ -12,8 +12,8 @@ static void BM_streamInsertElements(benchmark::State &state)
     using I = std::size_t;
 
     const std::size_t n_coordinates = static_cast<std::size_t>(state.range(0));
-    const std::size_t rows          = static_cast<std::size_t>(state.range(1));
-    const std::size_t cols          = static_cast<std::size_t>(state.range(2));
+    const std::size_t rows = static_cast<std::size_t>(state.range(1));
+    const std::size_t cols = static_cast<std::size_t>(state.range(2));
 
     // RNG
     std::mt19937_64 rng(12345);
@@ -36,7 +36,8 @@ static void BM_streamInsertElements(benchmark::State &state)
     for (auto _ : state)
     {
         state.PauseTiming();
-        spira::matrix<Layout, I, V> m(rows, cols);  // fresh matrix each iteration
+        spira::matrix<Layout, I, V> m(rows, cols); // fresh matrix each iteration
+        //m.set_mode(spira::mode::matrix_mode::insert_heavy);
         state.ResumeTiming();
 
         for (std::size_t k = 0; k < n_coordinates; ++k)
@@ -47,8 +48,7 @@ static void BM_streamInsertElements(benchmark::State &state)
 
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
-        static_cast<int64_t>(n_coordinates)
-    );
+        static_cast<int64_t>(n_coordinates));
 }
 
 // SOA problemSizeScaling

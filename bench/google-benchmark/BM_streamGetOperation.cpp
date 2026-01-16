@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "config.hpp"
-#include "spira/spira.hpp"
+#include <spira/spira.hpp>
 
 #include <random>
 #include <vector>
@@ -16,6 +16,7 @@ static void BM_streamGetOperation(benchmark::State &state)
     const std::size_t cols          = static_cast<std::size_t>(state.range(2));
 
     spira::matrix<Layout, I, V> m(rows, cols);
+    //m.set_mode(spira::mode::matrix_mode::insert_heavy);
 
     // RNG for coordinates
     std::mt19937_64 rng(12345);

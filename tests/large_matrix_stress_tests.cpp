@@ -1,0 +1,97 @@
+#include <spira/spira.hpp>
+#include <gtest/gtest.h>
+
+#include <cstddef>
+#include <map>
+#include <random>
+#include <utility>
+
+namespace {
+
+template<class LayoutTag>
+void bulk_insert_and_mode_switch_integrity()
+{
+    using I = std::size_t;
+    using V = double;
+
+    constexpr I N = 10000;
+    constexpr int INSERTS = 100000; 
+
+    spira::matrix<LayoutTag, I, V> mat(N, N);
+    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+
+    std::mt19937_64 rng(42);
+    std::uniform_int_distribution<I> dist_index(0, N - 1);
+    std::uniform_int_distribution<int> dist_val(-10, 10);
+
+    std::map<std::pair<I, I>, V> expected;
+
+    for (int k = 0; k < INSERTS; ++k) {
+        I i, j;
+
+        if (k < 10000) {
+            i = dist_index(rng);
+            j = dist_index(rng);
+        } else {
+            if (!expected.empty() && (k % 2 == 0)) {
+                auto it = expected.begin();
+                std::advance(it, static_cast<std::ptrdiff_t>(dist_index(rng) % expected.size()));
+                i = it->first.first;
+                j = it->first.second;
+            } else {
+                i = dist_index(rng);
+                j = dist_index(rng);
+            }
+        }
+
+        V val = static_cast<V>(dist_val(rng));
+        if (val == 0.0) {
+            expected.erase({i, j});
+        } else {
+            expected[{i, j}] = val;
+        }
+
+        mat.add(i, j, val);
+    }
+
+    mat.flush();
+
+    EXPECT_EQ(mat.nnz(), expected.size());
+
+    for (auto const& [key, vexp] : expected) {
+        I i = key.first;
+        I j = key.second;
+        EXPECT_TRUE(mat.contains(i, j));
+        EXPECT_DOUBLE_EQ(mat.get(i, j), vexp);
+    }
+
+    for (int t = 0; t < 200; ++t) {
+        I i = dist_index(rng);
+        I j = dist_index(rng);
+        if (expected.find({i, j}) == expected.end()) {
+            EXPECT_DOUBLE_EQ(mat.get(i, j), 0.0);
+        }
+    }
+
+    mat.set_mode(spira::mode::matrix_mode::spmv);
+    mat.flush();
+
+    EXPECT_EQ(mat.nnz(), expected.size());
+    for (auto const& [key, vexp] : expected) {
+        I i = key.first;
+        I j = key.second;
+        EXPECT_TRUE(mat.contains(i, j));
+        EXPECT_DOUBLE_EQ(mat.get(i, j), vexp);
+    }
+}
+
+}
+
+
+TEST(LargeMatrixStressTest, BulkInsertAndModeSwitchIntegrity_AOS) {
+    bulk_insert_and_mode_switch_integrity<spira::layout::tags::aos_tag>();
+}
+
+TEST(LargeMatrixStressTest, BulkInsertAndModeSwitchIntegrity_SOA) {
+    bulk_insert_and_mode_switch_integrity<spira::layout::tags::soa_tag>();
+}
