@@ -45,6 +45,7 @@ namespace spira
 
         void flush();
         void flush(I row_index);
+        bool is_row_dirty(I row_index) const noexcept{return rows_[row_index].is_dirty();}
 
     private:
         mode::matrix_mode mode_ = mode::matrix_mode::balanced;
