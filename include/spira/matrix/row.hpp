@@ -653,4 +653,4 @@ namespace spira
         }
     }
 
-} // namespace spira
+}
