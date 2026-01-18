@@ -47,12 +47,12 @@ namespace spira::buffer::impls
         [[nodiscard]] entry_ref at(size_type idx) noexcept { return {col_[idx], val_[idx]}; }
         [[nodiscard]] entry_cref at(size_type idx) const noexcept { return {col_[idx], val_[idx]}; }
 
-        void push_back(const I &col, const V &v) noexcept(
+        void push_back(const I &col, const V &val) noexcept(
             std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
             assert(sz_ < N && "soa_buffer overflow: caller must ensure capacity");
             col_[sz_] = col;
-            val_[sz_] = v;
+            val_[sz_] = val;
             ++sz_;
         }
 

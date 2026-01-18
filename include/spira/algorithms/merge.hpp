@@ -1,12 +1,9 @@
 #pragma once
 
-#include <vector>
-
 #include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
 {
-
     template <class layout_policy>
     static layout_policy &tls_layout_tmp()
     {
@@ -15,7 +12,7 @@ namespace spira::algorithms
     }
 
     template <class layout_policy>
-    void merge(layout_policy  &slab, layout_policy const &chunk)
+    void merge(layout_policy &slab, layout_policy const &chunk)
     {
         auto &tmp = tls_layout_tmp<layout_policy>();
 
@@ -37,14 +34,16 @@ namespace spira::algorithms
                 tmp.push_back(slab_col, slab_val);
                 ++slab_it;
             }
-            if(chunk_col < slab_col)
+            else if (chunk_col < slab_col)
             {
                 tmp.push_back(chunk_col, chunk_val);
                 ++chunk_it;
-            }else{
+            }
+            else
+            {
                 tmp.push_back(chunk_col, chunk_val);
-                chunk_it++;
-                slab_it++;
+                ++slab_it;
+                ++chunk_it;
             }
         }
 
@@ -62,5 +61,4 @@ namespace spira::algorithms
         slab.swap(tmp);
         tmp.clear();
     }
-
 }

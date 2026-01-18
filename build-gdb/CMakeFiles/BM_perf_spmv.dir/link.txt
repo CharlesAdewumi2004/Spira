@@ -1,0 +1,1 @@
+/usr/bin/c++ -O0 -g3 -fno-omit-frame-pointer -fno-inline -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fsanitize=address,undefined "CMakeFiles/BM_perf_spmv.dir/bench/perf-benchmark/benchmark_perf_spmv.cpp.o" -o BM_perf_spmv  _deps/benchmark-build/src/libbenchmark.a -lpthread -lrt 

@@ -57,7 +57,9 @@ namespace spira::buffer::impls
             for (size_type i = sz_; i-- > 0;)
             {
                 if (buf_[i].column == col)
+                {
                     return true;
+                }
             }
             return false;
         }
@@ -132,36 +134,42 @@ namespace spira::buffer::impls
         template <class layout_policy>
         layout_policy normalize_buffer()
         {
-
             layout_policy chunk;
             chunk.reserve(sz_);
 
+            auto key_of = [](auto const &x) -> decltype(auto)
+            {
+                if constexpr (requires { x.column; })
+                    return x.column;
+                else if constexpr (requires { x.first_ref(); })
+                    return x.first_ref();
+                else
+                    return x.first;
+            };
+
             for (size_t i = sz_; i-- > 0;)
             {
-                bool seen = false;
+                I col = buf_[i].column;
 
-                for (auto const &[col, val] : chunk)
+                bool seen = false;
+                for (auto it = chunk.begin(); it != chunk.end(); ++it)
                 {
-                    if (col == buf_[i].column)
+                    if (key_of(*it) == col)
                     {
                         seen = true;
                         break;
                     }
                 }
-
-                if (seen == true)
-                {
-                    continue;
-                }
-
-                chunk.push_back(buf_[i].column, buf_[i].value);
+                if (!seen)
+                    chunk.push_back(buf_[i].column, buf_[i].value);
             }
 
-            if(chunk.empty()){
+            if (chunk.empty())
                 return chunk;
-            }
 
-            std::stable_sort(chunk.begin(), chunk.end(), [](entry_type const &a, entry_type const &b){ return a.column < b.column; });
+            std::stable_sort(chunk.begin(), chunk.end(),
+                             [&](auto const &a, auto const &b)
+                             { return key_of(a) < key_of(b); });
 
             clear();
             return chunk;

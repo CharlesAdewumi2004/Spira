@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include <spira/algorithms/merge.hpp>
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
 #include <spira/matrix/buffer/buffer.hpp>
@@ -16,7 +17,6 @@
 #include <spira/matrix/mode/matrix_mode.hpp>
 #include <spira/matrix/mode/mode_traits.hpp>
 #include <spira/traits.hpp>
-#include <spira/algorithms/merge.hpp>
 
 namespace spira
 {
@@ -27,13 +27,19 @@ namespace spira
         using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
         using entry_type = spira::layout::elementPair<I, V>;
 
-        using small_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::spmv.buffersize>;
+        using small_buffer =
+            buffer::traits::traits_of_type<LayoutTag, I, V, config::spmv.buffersize>;
 
-        using balanced_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::balanced.buffersize>;
+        using balanced_buffer =
+            buffer::traits::traits_of_type<LayoutTag, I, V,
+                                           config::balanced.buffersize>;
 
-        using insert_heavy_buffer = buffer::traits::traits_of_type<LayoutTag, I, V, config::insert_heavy.buffersize>;
+        using insert_heavy_buffer =
+            buffer::traits::traits_of_type<LayoutTag, I, V,
+                                           config::insert_heavy.buffersize>;
 
-        using buffer_variant = std::variant<small_buffer, balanced_buffer, insert_heavy_buffer>;
+        using buffer_variant =
+            std::variant<small_buffer, balanced_buffer, insert_heavy_buffer>;
 
         row();
         explicit row(std::size_t reserve_hint, std::size_t column_limit);
@@ -115,13 +121,18 @@ namespace spira
         }
 
         template <class Fn>
-        void iterate_over_elements(Fn &&f) const noexcept
+        void iterate_over_elements(Fn &&f) const
+            noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(),
+                                                   std::declval<V const &>())))
         {
             for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
             {
-                auto r = *it;
-                auto &&[col, val] = r;
-                f(col, val);
+                auto entry = *it;
+
+                auto const &col = entry.first_ref();
+                auto const &val = entry.second_ref();
+
+                std::forward<Fn>(f)(col, val);
             }
         }
 
@@ -136,11 +147,6 @@ namespace spira
             dirty_ = buffer_has_live() || !runs_.empty();
         }
 
-        void normalize_chunk(std::vector<entry_type> &chunk) const;
-        void merge_sorted_chunk_into_slab(std::vector<entry_type> const &chunk) const;
-        void push_chunk_as_run(std::vector<entry_type> const &chunk) const;
-        bool should_compact() const;
-        void compact_runs_into_slab() const;
         void full_flush() const noexcept;
 
     private:
@@ -187,8 +193,10 @@ namespace spira
         switch (m)
         {
         case mode::matrix_mode::spmv:
-            if (should_compact())
-                compact_runs_into_slab();
+            if (dirty_)
+            {
+                full_flush();
+            }
             buffer_.template emplace<small_buffer>();
             break;
         case mode::matrix_mode::balanced:
@@ -266,26 +274,28 @@ namespace spira
     bool row<LayoutTag, I, V>::contains(I col) const
     {
         if (static_cast<std::size_t>(col) >= column_limit_)
+        {
             return false;
+        }
 
         if (std::visit(
                 [&](auto const &buf)
                 {
-                    if (auto p = buf.get_ptr(col))
-                    {
-                        return !traits::ValueTraits<V>::is_zero(*p);
-                    }
-                    return false;
+                    return buf.contains(col);
                 },
                 buffer_))
+        {
             return true;
+        }
 
         for (auto it = runs_.rbegin(); it != runs_.rend(); ++it)
         {
             auto const &run = *it;
             auto pos = run.lower_bound(col);
             if (pos < run.size() && run.key_at(pos) == col)
+            {
                 return !traits::ValueTraits<V>::is_zero(run.value_at(pos));
+            }
         }
 
         auto pos = slab_.lower_bound(col);
@@ -331,332 +341,30 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     V row<LayoutTag, I, V>::accumulate() const noexcept
     {
-        full_flush();
+        if (dirty_)
+        {
+            full_flush();
+        }
+
         V acc = traits::ValueTraits<V>::zero();
+
         for (auto const &entry : slab_)
+        {
             acc += entry.second_ref();
+        }
+
         return acc;
     }
 
-    /*template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::flush() const
-    {
-        if (!dirty_ && std::visit([](auto const &b)
-                                  { return b.empty(); }, buffer_) &&
-            runs_.empty())
-        {
-            return;
-        }
-
-        auto &chunk = tls_chunk();
-        chunk = std::visit(
-            [](auto &buf) -> std::vector<entry_type>
-            { return buf.flush_buffer(); },
-            buffer_);
-
-        normalize_chunk(chunk);
-
-        if (chunk.empty() && runs_.empty())
-        {
-            recompute_dirty();
-            return;
-        }
-
-        const bool runs_allowed = (traits_.max_runs != 0);
-
-        if (!runs_allowed)
-        {
-            merge_sorted_chunk_into_slab(chunk);
-            chunk.clear();
-            recompute_dirty();
-            return;
-        }
-        if (!runs_.empty())
-        {
-            if (!chunk.empty())
-                push_chunk_as_run(chunk);
-        }
-        else
-        {
-            if (slab_.size() < traits_.slab_merge_threshold)
-                merge_sorted_chunk_into_slab(chunk);
-            else
-                push_chunk_as_run(chunk);
-        }
-
-        if (should_compact())
-            compact_runs_into_slab();
-
-        chunk.clear();
-        recompute_dirty();
-    }*/
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::normalize_chunk(
-        std::vector<entry_type> &chunk) const
-    {
-        std::stable_sort(chunk.begin(), chunk.end(), [](entry_type const &a, entry_type const &b)
-                         { return key_of(a) < key_of(b); });
-
-        std::size_t w = 0;
-
-        for (std::size_t i = 0; i < chunk.size();)
-        {
-            const I c = key_of(chunk[i]);
-            V v = val_of(chunk[i]);
-
-            std::size_t j = i + 1;
-            while (j < chunk.size() && key_of(chunk[j]) == c)
-            {
-                v = val_of(chunk[j]);
-                ++j;
-            }
-
-            if constexpr (requires {
-                              chunk[w].column;
-                              chunk[w].value;
-                          })
-            {
-                chunk[w].column = c;
-                chunk[w].value = v;
-            }
-            else
-            {
-                chunk[w].first = c;
-                chunk[w].second = v;
-            }
-            ++w;
-
-            i = j;
-        }
-
-        chunk.resize(w);
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::merge_sorted_chunk_into_slab(
-        std::vector<entry_type> const &chunk) const
-    {
-        if (chunk.empty())
-            return;
-
-        if (slab_.empty())
-        {
-            slab_.clear();
-            slab_.reserve(chunk.size());
-            for (auto const &e : chunk)
-            {
-                const I c = key_of(e);
-                const V v = val_of(e);
-                if (!traits::ValueTraits<V>::is_zero(v))
-                {
-                    slab_.insert_at(slab_.size(), c, v);
-                }
-            }
-            return;
-        }
-
-        auto &out = tls_layout_tmp();
-        out.clear();
-        out.reserve(slab_.size() + chunk.size());
-
-        std::size_t i = 0;
-
-        for (std::size_t j = 0; j < chunk.size(); ++j)
-        {
-            const I c = key_of(chunk[j]);
-            const V v = val_of(chunk[j]);
-            const bool is_del = traits::ValueTraits<V>::is_zero(v);
-
-            while (i < slab_.size() && slab_.key_at(i) < c)
-            {
-                out.insert_at(out.size(), slab_.key_at(i), slab_.value_at(i));
-                ++i;
-            }
-
-            if (i < slab_.size() && slab_.key_at(i) == c)
-            {
-                if (!is_del)
-                    out.insert_at(out.size(), c, v);
-                ++i;
-            }
-            else
-            {
-                if (!is_del)
-                    out.insert_at(out.size(), c, v);
-            }
-        }
-
-        while (i < slab_.size())
-        {
-            out.insert_at(out.size(), slab_.key_at(i), slab_.value_at(i));
-            ++i;
-        }
-
-        using std::swap;
-        swap(slab_, out);
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::push_chunk_as_run(
-        std::vector<entry_type> const &chunk) const
-    {
-        if (chunk.empty())
-            return;
-
-        layout_policy run;
-        run.reserve(chunk.size());
-        for (auto const &e : chunk)
-            run.insert_at(run.size(), key_of(e), val_of(e));
-
-        runs_.push_back(std::move(run));
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    bool row<LayoutTag, I, V>::should_compact() const
-    {
-        if (runs_.empty())
-            return false;
-
-        if (runs_.size() > traits_.max_runs)
-            return true;
-
-        if (traits_.compact_run_ratio > 0.0 && slab_.size() > 0)
-        {
-            std::size_t run_total = 0;
-            for (auto const &r : runs_)
-                run_total += r.size();
-
-            const double ratio =
-                static_cast<double>(run_total) / static_cast<double>(slab_.size());
-
-            if (ratio > traits_.compact_run_ratio)
-                return true;
-        }
-
-        return false;
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::compact_runs_into_slab() const
-    {
-        if (runs_.empty())
-        {
-            return;
-        }
-        auto &out = tls_layout_tmp();
-
-        for (auto &run : runs_)
-        {
-            if (run.empty())
-            {
-                continue;
-            }
-            out.clear();
-            out.reserve(slab_.size() + run.size());
-
-            std::size_t i = 0; // slab idx
-            std::size_t j = 0; // run idx
-
-            while (i < slab_.size() && j < run.size())
-            {
-                const I sc = slab_.key_at(i);
-                const I rc = run.key_at(j);
-
-                const V rv = run.value_at(j);
-                const bool is_del = traits::ValueTraits<V>::is_zero(rv);
-
-                if (sc < rc)
-                {
-                    out.insert_at(out.size(), sc, slab_.value_at(i));
-                    ++i;
-                }
-                else if (rc < sc)
-                {
-                    if (!is_del)
-                        out.insert_at(out.size(), rc, rv);
-                    ++j;
-                }
-                else
-                {
-                    if (!is_del)
-                    {
-                        out.insert_at(out.size(), rc, rv);
-                    }
-                    ++i;
-                    ++j;
-                }
-            }
-
-            while (i < slab_.size())
-            {
-                out.insert_at(out.size(), slab_.key_at(i), slab_.value_at(i));
-                ++i;
-            }
-
-            while (j < run.size())
-            {
-                const I rc = run.key_at(j);
-                const V rv = run.value_at(j);
-                if (!traits::ValueTraits<V>::is_zero(rv))
-                    out.insert_at(out.size(), rc, rv);
-                ++j;
-            }
-
-            using std::swap;
-            swap(slab_, out);
-        }
-
-        runs_.clear();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::full_flush() const noexcept
-    {
-        auto &chunk = tls_chunk();
-        chunk = std::visit(
-            [](auto &buf) -> std::vector<entry_type>
-            { return buf.flush_buffer(); },
-            buffer_);
-
-        normalize_chunk(chunk);
-
-        if (!chunk.empty())
-            merge_sorted_chunk_into_slab(chunk);
-
-        chunk.clear();
-
-        if (!runs_.empty())
-            compact_runs_into_slab();
-
-        recompute_dirty();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    template <class Fn>
-    void row<LayoutTag, I, V>::for_each_element(Fn &&f) const
-        noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(),
-                                               std::declval<const V &>())))
-    {
-        if (mode_ == mode::matrix_mode::spmv)
-        {
-            if (dirty_)
-                flush();
-            iterate_over_elements(f);
-        }
-        else
-        {
-            if (dirty_)
-                full_flush();
-            iterate_over_elements(f);
-        }
-    }
-
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void row<LayoutTag, I, V>::flush() const
     {
-        layout_policy chunk = std::visit([](auto &buf) -> layout_policy
-                                         { return buf.template normalize_buffer<layout_policy>(); }, buffer_);
+        layout_policy chunk = std::visit(
+            [](auto &buf) -> layout_policy
+            {
+                return buf.template normalize_buffer<layout_policy>();
+            },
+            buffer_);
 
         if (chunk.empty())
         {
@@ -692,4 +400,47 @@ namespace spira
             runs_.push_back(chunk);
         }
     }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void row<LayoutTag, I, V>::full_flush() const noexcept
+    {
+        layout_policy chunk = std::visit(
+            [](auto &buf) -> layout_policy
+            {
+                return buf.template normalize_buffer<layout_policy>();
+            },
+            buffer_);
+
+        runs_.push_back(chunk);
+
+        for (auto &run : runs_)
+        {
+            spira::algorithms::merge(slab_, run);
+        }
+
+        runs_.clear();
+
+        recompute_dirty();
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    template <class Fn>
+    void row<LayoutTag, I, V>::for_each_element(Fn &&f) const
+        noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(),
+                                               std::declval<const V &>())))
+    {
+        if (mode_ == mode::matrix_mode::spmv)
+        {
+            if (dirty_)
+                flush();
+            iterate_over_elements(f);
+        }
+        else
+        {
+            if (dirty_)
+                full_flush();
+            iterate_over_elements(f);
+        }
+    }
+
 }

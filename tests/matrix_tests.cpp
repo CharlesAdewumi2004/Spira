@@ -195,8 +195,16 @@ TEST(MatrixBasicTest, AccumulateMatchesSumOfRow)
     using V = double;
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(3, 3);
 
-    mat.add(1, 0, 1.5);
-    mat.add(1, 2, 2.5);
+    EXPECT_EQ(mat.is_row_dirty(1), false);
+    EXPECT_EQ(mat.buffer_size(1), 0);
+    EXPECT_EQ(mat.number_of_runs(1), 0);
+    EXPECT_EQ(mat.slab_size(1), 0);
+
+    mat.add(1, 0, 2.5);
+    mat.add(1, 2, 1.5);
+
+    EXPECT_EQ(mat.get(1,0), 2.5);
+    EXPECT_EQ(mat.get(1,2), 1.5);
 
     EXPECT_DOUBLE_EQ(mat.accumulate(1), 4.0);
 

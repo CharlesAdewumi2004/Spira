@@ -1,10 +1,10 @@
 #pragma once
 #include <vector>
 #include <algorithm>
-#include <cstddef>  
-#include <iterator> 
-#include <boundcraft/boundcraft.hpp>
+#include <cstddef>
+#include <iterator>
 
+#include <boundcraft/boundcraft.hpp>
 #include <spira/concepts.hpp>
 #include <spira/matrix/layouts/element_pair.hpp>
 
@@ -14,9 +14,12 @@ namespace spira::layout
     class aos
     {
     public:
+        using size_type = std::size_t;
+        using entry_type = elementPair<I, V>;
+
         struct iterator
         {
-            using value_type = elementPair<I, V>;
+            using value_type = entry_type;
             using difference_type = std::ptrdiff_t;
             using pointer = value_type *;
             using reference = value_type &;
@@ -65,6 +68,7 @@ namespace spira::layout
                 ptr -= n;
                 return *this;
             }
+
             friend constexpr iterator operator+(iterator it, difference_type n) noexcept
             {
                 it += n;
@@ -89,10 +93,10 @@ namespace spira::layout
 
         struct const_iterator
         {
-            using value_type = const elementPair<I, V>;
+            using value_type = const entry_type;
             using difference_type = std::ptrdiff_t;
-            using pointer = const value_type *;
-            using reference = const value_type &;
+            using pointer = value_type *;
+            using reference = value_type &;
             using iterator_concept = std::contiguous_iterator_tag;
             using iterator_category = std::contiguous_iterator_tag;
 
@@ -139,6 +143,7 @@ namespace spira::layout
                 ptr -= n;
                 return *this;
             }
+
             friend constexpr const_iterator operator+(const_iterator it, difference_type n) noexcept
             {
                 it += n;
@@ -162,33 +167,37 @@ namespace spira::layout
         };
 
         [[nodiscard]] bool empty() const noexcept { return elements.empty(); }
-        [[nodiscard]] size_t size() const noexcept { return elements.size(); }
-        [[nodiscard]] size_t capacity() const noexcept { return elements.capacity(); }
-        void reserve(size_t n) { elements.reserve(n); }
-        void clear() {elements.clear(); }
-        void resize(size_t n) {elements.resize(n);}
-        void swap(aos &other){
-            elements.swap(other.elements);
-        }
+        [[nodiscard]] size_type size() const noexcept { return elements.size(); }
+        [[nodiscard]] size_type capacity() const noexcept { return elements.capacity(); }
 
-        [[nodiscard]] I key_at(size_t idx) const noexcept { return elements[idx].column; }
-        [[nodiscard]] V &value_at(size_t idx) noexcept { return elements[idx].value; }
-        [[nodiscard]] const V &value_at(size_t idx) const noexcept { return elements[idx].value; }
+        void reserve(size_type n) { elements.reserve(n); }
+        void clear() noexcept { elements.clear(); }
+        void resize(size_type n) { elements.resize(n); }
 
-        void insert_at(size_t index, I col, const V &val)
+        void swap(aos &other) noexcept { elements.swap(other.elements); }
+
+        [[nodiscard]] I key_at(size_type idx) const noexcept { return elements[idx].column; }
+        [[nodiscard]] V &value_at(size_type idx) noexcept { return elements[idx].value; }
+        [[nodiscard]] V const &value_at(size_type idx) const noexcept { return elements[idx].value; }
+
+        void insert_at(size_type index, I col, V const &val)
         {
-            elements.insert(elements.begin() + index, elementPair<I, V>{col, val});
+            elements.insert(elements.begin() + static_cast<std::ptrdiff_t>(index), entry_type{col, val});
         }
 
-        void push_back(I col, const V &val){
-            elements.push_back(elementPair<I, V>{col, val});
+        void push_back(I col, V const &val)
+        {
+            elements.push_back(entry_type{col, val});
         }
 
-        [[nodiscard]] size_t lower_bound(I col) const noexcept
+        [[nodiscard]] size_type lower_bound(I col) const noexcept
         {
             auto s = boundcraft::searcher<boundcraft::policy::hybrid<32>>();
-            auto it = s.lower_bound(elements.begin(), elements.end(), col, [](auto const &e, I key){ return e.column < key; });
-            return static_cast<size_t>(std::distance(elements.begin(), it));
+            auto it = s.lower_bound(
+                elements.begin(), elements.end(), col,
+                [](entry_type const &e, I key)
+                { return e.column < key; });
+            return static_cast<size_type>(std::distance(elements.begin(), it));
         }
 
         iterator begin() noexcept { return iterator(elements.data()); }
@@ -198,9 +207,8 @@ namespace spira::layout
         const_iterator end() const noexcept { return cend(); }
         const_iterator cbegin() const noexcept { return const_iterator(elements.data()); }
         const_iterator cend() const noexcept { return const_iterator(elements.data() + elements.size()); }
- 
-    private:
-        std::vector<elementPair<I, V>> elements;
-    };
 
+    private:
+        std::vector<entry_type> elements;
+    };
 }

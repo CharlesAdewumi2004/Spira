@@ -1,0 +1,5 @@
+if(EXISTS "/home/charlie/dev/spira/build-debug/_deps/boundcraft_repo-build/tests/boundcraft_tests[1]_tests.cmake")
+  include("/home/charlie/dev/spira/build-debug/_deps/boundcraft_repo-build/tests/boundcraft_tests[1]_tests.cmake")
+else()
+  add_test(boundcraft_tests_NOT_BUILT boundcraft_tests_NOT_BUILT)
+endif()

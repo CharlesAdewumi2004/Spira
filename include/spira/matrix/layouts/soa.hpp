@@ -11,7 +11,9 @@
 
 namespace spira::layout
 {
-
+    // =============================
+    // Proxy reference (mutable)
+    // =============================
     template <class I, class V>
     struct soa_ref
     {
@@ -21,12 +23,35 @@ namespace spira::layout
         soa_ref() = default;
         soa_ref(I &i, V &v) : first(&i), second(&v) {}
 
-        explicit operator std::pair<I, V>() const { return {*first, *second}; }
+        // implicit conversion (stable_sort / algos may materialize values)
+        operator std::pair<I, V>() const { return {*first, *second}; }
 
+        // write-through from pair
         soa_ref &operator=(std::pair<I, V> const &x)
         {
             *first = x.first;
             *second = x.second;
+            return *this;
+        }
+        soa_ref &operator=(std::pair<I, V> &&x)
+        {
+            *first = std::move(x.first);
+            *second = std::move(x.second);
+            return *this;
+        }
+
+        // ✅ CRITICAL: write-through from another proxy (prevents pointer-copy UB)
+        soa_ref &operator=(soa_ref const &r)
+        {
+            *first = r.first_ref();
+            *second = r.second_ref();
+            return *this;
+        }
+        soa_ref &operator=(soa_ref &&r) noexcept(
+            std::is_nothrow_move_assignable_v<I> && std::is_nothrow_move_assignable_v<V>)
+        {
+            *first = std::move(r.first_ref());
+            *second = std::move(r.second_ref());
             return *this;
         }
 
@@ -54,6 +79,18 @@ namespace spira::layout
         }
     };
 
+    // ADL swap for proxy refs (algorithms may call swap(*a,*b))
+    template <class I, class V>
+    inline void swap(soa_ref<I, V> a, soa_ref<I, V> b) noexcept
+    {
+        using std::swap;
+        swap(a.first_ref(), b.first_ref());
+        swap(a.second_ref(), b.second_ref());
+    }
+
+    // =============================
+    // Proxy reference (const)
+    // =============================
     template <class I, class V>
     struct soa_cref
     {
@@ -63,7 +100,7 @@ namespace spira::layout
         soa_cref() = default;
         soa_cref(I const &i, V const &v) : first(&i), second(&v) {}
 
-        explicit operator std::pair<I, V>() const { return {*first, *second}; }
+        operator std::pair<I, V>() const { return {*first, *second}; }
 
         I const &first_ref() const { return *first; }
         V const &second_ref() const { return *second; }
@@ -79,6 +116,9 @@ namespace spira::layout
         }
     };
 
+    // =============================
+    // SoA container + iterators
+    // =============================
     template <concepts::Indexable I, concepts::Valueable V>
     class soa
     {
@@ -176,12 +216,18 @@ namespace spira::layout
             friend bool operator<=(iterator a, iterator b) noexcept { return !(b < a); }
             friend bool operator>=(iterator a, iterator b) noexcept { return !(a < b); }
 
-            // enable std::sort/std::stable_sort for proxy iterators
+            // ✅ stable_sort often uses iter_swap / iter_move for proxy iterators
             friend void iter_swap(iterator a, iterator b) noexcept
             {
                 using std::swap;
                 swap(*a.col_ptr, *b.col_ptr);
                 swap(*a.val_ptr, *b.val_ptr);
+            }
+
+            friend value_type iter_move(iterator it) noexcept
+            {
+                // materialize value
+                return static_cast<value_type>(*it);
             }
         };
 
@@ -301,7 +347,7 @@ namespace spira::layout
         void insert_at(size_type idx, I col, V val)
         {
             columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(idx), col);
-            values_.insert(values_.begin() + static_cast<std::ptrdiff_t>(idx), val);
+            values_.insert(values_.begin() + static_cast<std::ptrdiff_t>(idx), std::move(val));
         }
 
         void push_back(I col, V const &val)
@@ -318,26 +364,18 @@ namespace spira::layout
         }
 
         iterator begin() noexcept { return iterator(columns_.data(), values_.data()); }
-        iterator end() noexcept
-        {
-            return iterator(columns_.data() + columns_.size(),
-                            values_.data() + values_.size());
-        }
+        iterator end() noexcept { return iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
 
         const_iterator begin() const noexcept { return cbegin(); }
         const_iterator end() const noexcept { return cend(); }
         const_iterator cbegin() const noexcept { return const_iterator(columns_.data(), values_.data()); }
-        const_iterator cend() const noexcept
-        {
-            return const_iterator(columns_.data() + columns_.size(),
-                                  values_.data() + values_.size());
-        }
+        const_iterator cend() const noexcept { return const_iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
 
         template <class It, class F>
         static decltype(auto) with_entry(It it, F &&f)
         {
-            auto r = *it;
-            auto &&[col, val] = r;
+            auto r = *it;          // proxy by value (safe)
+            auto &&[col, val] = r; // structured binding via tuple protocol
             return std::forward<F>(f)(col, val);
         }
 
@@ -345,14 +383,15 @@ namespace spira::layout
         std::vector<I> columns_;
         std::vector<V> values_;
     };
+} // namespace spira::layout
 
-}
-
+// =============================
+// tuple protocol for bindings
+// =============================
 namespace std
 {
     template <class I, class V>
-    struct tuple_size<spira::layout::soa_ref<I, V>>
-        : integral_constant<std::size_t, 2>
+    struct tuple_size<spira::layout::soa_ref<I, V>> : integral_constant<std::size_t, 2>
     {
     };
 
@@ -361,6 +400,7 @@ namespace std
     {
         using type = I;
     };
+
     template <class I, class V>
     struct tuple_element<1, spira::layout::soa_ref<I, V>>
     {
@@ -368,8 +408,7 @@ namespace std
     };
 
     template <class I, class V>
-    struct tuple_size<spira::layout::soa_cref<I, V>>
-        : integral_constant<std::size_t, 2>
+    struct tuple_size<spira::layout::soa_cref<I, V>> : integral_constant<std::size_t, 2>
     {
     };
 

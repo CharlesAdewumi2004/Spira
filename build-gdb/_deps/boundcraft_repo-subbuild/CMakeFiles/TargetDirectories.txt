@@ -1,0 +1,3 @@
+/home/charlie/dev/spira/build-gdb/_deps/boundcraft_repo-subbuild/CMakeFiles/boundcraft_repo-populate.dir
+/home/charlie/dev/spira/build-gdb/_deps/boundcraft_repo-subbuild/CMakeFiles/edit_cache.dir
+/home/charlie/dev/spira/build-gdb/_deps/boundcraft_repo-subbuild/CMakeFiles/rebuild_cache.dir
