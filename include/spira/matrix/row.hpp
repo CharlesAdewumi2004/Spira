@@ -388,7 +388,7 @@ namespace spira
         }
         else if (runs_.size() >= traits_.max_runs)
         {
-            runs_.push_back(chunk);
+            runs_.push_back(std::move(chunk));
 
             for (auto &run : runs_)
             {
@@ -401,7 +401,7 @@ namespace spira
         }
         else
         {
-            runs_.push_back(chunk);
+            runs_.push_back(std::move(chunk));
         }
     }
 
@@ -415,7 +415,7 @@ namespace spira
             },
             buffer_);
 
-        runs_.push_back(chunk);
+        runs_.push_back(std::move(chunk));
 
         for (auto &run : runs_)
         {
