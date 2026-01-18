@@ -13,7 +13,7 @@
 namespace spira::buffer::impls
 {
     template <class I, class V, std::size_t N>
-    class aos_buffer
+    class aos_array_buffer
     {
     public:
         using entry_type = spira::layout::elementPair<I, V>;
@@ -48,7 +48,7 @@ namespace spira::buffer::impls
         void push_back(const I &col, const V &v) noexcept(
             std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
-            assert(sz_ < N && "aos_buffer overflow: caller must ensure capacity");
+            assert(sz_ < N && "aos_array_buffer overflow: caller must ensure capacity");
             buf_[sz_++] = entry_type{col, v};
         }
 

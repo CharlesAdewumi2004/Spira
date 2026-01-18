@@ -12,7 +12,7 @@
 namespace spira::buffer::impls
 {
     template <class I, class V, std::size_t N>
-    class soa_buffer
+    class soa_array_buffer
     {
     public:
         using size_type = std::size_t;
@@ -50,7 +50,7 @@ namespace spira::buffer::impls
         void push_back(const I &col, const V &val) noexcept(
             std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
         {
-            assert(sz_ < N && "soa_buffer overflow: caller must ensure capacity");
+            assert(sz_ < N && "soa_array_buffer overflow: caller must ensure capacity");
             col_[sz_] = col;
             val_[sz_] = val;
             ++sz_;
