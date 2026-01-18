@@ -224,7 +224,11 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     std::size_t row<LayoutTag, I, V>::size() const noexcept
     {
-        full_flush();
+        recompute_dirty();
+        if(dirty_){
+            full_flush();
+        }
+        
         return slab_.size();
     }
 
@@ -384,7 +388,7 @@ namespace spira
         }
         else if (runs_.size() >= traits_.max_runs)
         {
-            spira::algorithms::merge<layout_policy>(slab_, chunk);
+            runs_.push_back(chunk);
 
             for (auto &run : runs_)
             {

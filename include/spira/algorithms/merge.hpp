@@ -1,7 +1,7 @@
 #pragma once
 
 #include <spira/matrix/matrix.hpp>
-
+#include <spira/traits.hpp>
 namespace spira::algorithms
 {
     template <class layout_policy>
@@ -29,6 +29,14 @@ namespace spira::algorithms
             auto [slab_col, slab_val] = *slab_it;
             auto [chunk_col, chunk_val] = *chunk_it;
 
+            if(spira::traits::ValueTraits<decltype(chunk_val)>::is_zero(chunk_val)){
+                if(chunk_col == slab_col){
+                    slab_it++;
+                }
+                ++chunk_it;
+                continue;
+            }
+
             if (slab_col < chunk_col)
             {
                 tmp.push_back(slab_col, slab_val);
@@ -55,6 +63,10 @@ namespace spira::algorithms
         for (; chunk_it != chunk_end; ++chunk_it)
         {
             auto [c, v] = *chunk_it;
+            auto [chunk_col, chunk_val] = *chunk_it;
+            if(spira::traits::ValueTraits<decltype(chunk_val)>::is_zero(chunk_val)){
+                continue;
+            }
             tmp.push_back(c, v);
         }
 
