@@ -5,18 +5,11 @@
 #include <iterator> 
 #include <boundcraft/boundcraft.hpp>
 
-#include "../include/spira/concepts.hpp"
+#include <spira/concepts.hpp>
+#include <spira/matrix/layouts/element_pair.hpp>
 
 namespace spira::layout
 {
-
-    template <concepts::Indexable I, concepts::Valueable V>
-    struct elementPair
-    {
-        I column;
-        V value;
-    };
-
     template <concepts::Indexable I, concepts::Valueable V>
     class aos
     {
@@ -172,7 +165,11 @@ namespace spira::layout
         [[nodiscard]] size_t size() const noexcept { return elements.size(); }
         [[nodiscard]] size_t capacity() const noexcept { return elements.capacity(); }
         void reserve(size_t n) { elements.reserve(n); }
-        void clear() { elements.clear(); }
+        void clear() {elements.clear(); }
+        void resize(size_t n) {elements.resize(n);}
+        void swap(aos &other){
+            elements.swap(other.elements);
+        }
 
         [[nodiscard]] I key_at(size_t idx) const noexcept { return elements[idx].column; }
         [[nodiscard]] V &value_at(size_t idx) noexcept { return elements[idx].value; }
@@ -181,6 +178,10 @@ namespace spira::layout
         void insert_at(size_t index, I col, const V &val)
         {
             elements.insert(elements.begin() + index, elementPair<I, V>{col, val});
+        }
+
+        void push_back(I col, const V &val){
+            elements.push_back(elementPair<I, V>{col, val});
         }
 
         [[nodiscard]] size_t lower_bound(I col) const noexcept

@@ -1,4 +1,6 @@
-#include "../matrix/matrix.hpp"
+#pragma once
+
+#include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
 {

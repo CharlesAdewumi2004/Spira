@@ -137,6 +137,45 @@ namespace spira::buffer::impls
             return acc;
         }
 
+        template <class layout_policy>
+        layout_policy normalize_buffer()
+        {
+            layout_policy chunk;
+            chunk.reserve(sz_);
+
+            for (size_t i = sz_; i-- > 0;)
+            {
+                bool seen = false;
+
+                for (auto const &entry : chunk)
+                {
+                    if (entry.first_ref() == col_[i])
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if (!seen)
+                {
+                    chunk.push_back(col_[i], val_[i]);
+                }
+            }
+
+            auto key_of = [](auto const &x) -> decltype(auto)
+            {
+                if constexpr (requires { x.first_ref(); })
+                    return x.first_ref();
+                else
+                    return x.first;
+            };
+
+            std::stable_sort(chunk.begin(), chunk.end(), [&](auto const &a, auto const &b){ return key_of(a) < key_of(b); });
+
+            clear();
+            return chunk;
+        }
+
         class iterator
         {
         public:

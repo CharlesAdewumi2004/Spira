@@ -72,6 +72,7 @@ if (SPIRA_BUILD_TESTS)
       tests/mode_switch_tests.cpp
       tests/spmv_tests.cpp
       tests/large_matrix_stress_tests.cpp
+      tests/merge_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)

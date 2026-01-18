@@ -129,6 +129,44 @@ namespace spira::buffer::impls
             return acc;
         }
 
+        template <class layout_policy>
+        layout_policy normalize_buffer()
+        {
+
+            layout_policy chunk;
+            chunk.reserve(sz_);
+
+            for (size_t i = sz_; i-- > 0;)
+            {
+                bool seen = false;
+
+                for (auto const &[col, val] : chunk)
+                {
+                    if (col == buf_[i].column)
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if (seen == true)
+                {
+                    continue;
+                }
+
+                chunk.push_back(buf_[i].column, buf_[i].value);
+            }
+
+            if(chunk.empty()){
+                return chunk;
+            }
+
+            std::stable_sort(chunk.begin(), chunk.end(), [](entry_type const &a, entry_type const &b){ return a.column < b.column; });
+
+            clear();
+            return chunk;
+        }
+
     private:
         mutable std::array<entry_type, N> buf_{};
         mutable size_type sz_{0};
