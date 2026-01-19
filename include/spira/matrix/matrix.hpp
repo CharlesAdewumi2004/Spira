@@ -24,7 +24,6 @@ namespace spira
         size_t nnz() const noexcept;
 
         [[nodiscard]] size_t buffer_size(I row_index) const noexcept { return rows_[row_index].buffer_size(); }
-        [[nodiscard]] size_t number_of_runs(I row_index) const noexcept { return rows_[row_index].number_of_runs(); }
         [[nodiscard]] size_t slab_size(I row_index) const noexcept{return rows_[row_index].slab_size();}
 
         void add(I row_index, I col_index, const V &val);

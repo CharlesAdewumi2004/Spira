@@ -61,7 +61,6 @@ namespace spira
                               buffer_);
         }
 
-        [[nodiscard]] size_t number_of_runs() const noexcept { return runs_.size(); }
         [[nodiscard]] size_t slab_size() const noexcept { return slab_.size(); }
 
         void reserve(std::size_t n);
@@ -142,15 +141,12 @@ namespace spira
 
         void recompute_dirty() const noexcept
         {
-            dirty_ = buffer_has_live() || !runs_.empty();
+            dirty_ = buffer_has_live();
         }
-
-        void full_flush() const noexcept;
 
     private:
         mutable layout_policy slab_{};
         mutable buffer_variant buffer_{};
-        mutable std::vector<layout_policy> runs_{};
 
         mutable bool dirty_{false};
 
@@ -161,7 +157,7 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     row<LayoutTag, I, V>::row()
-        : slab_{}, buffer_{balanced_buffer{}}, runs_{}, dirty_{false},
+        : slab_{}, buffer_{balanced_buffer{}}, dirty_{false},
           mode_{mode::matrix_mode::balanced},
           traits_{mode::policy_for(mode::matrix_mode::balanced)}, column_limit_{0}
     {
@@ -169,7 +165,7 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     row<LayoutTag, I, V>::row(std::size_t reserve_hint, std::size_t column_limit)
-        : slab_{}, buffer_{balanced_buffer{}}, runs_{}, dirty_{false},
+        : slab_{}, buffer_{balanced_buffer{}}, dirty_{false},
           mode_{mode::matrix_mode::balanced},
           traits_{mode::policy_for(mode::matrix_mode::balanced)},
           column_limit_{column_limit}
@@ -191,10 +187,6 @@ namespace spira
         switch (m)
         {
         case mode::matrix_mode::spmv:
-            if (dirty_)
-            {
-                full_flush();
-            }
             buffer_.template emplace<small_buffer>();
             break;
         case mode::matrix_mode::balanced:
@@ -211,10 +203,9 @@ namespace spira
     bool row<LayoutTag, I, V>::empty() const noexcept
     {
         if (!slab_.empty())
+        {
             return false;
-        for (auto const &run : runs_)
-            if (!run.empty())
-                return false;
+        }
 
         return !buffer_has_live();
     }
@@ -225,7 +216,7 @@ namespace spira
         recompute_dirty();
         if (dirty_)
         {
-            full_flush();
+            flush();
         }
 
         return slab_.size();
@@ -247,7 +238,6 @@ namespace spira
     void row<LayoutTag, I, V>::clear() noexcept
     {
         slab_.clear();
-        runs_.clear();
         std::visit([](auto &buf)
                    { buf.clear(); }, buffer_);
         dirty_ = false;
@@ -291,19 +281,11 @@ namespace spira
             return true;
         }
 
-        for (auto it = runs_.rbegin(); it != runs_.rend(); ++it)
-        {
-            auto const &run = *it;
-            auto pos = run.lower_bound(col);
-            if (pos < run.size() && run.key_at(pos) == col)
-            {
-                return !traits::ValueTraits<V>::is_zero(run.value_at(pos));
-            }
-        }
-
         auto pos = slab_.lower_bound(col);
         if (pos < slab_.size() && slab_.key_at(pos) == col)
+        {
             return true;
+        }
         return false;
     }
 
@@ -322,21 +304,11 @@ namespace spira
             return p;
         }
 
-        for (auto it = runs_.rbegin(); it != runs_.rend(); ++it)
-        {
-            auto const &run = *it;
-            auto pos = run.lower_bound(col);
-            if (pos < run.size() && run.key_at(pos) == col)
-            {
-                if (traits::ValueTraits<V>::is_zero(run.value_at(pos)))
-                    return nullptr;
-                return &run.value_at(pos);
-            }
-        }
-
         auto pos = slab_.lower_bound(col);
         if (pos < slab_.size() && slab_.key_at(pos) == col)
+        {
             return &slab_.value_at(pos);
+        }
 
         return nullptr;
     }
@@ -346,7 +318,7 @@ namespace spira
     {
         if (dirty_)
         {
-            full_flush();
+            flush();
         }
 
         V acc = traits::ValueTraits<V>::zero();
@@ -375,55 +347,11 @@ namespace spira
             return;
         }
 
-        bool runs_allowed = (traits_.max_runs != 0);
-
-        if (!runs_allowed)
-        {
-            spira::algorithms::merge<layout_policy>(slab_, chunk);
-
-            recompute_dirty();
-
-            return;
-        }
-        else if (runs_.size() >= traits_.max_runs)
-        {
-            runs_.push_back(std::move(chunk));
-
-            for (auto &run : runs_)
-            {
-                spira::algorithms::merge<layout_policy>(slab_, run);
-            }
-
-            runs_.clear();
-
-            recompute_dirty();
-        }
-        else
-        {
-            runs_.push_back(std::move(chunk));
-        }
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::full_flush() const noexcept
-    {
-        layout_policy chunk = std::visit(
-            [](auto &buf) -> layout_policy
-            {
-                return buf.template normalize_buffer<layout_policy>();
-            },
-            buffer_);
-
-        runs_.push_back(std::move(chunk));
-
-        for (auto &run : runs_)
-        {
-            spira::algorithms::merge(slab_, run);
-        }
-
-        runs_.clear();
+        spira::algorithms::merge<layout_policy>(slab_, chunk);
 
         recompute_dirty();
+
+        return;
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
@@ -432,18 +360,11 @@ namespace spira
         noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(),
                                                std::declval<const V &>())))
     {
-        if (mode_ == mode::matrix_mode::spmv)
+        if (dirty_)
         {
-            if (dirty_)
-                flush();
-            iterate_over_elements(f);
+            flush();
         }
-        else
-        {
-            if (dirty_)
-                full_flush();
-            iterate_over_elements(f);
-        }
+        iterate_over_elements(f);
     }
 
 }

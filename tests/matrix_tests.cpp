@@ -197,7 +197,6 @@ TEST(MatrixBasicTest, AccumulateMatchesSumOfRow)
 
     EXPECT_EQ(mat.is_row_dirty(1), false);
     EXPECT_EQ(mat.buffer_size(1), 0);
-    EXPECT_EQ(mat.number_of_runs(1), 0);
     EXPECT_EQ(mat.slab_size(1), 0);
 
     mat.add(1, 0, 2.5);
@@ -251,13 +250,11 @@ TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
     
     mat.flush(0);
     
-    EXPECT_EQ(mat.number_of_runs(0), spira::config::insert_heavy.max_runs);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
     EXPECT_EQ(mat.mode(), spira::mode::matrix_mode::spmv);
 
-    EXPECT_EQ(mat.number_of_runs(0), 0);
     EXPECT_EQ(mat.buffer_size(0), 0);
 
     mat.add(0, 2, 3);
@@ -265,7 +262,6 @@ TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
     mat.add(0, 3, 4);
     EXPECT_EQ(mat.get(0,3), 4);
 
-    EXPECT_EQ(mat.number_of_runs(0), 0);
 }
 
 // ------------------ Dirty Correctness ------------------
@@ -287,12 +283,10 @@ TEST(MatrixBasicTest, IsDirtyCorrectness) {
     mat.flush(0);
 
     EXPECT_EQ(mat.buffer_size(0), 0u);
-    EXPECT_EQ(mat.is_row_dirty(0), mat.number_of_runs(0) > 0);
 
     // Switching to spmv must fully settle (no runs allowed)
     mat.set_mode(spira::mode::matrix_mode::spmv);
     EXPECT_EQ(mat.buffer_size(0), 0u);
-    EXPECT_EQ(mat.number_of_runs(0), 0u);
     EXPECT_FALSE(mat.is_row_dirty(0));
 
     mat.set_mode(spira::mode::matrix_mode::balanced);
@@ -305,5 +299,4 @@ TEST(MatrixBasicTest, IsDirtyCorrectness) {
 
     mat.flush(0);
     EXPECT_EQ(mat.buffer_size(0), 0u);
-    EXPECT_EQ(mat.is_row_dirty(0), mat.number_of_runs(0) > 0);
 }
