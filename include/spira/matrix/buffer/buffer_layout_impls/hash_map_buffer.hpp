@@ -3,6 +3,8 @@
 #include <unordered_map>
 #include <numeric>
 
+#include <ankerl/unordered_dense.h>
+
 #include <spira/traits.hpp>
 #include <spira/matrix/layouts/element_pair.hpp>
 
@@ -16,8 +18,8 @@ namespace spira::buffer::impls
         using entry_type = spira::layout::elementPair<I, V>;
 
         bool empty() const noexcept { return buf_.empty(); }
-        size_type size() const noexcept { return buf_.size();}
-        [[nodiscard]] size_type remaining_capacity() const noexcept { return 1; }
+        size_type size() const noexcept { return buf_.size(); }
+        [[nodiscard]] size_type remaining_capacity() const noexcept { return std::numeric_limits<size_type>::max(); }
 
         void clear() noexcept { buf_.clear(); }
         void push_back(const I &col, const V &val) noexcept { buf_[col] = val; }
@@ -28,11 +30,11 @@ namespace spira::buffer::impls
         }
         const V *get_ptr(I col) const noexcept
         {
-            if (contains(col))
-            {
-                return &buf_[col];
+            auto it = buf_.find(col);
+            if (it == buf_.end()){
+                return nullptr;
             }
-            return nullptr;
+            return &it->second;
         }
 
         V accumulate() const noexcept
@@ -66,15 +68,15 @@ namespace spira::buffer::impls
             return chunk;
         }
 
-        std::unordered_map<I, V>::iterator begin() noexcept{return buf_.begin();}
-        std::unordered_map<I, V>::iterator end() noexcept{return buf_.end();}
+        std::unordered_map<I, V>::iterator begin() noexcept { return buf_.begin(); }
+        std::unordered_map<I, V>::iterator end() noexcept { return buf_.end(); }
 
-        std::unordered_map<I, V>::const_iterator begin() const noexcept{cbegin();}
-        std::unordered_map<I, V>::const_iterator end() const noexcept{cend();}
-        std::unordered_map<I, V>::const_iterator cbegin() const noexcept{buf_.cbegin();}
-        std::unordered_map<I, V>::const_iterator cend() const noexcept{buf_.cend();}
+        auto begin() const noexcept { return buf_.cbegin(); }
+        auto end() const noexcept { return buf_.cend(); }
+        std::unordered_map<I, V>::const_iterator cbegin() const noexcept { buf_.cbegin(); }
+        std::unordered_map<I, V>::const_iterator cend() const noexcept { buf_.cend(); }
 
     private:
-        mutable std::unordered_map<I, V> buf_;
+        ankerl::unordered_dense::map<I, V> buf_{};
     };
 }

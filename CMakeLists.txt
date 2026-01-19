@@ -17,28 +17,11 @@ endif()
 option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
 option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  ON)
 
-# ---------- Library ----------
-add_library(spira INTERFACE)
-target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
-target_compile_features(spira INTERFACE cxx_std_23)
-
-# We’ll use FetchContent for GTest, Benchmark, and Boundcraft
+# We’ll use FetchContent for deps
 include(FetchContent)
-
-# ---------- Perf-friendly flags for Debug / RelWithDebInfo ----------
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  # CMake already adds -g to Debug and RelWithDebInfo by default,
-  # so we only need to force frame pointers.
-  set(CMAKE_CXX_FLAGS_DEBUG
-      "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
-
-  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
-      "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
-endif()
 
 # ---------- Boundcraft (your lower_bound/gallop lib) ----------
 # NOTE: Boundcraft repo *already* defines a CMake target named `boundcraft`
-# (typically as an INTERFACE library). So we must NOT re-add it here.
 FetchContent_Declare(
   boundcraft_repo
   GIT_REPOSITORY https://github.com/CharlesAdewumi2004/Boundcraft.git
@@ -51,6 +34,31 @@ if (NOT TARGET boundcraft)
   add_library(boundcraft INTERFACE)
   target_include_directories(boundcraft INTERFACE ${boundcraft_repo_SOURCE_DIR}/include)
   target_compile_features(boundcraft INTERFACE cxx_std_23)
+endif()
+
+# ---------- unordered_dense (ankerl::unordered_dense) ----------
+FetchContent_Declare(
+  unordered_dense
+  GIT_REPOSITORY https://github.com/martinus/unordered_dense.git
+  GIT_TAG        v4.5.0
+)
+FetchContent_MakeAvailable(unordered_dense)
+
+# ---------- Library ----------
+add_library(spira INTERFACE)
+target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
+target_compile_features(spira INTERFACE cxx_std_23)
+
+# Make unordered_dense available to all spira consumers
+target_link_libraries(spira INTERFACE unordered_dense::unordered_dense)
+
+# ---------- Perf-friendly flags for Debug / RelWithDebInfo ----------
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set(CMAKE_CXX_FLAGS_DEBUG
+      "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
+
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
+      "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer")
 endif()
 
 # ---------- Tests ----------
@@ -98,7 +106,6 @@ endif()
 # ---------- Benchmarks ----------
 if (SPIRA_BUILD_BENCHMARKS)
 
-  # Fetch Google Benchmark
   FetchContent_Declare(
       benchmark
       GIT_REPOSITORY https://github.com/google/benchmark.git
@@ -169,4 +176,4 @@ if (SPIRA_BUILD_BENCHMARKS)
     )
   endif()
 
-endif() # SPIRA_BUILD_BENCHMARKS
+endif()

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <iterator>
 
-#include <boundcraft/boundcraft.hpp>
+#include <spira/config.hpp>
 #include <spira/concepts.hpp>
 #include <spira/matrix/layouts/element_pair.hpp>
 
@@ -192,7 +192,7 @@ namespace spira::layout
 
         [[nodiscard]] size_type lower_bound(I col) const noexcept
         {
-            auto s = boundcraft::searcher<boundcraft::policy::hybrid<32>>();
+            auto s = boundcraft::searcher<config::aos_search_policy>();
             auto it = s.lower_bound(
                 elements.begin(), elements.end(), col,
                 [](entry_type const &e, I key)

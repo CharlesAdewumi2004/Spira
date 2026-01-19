@@ -250,8 +250,8 @@ TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
     EXPECT_EQ(mat.buffer_size(0), 4);
     
     mat.flush(0);
-
-    EXPECT_EQ(mat.number_of_runs(0), 1);
+    
+    EXPECT_EQ(mat.number_of_runs(0), spira::config::insert_heavy.max_runs);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 

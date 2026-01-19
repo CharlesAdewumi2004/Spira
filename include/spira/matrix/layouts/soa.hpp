@@ -6,8 +6,8 @@
 #include <utility>
 #include <type_traits>
 
-#include <boundcraft/boundcraft.hpp>
 #include <spira/concepts.hpp>
+#include <spira/config.hpp>
 
 namespace spira::layout
 {
@@ -358,7 +358,7 @@ namespace spira::layout
 
         [[nodiscard]] size_type lower_bound(I col) const noexcept
         {
-            auto s = boundcraft::searcher<boundcraft::policy::hybrid<32>>();
+            auto s = boundcraft::searcher<config::soa_search_policy>();
             auto it = s.lower_bound(columns_.begin(), columns_.end(), col);
             return static_cast<size_type>(it - columns_.begin());
         }
@@ -374,8 +374,8 @@ namespace spira::layout
         template <class It, class F>
         static decltype(auto) with_entry(It it, F &&f)
         {
-            auto r = *it;          // proxy by value (safe)
-            auto &&[col, val] = r; // structured binding via tuple protocol
+            auto r = *it;
+            auto &&[col, val] = r;
             return std::forward<F>(f)(col, val);
         }
 
