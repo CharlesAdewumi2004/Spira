@@ -28,15 +28,13 @@ namespace spira
         using entry_type = spira::layout::elementPair<I, V>;
 
         using small_buffer =
-            buffer::traits::traits_of_type<LayoutTag, I, V, config::spmv.buffersize>;
+            buffer::traits::traits_of_type<buffer::tags::array_buffer<LayoutTag>, I, V, config::spmv.buffersize>;
 
         using balanced_buffer =
-            buffer::traits::traits_of_type<LayoutTag, I, V,
-                                           config::balanced.buffersize>;
+            buffer::traits::traits_of_type<buffer::tags::array_buffer<LayoutTag>, I, V, config::balanced.buffersize>;
 
         using insert_heavy_buffer =
-            buffer::traits::traits_of_type<LayoutTag, I, V,
-                                           config::insert_heavy.buffersize>;
+            buffer::traits::traits_of_type<buffer::tags::array_buffer<LayoutTag>, I, V, config::insert_heavy.buffersize>;
 
         using buffer_variant =
             std::variant<small_buffer, balanced_buffer, insert_heavy_buffer>;

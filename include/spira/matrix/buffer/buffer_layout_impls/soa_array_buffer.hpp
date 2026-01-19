@@ -7,8 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include <spira/matrix/layouts/aos.hpp>
-
 namespace spira::buffer::impls
 {
     template <class I, class V, std::size_t N>
@@ -16,7 +14,6 @@ namespace spira::buffer::impls
     {
     public:
         using size_type = std::size_t;
-        using entry_type = spira::layout::elementPair<I, V>;
 
         struct entry_ref
         {
@@ -35,17 +32,11 @@ namespace spira::buffer::impls
             deduplicate();
             return sz_;
         }
-        [[nodiscard]] static constexpr size_type capacity() noexcept { return N; }
         [[nodiscard]] size_type remaining_capacity() const noexcept { return N - sz_; }
 
         void clear() noexcept { sz_ = 0; }
 
-        [[nodiscard]] const I &key_at(size_type idx) const noexcept { return col_[idx]; }
-        [[nodiscard]] V &value_at(size_type idx) noexcept { return val_[idx]; }
-        [[nodiscard]] const V &value_at(size_type idx) const noexcept { return val_[idx]; }
-
-        [[nodiscard]] entry_ref at(size_type idx) noexcept { return {col_[idx], val_[idx]}; }
-        [[nodiscard]] entry_cref at(size_type idx) const noexcept { return {col_[idx], val_[idx]}; }
+        
 
         void push_back(const I &col, const V &val) noexcept(
             std::is_nothrow_copy_assignable_v<I> && std::is_nothrow_copy_assignable_v<V>)
@@ -76,52 +67,8 @@ namespace spira::buffer::impls
             return nullptr;
         }
 
-        [[nodiscard]] std::vector<entry_type> flush_buffer()
-        {
-            std::vector<entry_type> chunk;
-            chunk.reserve(sz_);
-            for (size_type i = 0; i < sz_; ++i)
-            {
-                chunk.push_back(entry_type{col_[i], val_[i]});
-            }
-            clear();
-            return chunk;
-        }
 
-        void deduplicate() const noexcept
-        {
-            std::array<I, N> tmpCol;
-            std::array<V, N> tmpVal;
-            size_t out = 0;
-
-            for (size_t i = sz_; i-- > 0;)
-            {
-                bool seen = false;
-
-                for (size_t j = 0; j < out; j++)
-                {
-                    if (tmpCol[j] == col_[i])
-                    {
-                        seen = true;
-                        break;
-                    }
-                }
-
-                if (seen == false)
-                {
-                    tmpVal[out] = val_[i];
-                    tmpCol[out++] = col_[i];
-                }
-            }
-
-            for (size_t i = 0; i < out; i++)
-            {
-                val_[i] = tmpVal[i];
-                col_[i] = tmpCol[i];
-            }
-
-            sz_ = out;
-        }
+        
 
         V accumulate() const noexcept
         {
@@ -361,6 +308,41 @@ namespace spira::buffer::impls
         mutable std::array<I, N> col_{};
         mutable std::array<V, N> val_{};
         mutable size_type sz_{0};
+
+        void deduplicate() const noexcept
+        {
+            std::array<I, N> tmpCol;
+            std::array<V, N> tmpVal;
+            size_t out = 0;
+
+            for (size_t i = sz_; i-- > 0;)
+            {
+                bool seen = false;
+
+                for (size_t j = 0; j < out; j++)
+                {
+                    if (tmpCol[j] == col_[i])
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+
+                if (seen == false)
+                {
+                    tmpVal[out] = val_[i];
+                    tmpCol[out++] = col_[i];
+                }
+            }
+
+            for (size_t i = 0; i < out; i++)
+            {
+                val_[i] = tmpVal[i];
+                col_[i] = tmpCol[i];
+            }
+
+            sz_ = out;
+        }
     };
 
 }
