@@ -34,7 +34,7 @@ namespace spira
             buffer::traits::traits_of_type<buffer::tags::array_buffer<LayoutTag>, I, V, config::balanced.buffersize>;
 
         using insert_heavy_buffer =
-            buffer::traits::traits_of_type<buffer::tags::array_buffer<LayoutTag>, I, V, config::insert_heavy.buffersize>;
+            buffer::traits::traits_of_type<buffer::tags::hash_map_buffer, I, V, config::insert_heavy.buffersize>;
 
         using buffer_variant =
             std::variant<small_buffer, balanced_buffer, insert_heavy_buffer>;
@@ -223,10 +223,11 @@ namespace spira
     std::size_t row<LayoutTag, I, V>::size() const noexcept
     {
         recompute_dirty();
-        if(dirty_){
+        if (dirty_)
+        {
             full_flush();
         }
-        
+
         return slab_.size();
     }
 

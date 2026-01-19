@@ -16,7 +16,8 @@ namespace spira::buffer::impls
         using entry_type = spira::layout::elementPair<I, V>;
 
         bool empty() const noexcept { return buf_.empty(); }
-        size_type size() const noexcept { return buf_.size(); }
+        size_type size() const noexcept { return buf_.size();}
+        [[nodiscard]] size_type remaining_capacity() const noexcept { return 1; }
 
         void clear() noexcept { buf_.clear(); }
         void push_back(const I &col, const V &val) noexcept { buf_[col] = val; }
@@ -74,6 +75,6 @@ namespace spira::buffer::impls
         std::unordered_map<I, V>::const_iterator cend() const noexcept{buf_.cend();}
 
     private:
-        std::unordered_map<I, V> buf_;
+        mutable std::unordered_map<I, V> buf_;
     };
 }
