@@ -114,64 +114,21 @@ if (SPIRA_BUILD_BENCHMARKS)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
-  add_executable(BM_spmv
-      bench/google-benchmark/BM_spmv.cpp
-      bench/google-benchmark/BM_main.cpp
-      bench/google-benchmark/config.hpp
-  )
+  add_executable(GB_spira
+      bench/google-benchmark/spira_benchmark.cpp
+      )
 
-  target_link_libraries(BM_spmv
+  target_link_libraries(GB_spira
       PRIVATE spira boundcraft benchmark::benchmark pthread
   )
-  target_compile_features(BM_spmv PRIVATE cxx_std_23)
+  target_compile_features(GB_spira PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(BM_spmv PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(BM_spmv PRIVATE
+    target_compile_options(GB_spira PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(GB_spira PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
-    target_link_options(BM_spmv PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
-    )
-  endif()
-
-  add_executable(BM_insert_and_gets_stream
-      bench/google-benchmark/BM_streamGetOperation.cpp
-      bench/google-benchmark/BM_streamAddOperation.cpp
-      bench/google-benchmark/BM_main.cpp
-      bench/google-benchmark/config.hpp
-  )
-
-  target_link_libraries(BM_insert_and_gets_stream
-      PRIVATE spira boundcraft benchmark::benchmark pthread
-  )
-  target_compile_features(BM_insert_and_gets_stream PRIVATE cxx_std_23)
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(BM_insert_and_gets_stream PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(BM_insert_and_gets_stream PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
-    )
-    target_link_options(BM_insert_and_gets_stream PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
-    )
-  endif()
-
-  add_executable(BM_perf_spmv
-      bench/perf-benchmark/benchmark_perf_spmv.cpp
-  )
-
-  target_link_libraries(BM_perf_spmv
-      PRIVATE spira boundcraft benchmark::benchmark pthread
-  )
-  target_compile_features(BM_perf_spmv PRIVATE cxx_std_23)
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(BM_perf_spmv PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(BM_perf_spmv PRIVATE
-        $<$<CONFIG:Debug>:-fsanitize=address,undefined>
-    )
-    target_link_options(BM_perf_spmv PRIVATE
+    target_link_options(GB_spira PRIVATE
         $<$<CONFIG:Debug>:-fsanitize=address,undefined>
     )
   endif()

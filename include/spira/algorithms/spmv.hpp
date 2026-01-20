@@ -21,7 +21,7 @@ namespace spira::algorithms
         {
             V acc = traits::ValueTraits<V>::zero();
 
-            auto op = [&acc, &x](I const col,V const &val) {
+            auto op = [&acc, &x](I const &col, V const &val) {
                 acc += x[col] * val;
             };
 
@@ -49,7 +49,7 @@ namespace spira::algorithms
         {
             double acc = traits::ValueTraits<double>::zero();
 
-            auto op = [&acc, &x](I const col,double const &val) {
+            auto op = [&acc, &x](I const &col,double const &val) {
                 acc += x[col] * val;
             };
 
@@ -77,7 +77,7 @@ namespace spira::algorithms
         {
             float acc = traits::ValueTraits<float>::zero();
 
-            auto op = [&acc, &x](I const col,float const &val) {
+            auto op = [&acc, &x](I const &col,float const &val) {
                 acc += x[col] * val;
             };
 
@@ -105,7 +105,7 @@ namespace spira::algorithms
         {
             std::complex<double> acc = traits::ValueTraits<std::complex<double>>::zero();
 
-            auto op = [&acc, &x](I const col,std::complex<double> const &val) {
+            auto op = [&acc, &x](I const &col,std::complex<double> const &val) {
                 acc += x[col] * val;
             };
 

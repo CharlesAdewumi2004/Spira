@@ -217,14 +217,19 @@ namespace spira
     {
         for (auto &row : rows_)
         {
-            row.flush();
+            if(row.is_dirty()){
+                row.flush();
+            }
         }
     }
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void matrix<Layout, I, V>::flush(I row_index)
     {
-        rows_[row_index].flush();
+        if(rows_.is_dirty()){
+            rows_[row_index].flush();
+        }
+        
     }
 
 }
