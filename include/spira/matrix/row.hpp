@@ -89,17 +89,6 @@ namespace spira
         auto cend() const noexcept { return slab_.cend(); }
 
     private:
-        static std::vector<entry_type> &tls_chunk()
-        {
-            thread_local std::vector<entry_type> chunk;
-            return chunk;
-        }
-
-        static layout_policy &tls_layout_tmp()
-        {
-            thread_local layout_policy tmp;
-            return tmp;
-        }
 
         static I const &key_of(entry_type const &e) noexcept
         {

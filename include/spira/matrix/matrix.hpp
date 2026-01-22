@@ -47,16 +47,14 @@ namespace spira
         bool is_row_dirty(I row_index) const noexcept{return rows_[row_index].is_dirty();}
 
     private:
-        mode::matrix_mode mode_ = mode::matrix_mode::balanced;
+        mode::matrix_mode mode_;
         std::vector<row<Layout, I, V>> rows_;
         size_t const row_limit_;
         size_t const column_limit_;
     };
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    matrix<Layout, I, V>::matrix(size_t const row_limit, size_t const column_limit)
-        : row_limit_(row_limit),
-          column_limit_(column_limit)
+    matrix<Layout, I, V>::matrix(size_t const row_limit, size_t const column_limit): row_limit_(row_limit), column_limit_(column_limit)
     {
         mode_ = mode::matrix_mode::balanced;
         rows_.reserve(row_limit_);
@@ -226,7 +224,7 @@ namespace spira
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void matrix<Layout, I, V>::flush(I row_index)
     {
-        if(rows_.is_dirty()){
+        if(rows_[row_index].is_dirty()){
             rows_[row_index].flush();
         }
         
