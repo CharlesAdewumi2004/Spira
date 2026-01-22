@@ -19,7 +19,7 @@ namespace spira::buffer::impls
 
         bool empty() const noexcept { return buf_.empty(); }
         size_type size() const noexcept { return buf_.size(); }
-        [[nodiscard]] size_type remaining_capacity() const noexcept { return config::insert_heavy.buffersize; }
+        [[nodiscard]] size_type remaining_capacity() const noexcept { return config::insert_heavy.buffersize - size(); }
 
         void clear() noexcept { buf_.clear(); }
         void push_back(const I &col, const V &val) noexcept { buf_[col] = val; }
