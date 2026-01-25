@@ -126,6 +126,9 @@ TEST(MatrixBasicTest, BoundsChecks)
     EXPECT_THROW(mat.add(2, 0, 1.0), std::out_of_range);
     EXPECT_THROW(mat.add(0, 3, 1.0), std::out_of_range);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+
     EXPECT_THROW(mat.get(2, 0), std::out_of_range);
     EXPECT_THROW(mat.get(0, 3), std::out_of_range);
 
@@ -134,6 +137,8 @@ TEST(MatrixBasicTest, BoundsChecks)
 
     EXPECT_THROW(mat.row_nnz(2), std::out_of_range);
     EXPECT_NO_THROW(mat.row_nnz(1));
+
+#pragma GCC diagnostic pop
 }
 
 // ------------------ clear() ------------------
@@ -202,8 +207,8 @@ TEST(MatrixBasicTest, AccumulateMatchesSumOfRow)
     mat.add(1, 0, 2.5);
     mat.add(1, 2, 1.5);
 
-    EXPECT_EQ(mat.get(1,0), 2.5);
-    EXPECT_EQ(mat.get(1,2), 1.5);
+    EXPECT_EQ(mat.get(1, 0), 2.5);
+    EXPECT_EQ(mat.get(1, 2), 1.5);
 
     EXPECT_DOUBLE_EQ(mat.accumulate(1), 4.0);
 
@@ -238,18 +243,17 @@ TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
     mat.add(0, 0, 1);
-    EXPECT_EQ(mat.get(0,0), 1);
+    EXPECT_EQ(mat.get(0, 0), 1);
     mat.add(0, 1, 2);
-    EXPECT_EQ(mat.get(0,1), 2);
+    EXPECT_EQ(mat.get(0, 1), 2);
     mat.add(0, 2, 3);
-    EXPECT_EQ(mat.get(0,2), 3);
+    EXPECT_EQ(mat.get(0, 2), 3);
     mat.add(0, 3, 4);
-    EXPECT_EQ(mat.get(0,3), 4);
+    EXPECT_EQ(mat.get(0, 3), 4);
 
     EXPECT_EQ(mat.buffer_size(0), 4);
-    
+
     mat.flush(0);
-    
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
@@ -258,14 +262,14 @@ TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
     EXPECT_EQ(mat.buffer_size(0), 0);
 
     mat.add(0, 2, 3);
-    EXPECT_EQ(mat.get(0,2), 3);
+    EXPECT_EQ(mat.get(0, 2), 3);
     mat.add(0, 3, 4);
-    EXPECT_EQ(mat.get(0,3), 4);
-
+    EXPECT_EQ(mat.get(0, 3), 4);
 }
 
 // ------------------ Dirty Correctness ------------------
-TEST(MatrixBasicTest, IsDirtyCorrectness) {
+TEST(MatrixBasicTest, IsDirtyCorrectness)
+{
     using I = std::size_t;
     using V = double;
 

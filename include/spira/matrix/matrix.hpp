@@ -1,103 +1,161 @@
 #pragma once
 
-#include <spira/matrix/row.hpp>
+#include <cstddef>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include <spira/config.hpp>
 #include <spira/matrix/mode/matrix_mode.hpp>
+#include <spira/matrix/row.hpp>
+#include <spira/traits.hpp>
 
 namespace spira
 {
-
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     class matrix
     {
     public:
-        using layout_policy = layout::of::storage_of_t<Layout, I, V>;
+        using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
         using index_type = I;
         using value_type = V;
 
-        explicit matrix(size_t const row_limit, size_t const column_limit);
+        explicit matrix(std::size_t row_limit, std::size_t column_limit);
+        matrix(std::size_t row_limit, std::size_t column_limit, std::size_t reserve_per_row);
 
-        std::pair<size_t, size_t> get_shape() const noexcept;
-        size_t n_rows() const noexcept;
-        size_t n_cols() const noexcept;
-        size_t row_nnz(I row_index) const;
-        bool empty() const noexcept;
-        size_t nnz() const noexcept;
+        [[nodiscard]] std::pair<std::size_t, std::size_t> get_shape() const noexcept;
+        [[nodiscard]] std::size_t n_rows() const noexcept;
+        [[nodiscard]] std::size_t n_cols() const noexcept;
 
-        [[nodiscard]] size_t buffer_size(I row_index) const noexcept { return rows_[row_index].buffer_size(); }
-        [[nodiscard]] size_t slab_size(I row_index) const noexcept{return rows_[row_index].slab_size();}
+        [[nodiscard]] std::size_t row_nnz(I row_index) const;
 
-        void add(I row_index, I col_index, const V &val);
+        [[nodiscard]] bool empty() const noexcept;
 
-        V get(I row_index, I col_index) const;
+        [[nodiscard]] std::size_t nnz() const noexcept;
+
+        [[nodiscard]] std::size_t nnz_estimate() const noexcept;
+
+        [[nodiscard]] bool empty_estimate() const noexcept;
+
+        [[nodiscard]] std::size_t buffer_size(I row_index) const noexcept
+        {
+            return rows_[static_cast<std::size_t>(row_index)].buffer_size();
+        }
+
+        [[nodiscard]] std::size_t slab_size(I row_index) const noexcept
+        {
+            return rows_[static_cast<std::size_t>(row_index)].slab_size();
+        }
+
+        void add(I row_index, I col_index, V const &val);
+        [[nodiscard]] V get(I row_index, I col_index) const;
 
         void clear() noexcept;
 
-        bool contains(I row_index, I col_index) const;
+        [[nodiscard]] bool contains(I row_index, I col_index) const;
 
         template <class Func>
         void for_each_row(Func &&f) const;
 
-        V accumulate(I row_index) const;
+        [[nodiscard]] V accumulate(I row_index) const;
 
         void set_mode(mode::matrix_mode new_mode);
-        mode::matrix_mode mode() const noexcept;
+        [[nodiscard]] mode::matrix_mode mode() const noexcept;
 
         void flush();
         void flush(I row_index);
-        bool is_row_dirty(I row_index) const noexcept{return rows_[row_index].is_dirty();}
+
+        [[nodiscard]] bool is_row_dirty(I row_index) const noexcept
+        {
+            return rows_[static_cast<std::size_t>(row_index)].is_dirty();
+        }
 
     private:
-        mode::matrix_mode mode_;
-        std::vector<row<Layout, I, V>> rows_;
-        size_t const row_limit_;
-        size_t const column_limit_;
+        void validate_row_index(I row_index) const
+        {
+            if (static_cast<std::size_t>(row_index) >= row_limit_)
+            {
+                throw std::out_of_range("matrix: row_index out of range");
+            }
+        }
+
+        void validate_col_index(I col_index) const
+        {
+            if (static_cast<std::size_t>(col_index) >= column_limit_)
+            {
+                throw std::out_of_range("matrix: col_index out of range");
+            }
+        }
+
+    private:
+        mode::matrix_mode mode_{mode::matrix_mode::balanced};
+        std::vector<row<LayoutTag, I, V>> rows_{};
+        std::size_t const row_limit_;
+        std::size_t const column_limit_;
     };
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    matrix<Layout, I, V>::matrix(size_t const row_limit, size_t const column_limit): row_limit_(row_limit), column_limit_(column_limit)
+    // -----------------------------
+    // Construction
+    // -----------------------------
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    matrix<LayoutTag, I, V>::matrix(std::size_t row_limit, std::size_t column_limit)
+        : matrix(row_limit, column_limit, spira::config::default_row_reserve_hint)
     {
-        mode_ = mode::matrix_mode::balanced;
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    matrix<LayoutTag, I, V>::matrix(std::size_t row_limit,
+                                    std::size_t column_limit,
+                                    std::size_t reserve_per_row)
+        : mode_{mode::matrix_mode::balanced}, rows_{}, row_limit_{row_limit}, column_limit_{column_limit}
+    {
         rows_.reserve(row_limit_);
-        for (size_t i = 0; i < row_limit_; i++)
+        for (std::size_t r = 0; r < row_limit_; ++r)
         {
-            rows_.emplace_back(column_limit, column_limit);
+            rows_.emplace_back(reserve_per_row, column_limit_);
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    std::pair<size_t, size_t> matrix<Layout, I, V>::get_shape() const noexcept
+    // -----------------------------
+    // Shape
+    // -----------------------------
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::pair<std::size_t, std::size_t> matrix<LayoutTag, I, V>::get_shape() const noexcept
     {
-        return std::make_pair(row_limit_, column_limit_);
+        return {row_limit_, column_limit_};
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::n_rows() const noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::size_t matrix<LayoutTag, I, V>::n_rows() const noexcept
     {
         return row_limit_;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::n_cols() const noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::size_t matrix<LayoutTag, I, V>::n_cols() const noexcept
     {
         return column_limit_;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::row_nnz(I row_index) const
+    // -----------------------------
+    // Queries
+    // -----------------------------
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::size_t matrix<LayoutTag, I, V>::row_nnz(I row_index) const
     {
-        if (row_index >= row_limit_)
-        {
-            throw std::out_of_range("Input is out of range of the matrix");
-        }
-        return rows_[row_index].size();
+        validate_row_index(row_index);
+        return rows_[static_cast<std::size_t>(row_index)].size();
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    bool matrix<Layout, I, V>::empty() const noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    bool matrix<LayoutTag, I, V>::empty() const noexcept
     {
-        for (auto const &row : rows_)
+        for (auto const &r : rows_)
         {
-            if (row.size() != 0)
+            if (r.size() != 0)
             {
                 return false;
             }
@@ -105,129 +163,134 @@ namespace spira
         return true;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::nnz() const noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::size_t matrix<LayoutTag, I, V>::nnz() const noexcept
     {
-        size_t entries = 0;
-        for (auto const &row : rows_)
+        std::size_t entries = 0;
+        for (auto const &r : rows_)
         {
-            entries += row.size();
+            entries += r.size();
         }
         return entries;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::add(I row_index, I col_index, const V &val)
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    std::size_t matrix<LayoutTag, I, V>::nnz_estimate() const noexcept
     {
-        if (row_index >= row_limit_)
+        std::size_t entries = 0;
+        for (auto const &r : rows_)
         {
-            throw std::out_of_range("Row index out of range");
+            entries += r.slab_size();
+            entries += r.buffer_size();
         }
-        if (col_index >= column_limit_)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        rows_[row_index].add(col_index, val);
+        return entries;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    V matrix<Layout, I, V>::get(I row_index, I col_index) const
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    bool matrix<LayoutTag, I, V>::empty_estimate() const noexcept
     {
-        if (row_index >= row_limit_)
+        for (auto const &r : rows_)
         {
-            throw std::out_of_range("Row index out of range");
+            if (r.slab_size() != 0 || r.buffer_size() != 0)
+            {
+                return false;
+            }
         }
-        if (col_index >= column_limit_)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-
-        V const *val = rows_[row_index].get(col_index);
-        if (val == nullptr)
-        {
-            return spira::traits::ValueTraits<V>::zero();
-        }
-        return *val;
+        return true;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::clear() noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::add(I row_index, I col_index, V const &val)
     {
-        for (auto &row : rows_)
-        {
-            row.clear();
-        }
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+
+        rows_[static_cast<std::size_t>(row_index)].add(col_index, val);
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    bool matrix<Layout, I, V>::contains(I row_index, I col_index) const
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    V matrix<LayoutTag, I, V>::get(I row_index, I col_index) const
     {
-        if (row_index >= row_limit_)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= column_limit_)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        return rows_[row_index].contains(col_index);
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+
+        V const *p = rows_[static_cast<std::size_t>(row_index)].get(col_index);
+        return p ? *p : spira::traits::ValueTraits<V>::zero();
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    bool matrix<LayoutTag, I, V>::contains(I row_index, I col_index) const
+    {
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+
+        return rows_[static_cast<std::size_t>(row_index)].contains(col_index);
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     template <class Func>
-    void matrix<Layout, I, V>::for_each_row(Func &&f) const
+    void matrix<LayoutTag, I, V>::for_each_row(Func &&f) const
     {
-
-        for (size_t i = 0; i < row_limit_; i++)
+        for (std::size_t i = 0; i < row_limit_; ++i)
         {
             f(rows_[i], i);
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    V matrix<Layout, I, V>::accumulate(I row_index) const
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    V matrix<LayoutTag, I, V>::accumulate(I row_index) const
     {
-        if (row_index >= row_limit_)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        return rows_[row_index].accumulate();
+        validate_row_index(row_index);
+        return rows_[static_cast<std::size_t>(row_index)].accumulate();
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    mode::matrix_mode matrix<Layout, I, V>::mode() const noexcept
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    mode::matrix_mode matrix<LayoutTag, I, V>::mode() const noexcept
     {
         return mode_;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::set_mode(mode::matrix_mode new_mode)
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::set_mode(mode::matrix_mode new_mode)
     {
         mode_ = new_mode;
-        for (auto &row : rows_)
+        for (auto &r : rows_)
         {
-            row.set_mode(new_mode);
+            r.set_mode(new_mode);
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::flush()
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::clear() noexcept
     {
-        for (auto &row : rows_)
+        for (auto &r : rows_)
         {
-            if(row.is_dirty()){
-                row.flush();
+            r.clear();
+        }
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::flush()
+    {
+        for (auto &r : rows_)
+        {
+            if (r.is_dirty())
+            {
+                r.flush();
             }
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::flush(I row_index)
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::flush(I row_index)
     {
-        if(rows_[row_index].is_dirty()){
-            rows_[row_index].flush();
+        validate_row_index(row_index);
+
+        auto &r = rows_[static_cast<std::size_t>(row_index)];
+        if (r.is_dirty())
+        {
+            r.flush();
         }
-        
     }
 
 }
