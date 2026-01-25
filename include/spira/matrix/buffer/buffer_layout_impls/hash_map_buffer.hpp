@@ -31,7 +31,8 @@ namespace spira::buffer::impls
         const V *get_ptr(I col) const noexcept
         {
             auto it = buf_.find(col);
-            if (it == buf_.end()){
+            if (it == buf_.end())
+            {
                 return nullptr;
             }
             return &it->second;

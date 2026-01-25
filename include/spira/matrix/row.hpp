@@ -61,7 +61,7 @@ namespace spira
         void reserve(std::size_t n);
         void clear() noexcept;
 
-        void add(I col, V const& val);
+        void insert(I col, V const& val);
 
         [[nodiscard]] bool contains(I col) const;
         [[nodiscard]] V const* get(I col) const;
@@ -248,7 +248,7 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::add(I col, V const& val)
+    void row<LayoutTag, I, V>::insert(I col, V const& val)
     {
         if (static_cast<std::size_t>(col) >= column_limit_)
         {
