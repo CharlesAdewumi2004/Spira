@@ -5,7 +5,7 @@
 #include <spira/matrix/mode/matrix_mode.hpp>
 #include <spira/algorithms/merge.hpp>
 #include <spira/algorithms/spgemm.hpp>
-
+#include <spira/algorithms/transpose.hpp>
 namespace spira {
 
 }

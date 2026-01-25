@@ -52,7 +52,7 @@ void bulk_insert_mode_switch_spmv_correctness()
             expected[{i, j}] = val;
         }
 
-        mat.add(i, j, val);
+        mat.insert(i, j, val);
     }
 
     // force materialization
@@ -148,7 +148,7 @@ void bulk_insert_and_mode_switch_integrity()
             expected[{i, j}] = val;
         }
 
-        mat.add(i, j, val);
+        mat.insert(i, j, val);
     }
 
     mat.flush();

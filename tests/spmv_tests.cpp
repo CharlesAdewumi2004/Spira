@@ -71,7 +71,7 @@ namespace
         A.set_mode(spira::mode::matrix_mode::spmv);
 
         for (I i = 0; i < 4; ++i)
-            A.add(i, i, 1.0);
+            A.insert(i, i, 1.0);
         A.flush();
 
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0};
@@ -90,7 +90,7 @@ namespace
         A.set_mode(spira::mode::matrix_mode::spmv);
 
         for (I i = 0; i < 4; ++i)
-            A.add(i, i, 1.0);
+            A.insert(i, i, 1.0);
         A.flush();
 
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0};
@@ -110,7 +110,7 @@ namespace
 
         std::vector<V> d = {10.0f, -3.0f, 0.5f, 2.0f};
         for (I i = 0; i < 4; ++i)
-            A.add(i, i, d[i]);
+            A.insert(i, i, d[i]);
         A.flush();
 
         std::vector<V> x = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -131,7 +131,7 @@ namespace
 
         std::vector<V> d = {10.0f, -3.0f, 0.5f, 2.0f};
         for (I i = 0; i < 4; ++i)
-            A.add(i, i, d[i]);
+            A.insert(i, i, d[i]);
         A.flush();
 
         std::vector<V> x = {1.0f, 2.0f, 3.0f, 4.0f};
@@ -151,11 +151,11 @@ namespace
         spira::matrix<spira::layout::tags::aos_tag, I, V> A(3, 5);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 0, 1.0);
-        A.add(0, 3, 2.0);
-        A.add(1, 2, 3.0);
-        A.add(2, 4, 5.0);
-        A.add(2, 1, 4.0);
+        A.insert(0, 0, 1.0);
+        A.insert(0, 3, 2.0);
+        A.insert(1, 2, 3.0);
+        A.insert(2, 4, 5.0);
+        A.insert(2, 1, 4.0);
 
         A.flush();
 
@@ -176,11 +176,11 @@ namespace
         spira::matrix<spira::layout::tags::soa_tag, I, V> A(3, 5);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 0, 1.0);
-        A.add(0, 3, 2.0);
-        A.add(1, 2, 3.0);
-        A.add(2, 4, 5.0);
-        A.add(2, 1, 4.0);
+        A.insert(0, 0, 1.0);
+        A.insert(0, 3, 2.0);
+        A.insert(1, 2, 3.0);
+        A.insert(2, 4, 5.0);
+        A.insert(2, 1, 4.0);
 
         A.flush();
 
@@ -201,13 +201,13 @@ namespace
         spira::matrix<spira::layout::tags::aos_tag, I, V> A(5, 6);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 1, 2.0);
-        A.add(0, 4, -1.0);
-        A.add(1, 0, 3.5);
-        A.add(2, 5, 7.0);
-        A.add(3, 2, 1.25);
-        A.add(3, 2, 4.0); 
-        A.add(4, 3, -2.0);
+        A.insert(0, 1, 2.0);
+        A.insert(0, 4, -1.0);
+        A.insert(1, 0, 3.5);
+        A.insert(2, 5, 7.0);
+        A.insert(3, 2, 1.25);
+        A.insert(3, 2, 4.0); 
+        A.insert(4, 3, -2.0);
 
         std::vector<V> x = {1, 2, 3, 4, 5, 6};
         std::vector<V> y(A.n_rows(), 0.0);
@@ -232,13 +232,13 @@ namespace
         spira::matrix<spira::layout::tags::soa_tag, I, V> A(5, 6);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 1, 2.0);
-        A.add(0, 4, -1.0);
-        A.add(1, 0, 3.5);
-        A.add(2, 5, 7.0);
-        A.add(3, 2, 1.25);
-        A.add(3, 2, 4.0);
-        A.add(4, 3, -2.0);
+        A.insert(0, 1, 2.0);
+        A.insert(0, 4, -1.0);
+        A.insert(1, 0, 3.5);
+        A.insert(2, 5, 7.0);
+        A.insert(3, 2, 1.25);
+        A.insert(3, 2, 4.0);
+        A.insert(4, 3, -2.0);
 
         std::vector<V> x = {1, 2, 3, 4, 5, 6};
         std::vector<V> y(A.n_rows(), 0.0);
@@ -325,10 +325,10 @@ namespace
         spira::matrix<spira::layout::tags::aos_tag, I, cd> A(2, 2);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 0, cd(1.0, 2.0));
-        A.add(0, 1, cd(3.0, 0.0));
-        A.add(1, 0, cd(0.0, 1.0));
-        A.add(1, 1, cd(2.0, -1.0));
+        A.insert(0, 0, cd(1.0, 2.0));
+        A.insert(0, 1, cd(3.0, 0.0));
+        A.insert(1, 0, cd(0.0, 1.0));
+        A.insert(1, 1, cd(2.0, -1.0));
         A.flush();
 
         std::vector<cd> x = {cd(1.0, -1.0), cd(2.0, 2.0)};
@@ -348,10 +348,10 @@ namespace
         spira::matrix<spira::layout::tags::soa_tag, I, cd> A(2, 2);
         A.set_mode(spira::mode::matrix_mode::spmv);
 
-        A.add(0, 0, cd(1.0, 2.0));
-        A.add(0, 1, cd(3.0, 0.0));
-        A.add(1, 0, cd(0.0, 1.0));
-        A.add(1, 1, cd(2.0, -1.0));
+        A.insert(0, 0, cd(1.0, 2.0));
+        A.insert(0, 1, cd(3.0, 0.0));
+        A.insert(1, 0, cd(0.0, 1.0));
+        A.insert(1, 1, cd(2.0, -1.0));
         A.flush();
 
         std::vector<cd> x = {cd(1.0, -1.0), cd(2.0, 2.0)};

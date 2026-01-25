@@ -51,7 +51,7 @@ namespace spira
 
         [[nodiscard]] const storageType& getRowAt(I &row_index) const;
 
-        void add(I row_index, I col_index, V const &val);
+        void insert(I row_index, I col_index, V const &val);
         [[nodiscard]] V get(I row_index, I col_index) const;
 
         void clear() noexcept;
@@ -214,7 +214,7 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void matrix<LayoutTag, I, V>::add(I row_index, I col_index, V const &val)
+    void matrix<LayoutTag, I, V>::insert(I row_index, I col_index, V const &val)
     {
         validate_row_index(row_index);
         validate_col_index(col_index);

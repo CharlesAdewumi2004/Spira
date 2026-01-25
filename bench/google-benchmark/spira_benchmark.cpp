@@ -39,7 +39,7 @@ static void build_matrix_insert_heavy(
 {
     m.set_mode(spira::mode::matrix_mode::insert_heavy);
     for (std::size_t k = 0; k < rs.size(); ++k)
-        m.add(rs[k], cs[k], non_zero_value<V>(k));
+        m.insert(rs[k], cs[k], non_zero_value<V>(k));
     // leave unflushed for insert-heavy add benches, unless caller flushes
 }
 
@@ -106,7 +106,7 @@ static void BM_add_insert_heavy(benchmark::State &state)
         state.ResumeTiming();
 
         for (std::size_t k = 0; k < n; ++k)
-            m.add(rs[k], cs[k], non_zero_value<V>(k));
+            m.insert(rs[k], cs[k], non_zero_value<V>(k));
 
         benchmark::DoNotOptimize(&m);
         benchmark::ClobberMemory();
@@ -178,7 +178,7 @@ static void BM_spmv_best_mode(benchmark::State &state)
     {
         const I n = (rows < cols) ? rows : cols;
         for (I i = 0; i < n; ++i)
-            m.add(i, i, non_zero_value<V>(i));
+            m.insert(i, i, non_zero_value<V>(i));
     }
     else if constexpr (P == SpmvPattern::RandomKPerRow)
     {
@@ -188,7 +188,7 @@ static void BM_spmv_best_mode(benchmark::State &state)
             for (I t = 0; t < k_per_row; ++t)
             {
                 const I c = cdist(rng);
-                m.add(r, c, non_zero_value<V>(std::uint64_t(r) * 1315423911ULL + t));
+                m.insert(r, c, non_zero_value<V>(std::uint64_t(r) * 1315423911ULL + t));
             }
         }
     }

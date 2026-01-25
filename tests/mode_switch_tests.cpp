@@ -12,9 +12,9 @@ TEST(ModeSwitchTest, InsertHeavyToBalanced_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
-    mat.add(0, 0, 5.0);
+    mat.insert(0, 0, 5.0);
     mat.flush();
-    mat.add(1, 1, 7.5);
+    mat.insert(1, 1, 7.5);
 
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
@@ -37,9 +37,9 @@ TEST(ModeSwitchTest, InsertHeavyToBalanced_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
-    mat.add(0, 0, 5.0);
+    mat.insert(0, 0, 5.0);
     mat.flush();
-    mat.add(1, 1, 7.5);
+    mat.insert(1, 1, 7.5);
 
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
@@ -64,9 +64,9 @@ TEST(ModeSwitchTest, BalancedToInsertHeavy_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
-    mat.add(0, 1, 2.5);
+    mat.insert(0, 1, 2.5);
     mat.flush();
-    mat.add(2, 2, 3.5);
+    mat.insert(2, 2, 3.5);
 
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
@@ -89,9 +89,9 @@ TEST(ModeSwitchTest, BalancedToInsertHeavy_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
-    mat.add(0, 1, 2.5);
+    mat.insert(0, 1, 2.5);
     mat.flush();
-    mat.add(2, 2, 3.5);
+    mat.insert(2, 2, 3.5);
 
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
@@ -116,9 +116,9 @@ TEST(ModeSwitchTest, BalancedToSpMV_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
-    mat.add(0, 3, 1.5);
+    mat.insert(0, 3, 1.5);
     mat.flush();
-    mat.add(1, 0, 2.5);
+    mat.insert(1, 0, 2.5);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
@@ -141,9 +141,9 @@ TEST(ModeSwitchTest, BalancedToSpMV_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
-    mat.add(0, 3, 1.5);
+    mat.insert(0, 3, 1.5);
     mat.flush();
-    mat.add(1, 0, 2.5);
+    mat.insert(1, 0, 2.5);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
@@ -168,9 +168,9 @@ TEST(ModeSwitchTest, SpMVToBalanced_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
-    mat.add(0, 0, 10.0);
+    mat.insert(0, 0, 10.0);
     mat.flush(); // committed
-    mat.add(2, 1, 4.0);
+    mat.insert(2, 1, 4.0);
 
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
@@ -193,9 +193,9 @@ TEST(ModeSwitchTest, SpMVToBalanced_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
-    mat.add(0, 0, 10.0);
+    mat.insert(0, 0, 10.0);
     mat.flush();
-    mat.add(2, 1, 4.0);
+    mat.insert(2, 1, 4.0);
 
     mat.set_mode(spira::mode::matrix_mode::balanced);
 
@@ -220,9 +220,9 @@ TEST(ModeSwitchTest, InsertHeavyToSpMV_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
-    mat.add(1, 2, 8.0);
+    mat.insert(1, 2, 8.0);
     mat.flush();
-    mat.add(1, 3, 9.0);
+    mat.insert(1, 3, 9.0);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
@@ -244,9 +244,9 @@ TEST(ModeSwitchTest, InsertHeavyToSpMV_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
-    mat.add(1, 2, 8.0);
+    mat.insert(1, 2, 8.0);
     mat.flush();
-    mat.add(1, 3, 9.0);
+    mat.insert(1, 3, 9.0);
 
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
@@ -270,9 +270,9 @@ TEST(ModeSwitchTest, SpMVToInsertHeavy_AOS)
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
-    mat.add(3, 3, 11.0);
+    mat.insert(3, 3, 11.0);
     mat.flush();
-    mat.add(3, 2, 12.0);
+    mat.insert(3, 2, 12.0);
 
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
@@ -294,9 +294,9 @@ TEST(ModeSwitchTest, SpMVToInsertHeavy_SOA)
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
     mat.set_mode(spira::mode::matrix_mode::spmv);
 
-    mat.add(3, 3, 11.0);
+    mat.insert(3, 3, 11.0);
     mat.flush();
-    mat.add(3, 2, 12.0);
+    mat.insert(3, 2, 12.0);
 
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 

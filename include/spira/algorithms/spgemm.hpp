@@ -1,6 +1,6 @@
 #pragma once
 
-#include <spira/spira.hpp>
+#include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
 {
@@ -21,22 +21,22 @@ namespace spira::algorithms
 
             auto &arow = A.getRowAt(i);
 
-            arow.for_each_element([&](I k, const V &a_ik)
-            {
+            arow.for_each_element([&](I k, const V &a_ik){
                 auto& brow = B.getRowAt(k);
 
                 brow.for_each_element([&](I j, const V& b_kj)
                 {
                     acc[j] += a_ik * b_kj;
-                }); });
+                }); 
+            });
 
-                for (auto &[j, v] : acc)
+            for (auto &[j, v] : acc)
+            {
+                if (v != V{})
                 {
-                    if (v != V{})
-                    {
-                        C.add(i, j, v);
-                    }
+                    C.insert(i, j, v);
                 }
+            }
         }
 
         return C;
