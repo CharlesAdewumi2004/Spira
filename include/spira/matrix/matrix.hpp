@@ -20,6 +20,8 @@ namespace spira
         using index_type = I;
         using value_type = V;
 
+        using storageType = row<LayoutTag, I, V>;
+
         explicit matrix(std::size_t row_limit, std::size_t column_limit);
         matrix(std::size_t row_limit, std::size_t column_limit, std::size_t reserve_per_row);
 
@@ -47,6 +49,8 @@ namespace spira
             return rows_[static_cast<std::size_t>(row_index)].slab_size();
         }
 
+        [[nodiscard]] const storageType& getRowAt(I &row_index) const;
+
         void add(I row_index, I col_index, V const &val);
         [[nodiscard]] V get(I row_index, I col_index) const;
 
@@ -56,6 +60,9 @@ namespace spira
 
         template <class Func>
         void for_each_row(Func &&f) const;
+
+        template <class Func>
+        void for_each_nnz_row(Func &&f) const;
 
         [[nodiscard]] V accumulate(I row_index) const;
 
@@ -89,7 +96,7 @@ namespace spira
 
     private:
         mode::matrix_mode mode_{mode::matrix_mode::balanced};
-        std::vector<row<LayoutTag, I, V>> rows_{};
+        std::vector<storageType> rows_{};
         std::size_t const row_limit_;
         std::size_t const column_limit_;
     };
@@ -200,6 +207,13 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    [[nodiscard]] const row<LayoutTag, I, V>& matrix<LayoutTag, I, V>::getRowAt(I &row_index) const
+    {
+        validate_row_index(row_index);
+        return rows_[row_index];
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void matrix<LayoutTag, I, V>::add(I row_index, I col_index, V const &val)
     {
         validate_row_index(row_index);
@@ -234,6 +248,19 @@ namespace spira
         for (std::size_t i = 0; i < row_limit_; ++i)
         {
             f(rows_[i], i);
+        }
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    template <class Func>
+    void matrix<LayoutTag, I, V>::for_each_nnz_row(Func &&f) const
+    {
+        for (std::size_t i = 0; i < row_limit_; ++i)
+        {
+            if (!rows_[i].empty())
+            {
+                f(rows_[i], i);
+            }
         }
     }
 

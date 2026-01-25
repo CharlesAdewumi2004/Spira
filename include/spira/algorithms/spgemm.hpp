@@ -1,0 +1,45 @@
+#pragma once
+
+#include <spira/spira.hpp>
+
+namespace spira::algorithms
+{
+
+    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    spira::matrix<Layout, I, V> spgemm(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
+    {
+        if (A.n_cols() != B.n_rows())
+        {
+            throw std::invalid_argument("A.cols must equal B.rows");
+        }
+
+        spira::matrix<Layout, I, V> C(A.n_rows(), B.n_cols());
+
+        for (I i = 0; i < static_cast<I>(A.n_rows()); ++i)
+        {
+            std::unordered_map<I, V> acc;
+
+            auto &arow = A.getRowAt(i);
+
+            arow.for_each_element([&](I k, const V &a_ik)
+            {
+                auto& brow = B.getRowAt(k);
+
+                brow.for_each_element([&](I j, const V& b_kj)
+                {
+                    acc[j] += a_ik * b_kj;
+                }); });
+
+                for (auto &[j, v] : acc)
+                {
+                    if (v != V{})
+                    {
+                        C.add(i, j, v);
+                    }
+                }
+        }
+
+        return C;
+    }
+
+}

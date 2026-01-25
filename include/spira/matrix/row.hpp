@@ -72,8 +72,7 @@ namespace spira
         [[nodiscard]] bool is_dirty() const noexcept { return dirty_; }
 
         template <class Fn>
-        void for_each_element(Fn&& f) const noexcept(
-            noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())));
+        void for_each_element(Fn&& f) const noexcept(noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())));
 
         auto begin() noexcept { return slab_.begin(); }
         auto end() noexcept { return slab_.end(); }
