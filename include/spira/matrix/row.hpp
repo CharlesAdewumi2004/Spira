@@ -74,6 +74,9 @@ namespace spira
         template <class Fn>
         void for_each_element(Fn &&f) const noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())));
 
+        template <class Fn>
+        void for_each_element(Fn &&f) noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V&>())));
+
         auto begin() noexcept { return slab_.begin(); }
         auto end() noexcept { return slab_.end(); }
         auto begin() const noexcept { return slab_.begin(); }
@@ -83,8 +86,10 @@ namespace spira
 
     private:
         template <class Fn>
-        void for_each_slab_element(Fn &&f) const noexcept(
-            noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())));
+        void for_each_slab_element(Fn &&f) const noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())));
+
+        template <class Fn>
+        void for_each_slab_element(Fn &&f)noexcept(noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V&>())));
 
         template <class Fn>
         decltype(auto) with_buffer_mut(Fn &&fn)
@@ -380,26 +385,46 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     template <class Fn>
-    void row<LayoutTag, I, V>::for_each_slab_element(Fn &&f) const noexcept(
-        noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
-    {
-        for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
-        {
-            auto const entry = *it;
-            std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
-        }
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    template <class Fn>
-    void row<LayoutTag, I, V>::for_each_element(Fn &&f) const noexcept(
-        noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
+    void row<LayoutTag, I, V>::for_each_element(Fn &&f) const noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
     {
         if (dirty_)
         {
             flush();
         }
         for_each_slab_element(std::forward<Fn>(f));
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    template <class Fn>
+    void row<LayoutTag, I, V>::for_each_element(Fn &&f) noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V&>())))
+    {
+        if (dirty_)
+        {
+            flush();
+        }
+        for_each_slab_element(std::forward<Fn>(f));
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    template <class Fn>
+    void row<LayoutTag, I, V>::for_each_slab_element(Fn &&f) const noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
+    {
+        for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
+        {
+            auto const &entry = *it;
+            std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+        }
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    template <class Fn>
+    void row<LayoutTag, I, V>::for_each_slab_element(Fn &&f) noexcept(noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V&>())))
+    {
+        for (auto it = slab_.begin(); it != slab_.end(); ++it)
+        {
+            auto &entry = *it;
+            std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+        }
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>

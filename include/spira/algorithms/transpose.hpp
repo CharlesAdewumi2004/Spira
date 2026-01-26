@@ -31,8 +31,9 @@ namespace spira::algorithms
     void transpose_itself(spira::matrix<Layout, I, V>& mat)
     {
         auto [r, c] = mat.get_shape();
-        if (r != c)
+        if (r != c){
             throw std::logic_error("in-place transpose requires square matrix");
+        }
 
         auto out = transpose(mat);
         mat.matrix_swap(out);

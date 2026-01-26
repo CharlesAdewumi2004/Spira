@@ -23,7 +23,6 @@ namespace spira::layout
         soa_ref() = default;
         soa_ref(I &i, V &v) : first(&i), second(&v) {}
 
-        // implicit conversion (stable_sort / algos may materialize values)
         operator std::pair<I, V>() const { return {*first, *second}; }
 
         // write-through from pair
@@ -40,7 +39,6 @@ namespace spira::layout
             return *this;
         }
 
-        // ✅ CRITICAL: write-through from another proxy (prevents pointer-copy UB)
         soa_ref &operator=(soa_ref const &r)
         {
             *first = r.first_ref();
@@ -79,7 +77,6 @@ namespace spira::layout
         }
     };
 
-    // ADL swap for proxy refs (algorithms may call swap(*a,*b))
     template <class I, class V>
     inline void swap(soa_ref<I, V> a, soa_ref<I, V> b) noexcept
     {
@@ -216,7 +213,6 @@ namespace spira::layout
             friend bool operator<=(iterator a, iterator b) noexcept { return !(b < a); }
             friend bool operator>=(iterator a, iterator b) noexcept { return !(a < b); }
 
-            // ✅ stable_sort often uses iter_swap / iter_move for proxy iterators
             friend void iter_swap(iterator a, iterator b) noexcept
             {
                 using std::swap;

@@ -6,7 +6,7 @@ namespace spira::algorithms
 {
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    spira::matrix<Layout, I, V> spgemm(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
+    spira::matrix<Layout, I, V> spgemm(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B) 
     {
         if (A.n_cols() != B.n_rows())
         {
