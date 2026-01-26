@@ -47,7 +47,7 @@ namespace spira
         row(std::size_t reserve_hint, std::size_t column_limit, config::mode_policy mode_policy);
 
         [[nodiscard]] mode::matrix_mode mode() const noexcept { return mode_; }
-        [[nodiscard]] config::mode_policy const& traits() const noexcept { return traits_; }
+        [[nodiscard]] config::mode_policy const &traits() const noexcept { return traits_; }
 
         void set_mode(mode::matrix_mode m);
 
@@ -61,10 +61,10 @@ namespace spira
         void reserve(std::size_t n);
         void clear() noexcept;
 
-        void insert(I col, V const& val);
+        void insert(I col, V const &val);
 
         [[nodiscard]] bool contains(I col) const;
-        [[nodiscard]] V const* get(I col) const;
+        [[nodiscard]] V const *get(I col) const;
 
         [[nodiscard]] V accumulate() const noexcept;
 
@@ -72,7 +72,7 @@ namespace spira
         [[nodiscard]] bool is_dirty() const noexcept { return dirty_; }
 
         template <class Fn>
-        void for_each_element(Fn&& f) const noexcept(noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())));
+        void for_each_element(Fn &&f) const noexcept(noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())));
 
         auto begin() noexcept { return slab_.begin(); }
         auto end() noexcept { return slab_.end(); }
@@ -83,30 +83,38 @@ namespace spira
 
     private:
         template <class Fn>
-        void for_each_slab_element(Fn&& f) const noexcept(
-            noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())));
+        void for_each_slab_element(Fn &&f) const noexcept(
+            noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())));
 
         template <class Fn>
-        decltype(auto) with_buffer_mut(Fn&& fn)
+        decltype(auto) with_buffer_mut(Fn &&fn)
         {
             switch (buffer_.index())
             {
-            case 0: return std::forward<Fn>(fn)(std::get<0>(buffer_));
-            case 1: return std::forward<Fn>(fn)(std::get<1>(buffer_));
-            case 2: return std::forward<Fn>(fn)(std::get<2>(buffer_));
-            default: std::terminate();
+            case 0:
+                return std::forward<Fn>(fn)(std::get<0>(buffer_));
+            case 1:
+                return std::forward<Fn>(fn)(std::get<1>(buffer_));
+            case 2:
+                return std::forward<Fn>(fn)(std::get<2>(buffer_));
+            default:
+                std::terminate();
             }
         }
 
         template <class Fn>
-        decltype(auto) with_buffer_const(Fn&& fn) const
+        decltype(auto) with_buffer_const(Fn &&fn) const
         {
             switch (buffer_.index())
             {
-            case 0: return std::forward<Fn>(fn)(std::get<0>(buffer_));
-            case 1: return std::forward<Fn>(fn)(std::get<1>(buffer_));
-            case 2: return std::forward<Fn>(fn)(std::get<2>(buffer_));
-            default: std::terminate();
+            case 0:
+                return std::forward<Fn>(fn)(std::get<0>(buffer_));
+            case 1:
+                return std::forward<Fn>(fn)(std::get<1>(buffer_));
+            case 2:
+                return std::forward<Fn>(fn)(std::get<2>(buffer_));
+            default:
+                std::terminate();
             }
         }
 
@@ -121,9 +129,9 @@ namespace spira
 
         mutable bool dirty_{false};
 
-        mode::matrix_mode  mode_{mode::matrix_mode::balanced};
+        mode::matrix_mode mode_{mode::matrix_mode::balanced};
         config::mode_policy traits_{mode::policy_for(mode::matrix_mode::balanced)};
-        std::size_t        column_limit_{0};
+        std::size_t column_limit_{0};
     };
 
     // -----------------------------
@@ -135,13 +143,9 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     row<LayoutTag, I, V>::row(config::mode_policy mode_policy)
-        : slab_{}
-        , buffer_{balanced_buffer{}}
-        , dirty_{false}
-        , mode_{mode::matrix_mode::balanced}
-        , traits_{mode_policy}
-        , column_limit_{0}
-    {}
+        : slab_{}, buffer_{balanced_buffer{}}, dirty_{false}, mode_{mode::matrix_mode::balanced}, traits_{mode_policy}, column_limit_{0}
+    {
+    }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     row<LayoutTag, I, V>::row(std::size_t reserve_hint, std::size_t column_limit)
@@ -190,7 +194,7 @@ namespace spira
             return;
         }
 
-        mode_   = m;
+        mode_ = m;
         traits_ = mode::policy_for(m);
 
         flush();
@@ -243,12 +247,13 @@ namespace spira
     void row<LayoutTag, I, V>::clear() noexcept
     {
         slab_.clear();
-        with_buffer_mut([](auto& buf) { buf.clear(); });
+        with_buffer_mut([](auto &buf)
+                        { buf.clear(); });
         dirty_ = false;
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::insert(I col, V const& val)
+    void row<LayoutTag, I, V>::insert(I col, V const &val)
     {
         if (static_cast<std::size_t>(col) >= column_limit_)
         {
@@ -258,7 +263,7 @@ namespace spira
         dirty_ = true;
 
         with_buffer_mut(
-            [&](auto& buf)
+            [&](auto &buf)
             {
                 if (buf.remaining_capacity() == 0)
                 {
@@ -281,7 +286,7 @@ namespace spira
         }
 
         const bool in_buffer = with_buffer_const(
-            [&](auto const& buf)
+            [&](auto const &buf)
             {
                 return buf.contains(col);
             });
@@ -296,7 +301,7 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    V const* row<LayoutTag, I, V>::get(I col) const
+    V const *row<LayoutTag, I, V>::get(I col) const
     {
         if (static_cast<std::size_t>(col) >= column_limit_)
         {
@@ -304,7 +309,7 @@ namespace spira
         }
 
         if (auto p = with_buffer_const(
-                [&](auto const& buf)
+                [&](auto const &buf)
                 {
                     return buf.get_ptr(col);
                 }))
@@ -338,7 +343,7 @@ namespace spira
         }
 
         V acc = traits::ValueTraits<V>::zero();
-        for (auto const& entry : slab_)
+        for (auto const &entry : slab_)
         {
             acc += entry.second_ref();
         }
@@ -353,7 +358,7 @@ namespace spira
     void row<LayoutTag, I, V>::flush() const
     {
         layout_policy chunk = std::visit(
-            [](auto& buf) -> layout_policy
+            [](auto &buf) -> layout_policy
             {
                 return buf.template normalize_buffer<layout_policy>();
             },
@@ -375,8 +380,8 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     template <class Fn>
-    void row<LayoutTag, I, V>::for_each_slab_element(Fn&& f) const noexcept(
-        noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())))
+    void row<LayoutTag, I, V>::for_each_slab_element(Fn &&f) const noexcept(
+        noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
     {
         for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
         {
@@ -387,8 +392,8 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     template <class Fn>
-    void row<LayoutTag, I, V>::for_each_element(Fn&& f) const noexcept(
-        noexcept(std::declval<Fn&>()(std::declval<I>(), std::declval<V const&>())))
+    void row<LayoutTag, I, V>::for_each_element(Fn &&f) const noexcept(
+        noexcept(std::declval<Fn &>()(std::declval<I>(), std::declval<V const &>())))
     {
         if (dirty_)
         {
@@ -401,7 +406,7 @@ namespace spira
     std::size_t row<LayoutTag, I, V>::buffer_size() const noexcept
     {
         return with_buffer_const(
-            [](auto const& buf) noexcept
+            [](auto const &buf) noexcept
             {
                 return buf.size();
             });
@@ -411,10 +416,10 @@ namespace spira
     bool row<LayoutTag, I, V>::buffer_has_live() const noexcept
     {
         return with_buffer_const(
-            [](auto const& buf)
+            [](auto const &buf)
             {
                 return !buf.empty();
             });
     }
 
-} 
+}

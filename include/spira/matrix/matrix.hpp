@@ -49,7 +49,8 @@ namespace spira
             return rows_[static_cast<std::size_t>(row_index)].slab_size();
         }
 
-        [[nodiscard]] const storageType& getRowAt(I &row_index) const;
+        [[nodiscard]] const storageType &getRowAt(I row_index) const;
+        [[nodiscard]] storageType &getMutableRowAt(I row_index);
 
         void insert(I row_index, I col_index, V const &val);
         [[nodiscard]] V get(I row_index, I col_index) const;
@@ -64,13 +65,15 @@ namespace spira
         template <class Func>
         void for_each_nnz_row(Func &&f) const;
 
+        void matrix_swap(matrix &other) noexcept;
+
         [[nodiscard]] V accumulate(I row_index) const;
 
         void set_mode(mode::matrix_mode new_mode);
         [[nodiscard]] mode::matrix_mode mode() const noexcept;
 
-        void flush();
-        void flush(I row_index);
+        void flush() const;
+        void flush(I row_index) const;
 
         [[nodiscard]] bool is_row_dirty(I row_index) const noexcept
         {
@@ -96,7 +99,7 @@ namespace spira
 
     private:
         mode::matrix_mode mode_{mode::matrix_mode::balanced};
-        std::vector<storageType> rows_{};
+        mutable std::vector<storageType> rows_{};
         std::size_t const row_limit_;
         std::size_t const column_limit_;
     };
@@ -207,7 +210,14 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    [[nodiscard]] const row<LayoutTag, I, V>& matrix<LayoutTag, I, V>::getRowAt(I &row_index) const
+    [[nodiscard]] const row<LayoutTag, I, V> &matrix<LayoutTag, I, V>::getRowAt(I row_index) const
+    {
+        validate_row_index(row_index);
+        return rows_[row_index];
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    [[nodiscard]] row<LayoutTag, I, V> &matrix<LayoutTag, I, V>::getMutableRowAt(I row_index)
     {
         validate_row_index(row_index);
         return rows_[row_index];
@@ -219,7 +229,7 @@ namespace spira
         validate_row_index(row_index);
         validate_col_index(col_index);
 
-        rows_[static_cast<std::size_t>(row_index)].add(col_index, val);
+        rows_[static_cast<std::size_t>(row_index)].insert(col_index, val);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
@@ -265,6 +275,14 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    void matrix<LayoutTag, I, V>::matrix_swap(matrix &other) noexcept
+    {
+        using std::swap;
+        swap(rows_, other.rows_);
+        swap(mode_, other.mode_);
+    }
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     V matrix<LayoutTag, I, V>::accumulate(I row_index) const
     {
         validate_row_index(row_index);
@@ -297,7 +315,7 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void matrix<LayoutTag, I, V>::flush()
+    void matrix<LayoutTag, I, V>::flush() const
     {
         for (auto &r : rows_)
         {
@@ -309,7 +327,7 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void matrix<LayoutTag, I, V>::flush(I row_index)
+    void matrix<LayoutTag, I, V>::flush(I row_index) const
     {
         validate_row_index(row_index);
 

@@ -15,6 +15,8 @@ namespace spira::algorithms
 
         spira::matrix<Layout, I, V> C(A.n_rows(), B.n_cols());
 
+        C.set_mode(spira::mode::matrix_mode::insert_heavy);
+
         for (I i = 0; i < static_cast<I>(A.n_rows()); ++i)
         {
             std::unordered_map<I, V> acc;
@@ -38,6 +40,8 @@ namespace spira::algorithms
                 }
             }
         }
+
+        C.set_mode(spira::mode::matrix_mode::balanced);
 
         return C;
     }

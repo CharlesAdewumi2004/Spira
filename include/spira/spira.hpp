@@ -6,6 +6,7 @@
 #include <spira/algorithms/merge.hpp>
 #include <spira/algorithms/spgemm.hpp>
 #include <spira/algorithms/transpose.hpp>
+#include <spira/algorithms/matrix_addition.hpp>
 namespace spira {
 
 }

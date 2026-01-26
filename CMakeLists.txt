@@ -82,6 +82,7 @@ if (SPIRA_BUILD_TESTS)
       tests/large_matrix_stress_tests.cpp
       tests/spgemm_tests.cpp
       tests/transpose_tests.cpp
+      tests/matrix_addition_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)

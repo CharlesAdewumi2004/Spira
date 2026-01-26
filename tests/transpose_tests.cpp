@@ -1,173 +1,175 @@
-// transpose_tests.cpp
+// test_transpose.cpp
 #include <gtest/gtest.h>
-#include <type_traits>
-#include <vector>
-#include <tuple>
 
-#include <spira/spira.hpp>
-#include <spira/algorithms/transpose.hpp> // adjust to your actual header
+#include <cstddef>
+#include <utility>
+
+#include <spira/matrix/matrix.hpp>
+#include <spira/algorithms/transpose.hpp>
+
+using Layout = spira::layout::tags::aos_tag;
+
+using Index = std::size_t;
+using Value = double;
+
+using Matrix = spira::matrix<Layout, Index, Value>;
 
 namespace
 {
 
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
-    using Mat = spira::matrix<Layout, I, V>;
-
-    // Build from (r,c,val) triplets
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
-    Mat<Layout, I, V> make_mat(I rows, I cols, std::initializer_list<std::tuple<I, I, V>> entries)
+    void insert_all(Matrix &m, std::initializer_list<std::tuple<Index, Index, Value>> entries)
     {
-        Mat<Layout, I, V> M(static_cast<std::size_t>(rows), static_cast<std::size_t>(cols));
         for (auto [r, c, v] : entries)
         {
-            M.insert(r, c, v);
+            m.insert(r, c, v);
         }
-        return M;
     }
 
-    template <class Layout, class I, class V>
-    void expect_dense_equal(const Mat<Layout, I, V> &A, const std::vector<std::vector<V>> &ref)
+    void expect_same_shape(const Matrix &a, const Matrix &b)
     {
-        ASSERT_EQ(static_cast<I>(A.n_rows()), static_cast<I>(ref.size()));
-        ASSERT_EQ(static_cast<I>(A.n_cols()), static_cast<I>(ref.empty() ? 0 : ref[0].size()));
-
-        for (I i = 0; i < static_cast<I>(A.n_rows()); ++i)
-        {
-            for (I j = 0; j < static_cast<I>(A.n_cols()); ++j)
-            {
-                if constexpr (std::is_floating_point_v<V>)
-                {
-                    EXPECT_NEAR(A.get(i, j), ref[i][j], static_cast<V>(1e-9)) << "at (" << i << "," << j << ")";
-                }
-                else
-                {
-                    EXPECT_EQ(A.get(i, j), ref[i][j]) << "at (" << i << "," << j << ")";
-                }
-            }
-        }
+        auto [ar, ac] = a.get_shape();
+        auto [br, bc] = b.get_shape();
+        EXPECT_EQ(ar, br);
+        EXPECT_EQ(ac, bc);
     }
 
 }
 
-using LayoutTag = spira::layout::tags::soa_tag;
-using I = size_t;
+// ----------------------------
+// transpose() tests
+// ----------------------------
 
-// 1) Shape flips: (m x n) -> (n x m)
-TEST(Transpose, ShapeFlips)
+TEST(Transpose, EmptyMatrix_ShapeSwapsAndStaysEmpty)
 {
-    using V = int;
-    Mat<LayoutTag, I, V> A(3, 5);
+    Matrix m(3, 5);
+    auto out = spira::algorithms::transpose(m);
 
-    auto AT = spira::algorithms::transpose(A);
+    auto [r, c] = out.get_shape();
+    EXPECT_EQ(r, 5u);
+    EXPECT_EQ(c, 3u);
 
-    EXPECT_EQ(AT.n_rows(), 5u);
-    EXPECT_EQ(AT.n_cols(), 3u);
+    EXPECT_EQ(out.get(0, 0), 0.0);
+    EXPECT_EQ(out.get(4, 2), 0.0);
+
+    // Input should be unchanged
+    auto [mr, mc] = m.get_shape();
+    EXPECT_EQ(mr, 3u);
+    EXPECT_EQ(mc, 5u);
 }
 
-// 2) Empty stays empty (all gets are 0)
-TEST(Transpose, EmptyMatrix)
+TEST(Transpose, SingleElement_GoesToCorrectPlace)
 {
-    using V = int;
-    Mat<LayoutTag, I, V> A(2, 4);
+    Matrix m(4, 6);
+    m.insert(2, 5, 7.5);
 
-    auto AT = spira::algorithms::transpose(A);
+    auto out = spira::algorithms::transpose(m);
 
-    for (int i = 0; i < 4; ++i)
-        for (int j = 0; j < 2; ++j)
-            EXPECT_EQ(AT.get(i, j), 0);
+    EXPECT_EQ(out.get(5, 2), 7.5);
+
+    EXPECT_EQ(m.get(2, 5), 7.5);
+
+    EXPECT_EQ(out.get(2, 3), 0.0);
 }
 
-// 3) Single element moves to swapped coordinate
-TEST(Transpose, SingleElement)
+TEST(Transpose, MultipleEntries_AllMoveCorrectly)
 {
-    using V = int;
-    auto A = make_mat<LayoutTag, I, V>(4, 3, {{2, 1, 9}});
+    Matrix m(3, 4);
+    insert_all(m, {
+                      {0, 0, 1.0},
+                      {0, 3, 2.0},
+                      {2, 1, 3.0},
+                  });
 
-    auto AT = spira::algorithms::transpose(A);
+    auto out = spira::algorithms::transpose(m);
 
-    EXPECT_EQ(AT.n_rows(), 3u);
-    EXPECT_EQ(AT.n_cols(), 4u);
+    EXPECT_EQ(out.get(0, 0), 1.0);
+    EXPECT_EQ(out.get(3, 0), 2.0);
+    EXPECT_EQ(out.get(1, 2), 3.0);
 
-    EXPECT_EQ(AT.get(1, 2), 9);
-    EXPECT_EQ(AT.get(2, 1), 0);
+    EXPECT_EQ(out.get(2, 0), 0.0);
+    EXPECT_EQ(out.get(0, 2), 0.0);
+
+    EXPECT_EQ(m.get(0, 3), 2.0);
+    EXPECT_EQ(m.get(2, 1), 3.0);
 }
 
-// 4) General sparse example
-TEST(Transpose, GeneralSparseExample)
+TEST(Transpose, DoubleTranspose_ReturnsOriginalValuesAndShape)
 {
-    using V = int;
+    Matrix m(2, 3);
+    insert_all(m, {
+                      {0, 1, 11.0},
+                      {1, 2, 22.0},
+                  });
 
-    // A (3x4):
-    // [0 5 0 0]
-    // [7 0 0 2]
-    // [0 0 3 0]
-    auto A = make_mat<LayoutTag, I, V>(3, 4, {{0, 1, 5}, {1, 0, 7}, {1, 3, 2}, {2, 2, 3}});
+    auto t1 = spira::algorithms::transpose(m);
+    auto t2 = spira::algorithms::transpose(t1);
 
-    auto AT = spira::algorithms::transpose(A);
+    expect_same_shape(m, t2);
 
-    // AT (4x3):
-    // [0 7 0]
-    // [5 0 0]
-    // [0 0 3]
-    // [0 2 0]
-    std::vector<std::vector<V>> ref = {
-        {0, 7, 0},
-        {5, 0, 0},
-        {0, 0, 3},
-        {0, 2, 0}};
+    EXPECT_EQ(t2.get(0, 1), 11.0);
+    EXPECT_EQ(t2.get(1, 2), 22.0);
 
-    expect_dense_equal(AT, ref);
+    EXPECT_EQ(t2.get(0, 2), 0.0);
 }
 
-// 5) Involution: transpose(transpose(A)) == A
-TEST(Transpose, DoubleTransposeIsOriginal)
+// ----------------------------
+// transpose_itself() tests
+// ----------------------------
+
+TEST(TransposeItself, ThrowsOnNonSquare)
 {
-    using V = int;
-
-    auto A = make_mat<LayoutTag, I, V>(5, 3, {{0, 0, 1}, {0, 2, 4}, {2, 1, -3}, {4, 2, 8}});
-
-    auto AT = spira::algorithms::transpose(A);
-    auto ATT = spira::algorithms::transpose(AT);
-
-    // Compare dense via get()
-    ASSERT_EQ(ATT.n_rows(), A.n_rows());
-    ASSERT_EQ(ATT.n_cols(), A.n_cols());
-
-    for (int i = 0; i < static_cast<int>(A.n_rows()); ++i)
-        for (int j = 0; j < static_cast<int>(A.n_cols()); ++j)
-            EXPECT_EQ(ATT.get(i, j), A.get(i, j)) << "at (" << i << "," << j << ")";
+    Matrix m(2, 3);
+    EXPECT_THROW(spira::algorithms::transpose_itself(m), std::logic_error);
 }
 
-// 6) Floating point values (NEAR)
-TEST(Transpose, DoubleValues)
+TEST(TransposeItself, WorksOnSquare_SingleElement)
 {
-    using V = double;
+    Matrix m(4, 4);
+    m.insert(1, 3, 9.0);
 
-    auto A = make_mat<LayoutTag, I, V>(2, 3, {{0, 2, 0.25}, {1, 0, -1.5}});
+    spira::algorithms::transpose_itself(m);
 
-    auto AT = spira::algorithms::transpose(A);
-
-    EXPECT_NEAR(AT.get(2, 0), 0.25, 1e-9);
-    EXPECT_NEAR(AT.get(0, 1), -1.5, 1e-9);
+    EXPECT_EQ(m.get(3, 1), 9.0);
+    EXPECT_EQ(m.get(1, 3), 0.0);
 }
 
-// 7) Dense-ish random pattern sanity (still small)
-TEST(Transpose, ManyEntriesSanity)
+TEST(TransposeItself, WorksOnSquare_ManyEntries)
 {
-    using V = int;
-    Mat<LayoutTag, I, V> A(3, 3);
+    Matrix m(3, 3);
+    insert_all(m, {
+                      {0, 2, 5.0},
+                      {1, 0, 6.0},
+                      {2, 1, 7.0},
+                  });
 
-    A.insert(0, 0, 1);
-    A.insert(1, 1, 2);
-    A.insert(2, 2, 3);
-    A.insert(0, 2, 4);
-    A.insert(2, 0, 5);
+    spira::algorithms::transpose_itself(m);
 
-    auto AT = spira::algorithms::transpose(A);
+    EXPECT_EQ(m.get(2, 0), 5.0);
+    EXPECT_EQ(m.get(0, 1), 6.0);
+    EXPECT_EQ(m.get(1, 2), 7.0);
 
-    EXPECT_EQ(AT.get(0, 0), 1);
-    EXPECT_EQ(AT.get(1, 1), 2);
-    EXPECT_EQ(AT.get(2, 2), 3);
-    EXPECT_EQ(AT.get(2, 0), 4);
-    EXPECT_EQ(AT.get(0, 2), 5);
+    EXPECT_EQ(m.get(0, 2), 0.0);
+    EXPECT_EQ(m.get(1, 0), 0.0);
+    EXPECT_EQ(m.get(2, 1), 0.0);
+}
+
+TEST(TransposeItself, DoubleTransposeItself_ReturnsOriginal)
+{
+    Matrix m(3, 3);
+    insert_all(m, {
+                      {0, 1, 1.25},
+                      {2, 2, 4.5},
+                      {1, 0, -3.0},
+                  });
+
+    const auto a01 = m.get(0, 1);
+    const auto a22 = m.get(2, 2);
+    const auto a10 = m.get(1, 0);
+
+    spira::algorithms::transpose_itself(m);
+    spira::algorithms::transpose_itself(m);
+
+    EXPECT_EQ(m.get(0, 1), a01);
+    EXPECT_EQ(m.get(2, 2), a22);
+    EXPECT_EQ(m.get(1, 0), a10);
 }
