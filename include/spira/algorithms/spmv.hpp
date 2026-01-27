@@ -4,7 +4,6 @@
 
 namespace spira::algorithms
 {
-
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void spmv(const spira::matrix<Layout, I, V> &matrix, const std::vector<V> &x, std::vector<V> &y)
     {

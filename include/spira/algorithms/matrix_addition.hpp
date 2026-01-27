@@ -1,20 +1,28 @@
 #pragma once
 
-#include <spira/spira.hpp>
+#include <cstddef>
+#include <stdexcept>
+#include <utility>
+
+#include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
 {
-
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {
-        if(A.is_dirty()){
+        out.clear();
+
+        if (A.is_dirty())
+        {
             A.flush();
         }
-        if(B.is_dirty()){
+
+        if (B.is_dirty())
+        {
             B.flush();
         }
-        
+
         auto itA = A.begin();
         auto itB = B.begin();
         const auto endA = A.end();
@@ -67,21 +75,45 @@ namespace spira::algorithms
     {
         if (A.get_shape() != B.get_shape())
         {
-            throw std::invalid_argument("Mactices aren't the same size");
+            throw std::invalid_argument("Matrices aren't the same size");
         }
 
-        spira::matrix<Layout, I, V> out(A.get_shape().first, A.get_shape().second);
+        const auto [r, c] = A.get_shape();
+        spira::matrix<Layout, I, V> out(r, c);
 
         out.set_mode(spira::mode::matrix_mode::insert_heavy);
 
-        for (size_t i = 0; i < A.n_rows(); i++)
+        for (std::size_t i = 0; i < A.n_rows(); ++i)
         {
-            I ri = static_cast<I>(i);
+            const I ri = static_cast<I>(i);
             addRows(A.getRowAt(ri), B.getRowAt(ri), out.getMutableRowAt(ri));
         }
 
-        out.set_mode(spira::mode::matrix_mode::balanced);
-
         return out;
     }
+
+    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
+    void MatrixAdditionInPlace(spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
+    {
+        if (A.get_shape() != B.get_shape())
+        {
+            throw std::invalid_argument("Matrices aren't the same size");
+        }
+
+        A.set_mode(spira::mode::matrix_mode::insert_heavy);
+
+        for (std::size_t i = 0; i < A.n_rows(); ++i)
+        {
+            const I ri = static_cast<I>(i);
+
+            auto tmp = A.getRowAt(ri);
+            tmp.clear();
+
+            addRows(A.getRowAt(ri), B.getRowAt(ri), tmp);
+
+            using std::swap;
+            swap(A.getMutableRowAt(ri), tmp);
+        }
+    }
+
 }

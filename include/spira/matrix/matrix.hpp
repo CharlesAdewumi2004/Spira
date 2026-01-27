@@ -23,9 +23,10 @@ namespace spira
         using storageType = row<LayoutTag, I, V>;
 
         explicit matrix(std::size_t row_limit, std::size_t column_limit);
-        matrix(std::size_t row_limit, std::size_t column_limit, std::size_t reserve_per_row);
+        matrix(std::size_t row_limit, std::size_t column_limit,
+               std::size_t reserve_per_row);
 
-        [[nodiscard]] std::pair<std::size_t, std::size_t> get_shape() const noexcept;
+        [[nodiscard]] const std::pair<std::size_t, std::size_t> get_shape() const noexcept;
         [[nodiscard]] std::size_t n_rows() const noexcept;
         [[nodiscard]] std::size_t n_cols() const noexcept;
 
@@ -80,6 +81,35 @@ namespace spira
             return rows_[static_cast<std::size_t>(row_index)].is_dirty();
         }
 
+        //special member functions
+        ~matrix() = default;
+        matrix(const matrix &other) = default;
+        matrix(matrix &&other) = default;
+        matrix &operator=(const matrix &other) = default;
+        matrix &operator=(matrix &&other) = default;
+
+        // add/sub
+        matrix operator+(const matrix &other) const;
+        matrix operator-(const matrix &other) const;
+        matrix &operator+=(const matrix &other);
+        matrix &operator-=(const matrix &other);
+
+        // spgemm
+        matrix operator*(const matrix &other) const;
+        matrix &operator*=(const matrix &other);
+
+        // spmv
+        std::vector<V> operator*(const std::vector<V> &x) const; // returns y
+
+        // scalar
+        matrix operator*(V s) const;
+        matrix &operator*=(V s);
+        matrix operator/(V s) const;
+        matrix &operator/=(V s);
+
+        // tranpose
+        matrix operator~() const;
+
     private:
         void validate_row_index(I row_index) const
         {
@@ -100,8 +130,8 @@ namespace spira
     private:
         mode::matrix_mode mode_{mode::matrix_mode::balanced};
         mutable std::vector<storageType> rows_{};
-        std::size_t const row_limit_;
-        std::size_t const column_limit_;
+        std::size_t row_limit_;
+        std::size_t column_limit_;
     };
 
     // -----------------------------
@@ -115,10 +145,10 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    matrix<LayoutTag, I, V>::matrix(std::size_t row_limit,
-                                    std::size_t column_limit,
+    matrix<LayoutTag, I, V>::matrix(std::size_t row_limit, std::size_t column_limit,
                                     std::size_t reserve_per_row)
-        : mode_{mode::matrix_mode::balanced}, rows_{}, row_limit_{row_limit}, column_limit_{column_limit}
+        : mode_{mode::matrix_mode::balanced}, rows_{}, row_limit_{row_limit},
+          column_limit_{column_limit}
     {
         rows_.reserve(row_limit_);
         for (std::size_t r = 0; r < row_limit_; ++r)
@@ -132,7 +162,7 @@ namespace spira
     // -----------------------------
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    std::pair<std::size_t, std::size_t> matrix<LayoutTag, I, V>::get_shape() const noexcept
+    const std::pair<std::size_t, std::size_t> matrix<LayoutTag, I, V>::get_shape() const noexcept
     {
         return {row_limit_, column_limit_};
     }
@@ -210,14 +240,16 @@ namespace spira
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    [[nodiscard]] const row<LayoutTag, I, V> &matrix<LayoutTag, I, V>::getRowAt(I row_index) const
+    [[nodiscard]] const row<LayoutTag, I, V> &
+    matrix<LayoutTag, I, V>::getRowAt(I row_index) const
     {
         validate_row_index(row_index);
         return rows_[row_index];
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    [[nodiscard]] row<LayoutTag, I, V> &matrix<LayoutTag, I, V>::getMutableRowAt(I row_index)
+    [[nodiscard]] row<LayoutTag, I, V> &
+    matrix<LayoutTag, I, V>::getMutableRowAt(I row_index)
     {
         validate_row_index(row_index);
         return rows_[row_index];
@@ -337,5 +369,4 @@ namespace spira
             r.flush();
         }
     }
-
 }

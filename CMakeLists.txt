@@ -84,6 +84,7 @@ if (SPIRA_BUILD_TESTS)
       tests/transpose_tests.cpp
       tests/matrix_addition_tests.cpp
       tests/scaler_tests.cpp
+      tests/matrix_operator_overloads_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira boundcraft GTest::gtest_main)
