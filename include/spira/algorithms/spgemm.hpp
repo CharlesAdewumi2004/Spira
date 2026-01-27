@@ -19,7 +19,7 @@ namespace spira::algorithms
 
         for (I i = 0; i < static_cast<I>(A.n_rows()); ++i)
         {
-            std::unordered_map<I, V> acc;
+            ankerl::unordered_dense::map<I, V> acc;
 
             auto &arow = A.row_at(i);
 

@@ -62,12 +62,11 @@ namespace spira::algorithms
         }
         for (; chunk_it != chunk_end; ++chunk_it)
         {
-            auto [c, v] = *chunk_it;
             auto [chunk_col, chunk_val] = *chunk_it;
             if(spira::traits::ValueTraits<decltype(chunk_val)>::is_zero(chunk_val)){
                 continue;
             }
-            tmp.push_back(c, v);
+            tmp.push_back(chunk_col, chunk_val);
         }
 
         slab.swap(tmp);
