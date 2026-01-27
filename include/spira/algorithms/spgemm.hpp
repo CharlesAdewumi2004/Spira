@@ -21,10 +21,10 @@ namespace spira::algorithms
         {
             std::unordered_map<I, V> acc;
 
-            auto &arow = A.getRowAt(i);
+            auto &arow = A.row_at(i);
 
             arow.for_each_element([&](I k, const V &a_ik){
-                auto& brow = B.getRowAt(k);
+                auto& brow = B.row_at(k);
 
                 brow.for_each_element([&](I j, const V& b_kj)
                 {

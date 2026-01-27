@@ -28,9 +28,9 @@ namespace spira
     inline matrix<LayoutTag, I, V>
     matrix<LayoutTag, I, V>::operator-(const matrix &other) const
     {
-        matrix out(other);                                    // copy B
-        algorithms::multiplication_scaler(other, out, V{-1}); // out = -B
-        return algorithms::MatrixAddition(*this, out);        // A + (-B)
+        matrix out(other);
+        algorithms::multiplication_scaler(other, out, V{-1});
+        return algorithms::MatrixAddition(*this, out);
     }
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>

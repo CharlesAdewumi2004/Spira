@@ -20,14 +20,14 @@ using LayoutTag = spira::layout::tags::aos_tag;
 // -------------------------
 template <class M>
 static void expect_same_shape(const M& A, const M& B) {
-    EXPECT_EQ(A.get_shape().first,  B.get_shape().first);
-    EXPECT_EQ(A.get_shape().second, B.get_shape().second);
+    EXPECT_EQ(A.shape().first,  B.shape().first);
+    EXPECT_EQ(A.shape().second, B.shape().second);
 }
 
 template <class M>
 static void expect_matrix_eq(const M& A, const M& B, double eps = 1e-12) {
-    auto [rA, cA] = A.get_shape();
-    auto [rB, cB] = B.get_shape();
+    auto [rA, cA] = A.shape();
+    auto [rB, cB] = B.shape();
     ASSERT_EQ(rA, rB);
     ASSERT_EQ(cA, cB);
 
@@ -110,7 +110,7 @@ static std::vector<std::vector<V>> dense_transpose(const std::vector<std::vector
 
 template <class M>
 static std::vector<std::vector<V>> to_dense(const M& A) {
-    auto [R, C] = A.get_shape();
+    auto [R, C] = A.shape();
     std::vector<std::vector<V>> out(R, std::vector<V>(C, 0));
     for (std::size_t r = 0; r < R; ++r)
         for (std::size_t c = 0; c < C; ++c)
@@ -285,8 +285,8 @@ TEST(MatrixOps, Transpose) {
     M T = ~A;
 
     // shape flip: 2x3 -> 3x2
-    EXPECT_EQ(T.get_shape().first,  3u);
-    EXPECT_EQ(T.get_shape().second, 2u);
+    EXPECT_EQ(T.shape().first,  3u);
+    EXPECT_EQ(T.shape().second, 2u);
 
     expect_matrix_eq(T, Tref);
 }

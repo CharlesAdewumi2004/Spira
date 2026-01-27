@@ -73,12 +73,12 @@ namespace spira::algorithms
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     spira::matrix<Layout, I, V> MatrixAddition(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
     {
-        if (A.get_shape() != B.get_shape())
+        if (A.shape() != B.shape())
         {
             throw std::invalid_argument("Matrices aren't the same size");
         }
 
-        const auto [r, c] = A.get_shape();
+        const auto [r, c] = A.shape();
         spira::matrix<Layout, I, V> out(r, c);
 
         out.set_mode(spira::mode::matrix_mode::insert_heavy);
@@ -86,7 +86,7 @@ namespace spira::algorithms
         for (std::size_t i = 0; i < A.n_rows(); ++i)
         {
             const I ri = static_cast<I>(i);
-            addRows(A.getRowAt(ri), B.getRowAt(ri), out.getMutableRowAt(ri));
+            addRows(A.row_at(ri), B.row_at(ri), out.row_at_mut(ri));
         }
 
         return out;
@@ -95,7 +95,7 @@ namespace spira::algorithms
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void MatrixAdditionInPlace(spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
     {
-        if (A.get_shape() != B.get_shape())
+        if (A.shape() != B.shape())
         {
             throw std::invalid_argument("Matrices aren't the same size");
         }
@@ -106,13 +106,13 @@ namespace spira::algorithms
         {
             const I ri = static_cast<I>(i);
 
-            auto tmp = A.getRowAt(ri);
+            auto tmp = A.row_at(ri);
             tmp.clear();
 
-            addRows(A.getRowAt(ri), B.getRowAt(ri), tmp);
+            addRows(A.row_at(ri), B.row_at(ri), tmp);
 
             using std::swap;
-            swap(A.getMutableRowAt(ri), tmp);
+            swap(A.row_at_mut(ri), tmp);
         }
     }
 

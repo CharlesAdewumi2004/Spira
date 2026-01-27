@@ -27,8 +27,8 @@ namespace
 
     void expect_same_shape(const Matrix &a, const Matrix &b)
     {
-        auto [ar, ac] = a.get_shape();
-        auto [br, bc] = b.get_shape();
+        auto [ar, ac] = a.shape();
+        auto [br, bc] = b.shape();
         EXPECT_EQ(ar, br);
         EXPECT_EQ(ac, bc);
     }
@@ -44,7 +44,7 @@ TEST(Transpose, EmptyMatrix_ShapeSwapsAndStaysEmpty)
     Matrix m(3, 5);
     auto out = spira::algorithms::transpose(m);
 
-    auto [r, c] = out.get_shape();
+    auto [r, c] = out.shape();
     EXPECT_EQ(r, 5u);
     EXPECT_EQ(c, 3u);
 
@@ -52,7 +52,7 @@ TEST(Transpose, EmptyMatrix_ShapeSwapsAndStaysEmpty)
     EXPECT_EQ(out.get(4, 2), 0.0);
 
     // Input should be unchanged
-    auto [mr, mc] = m.get_shape();
+    auto [mr, mc] = m.shape();
     EXPECT_EQ(mr, 3u);
     EXPECT_EQ(mc, 5u);
 }

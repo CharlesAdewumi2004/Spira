@@ -173,7 +173,7 @@ TEST(MatrixAddition, AddsMatricesElementwise_Sparse)
 
     auto C = spira::algorithms::MatrixAddition(A, B);
 
-    auto [r, c] = C.get_shape();
+    auto [r, c] = C.shape();
     EXPECT_EQ(r, 3u);
     EXPECT_EQ(c, 4u);
 
