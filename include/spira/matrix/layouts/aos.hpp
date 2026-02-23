@@ -201,12 +201,12 @@ namespace spira::layout
             return static_cast<size_type>(std::distance(elements.begin(), it));
         }
 
-        std::span<elementPair<I, V>> data()
+        std::span<elementPair<I, V>> data() noexcept
         {
             return std::span{elements};
         }
 
-        const std::span<elementPair<I, V>> cdata()
+        std::span<const elementPair<I, V>> data() const noexcept
         {
             return std::span{elements};
         }

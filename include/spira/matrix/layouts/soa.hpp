@@ -358,12 +358,12 @@ namespace spira::layout
             return static_cast<size_type>(it - columns_.begin());
         }
 
-        std::pair<std::span<I>, std::span<V>> data()
+        std::pair<std::span<I>, std::span<V>> data() noexcept
         {
             return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
         }
 
-        const std::pair<std::span<I>, std::span<V>> cdata()
+        std::pair<std::span<const I>, std::span<const V>> data() const noexcept
         {
             return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
         }
