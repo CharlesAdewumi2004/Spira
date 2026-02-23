@@ -81,5 +81,4 @@ namespace spira::config
     using soa_search_policy = boundcraft::policy::hybrid<32>;
 
     inline constexpr std::size_t default_row_reserve_hint = 0;
-
 }
