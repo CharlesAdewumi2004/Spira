@@ -1,12 +1,22 @@
+# Build
 build/
 build_release/
+
+# IDE
+.idea/
+.vscode/
+.cache/
+
+# CMake
 cmake-build-*/
-.vscode
-.idea
-*.o
-*.obj
-*.a
-*.so
-*.dylib
-*.json
-perf*
+CMakeUserPresets.json
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+.clang-format
+.vscode/

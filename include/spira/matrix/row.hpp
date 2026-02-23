@@ -108,7 +108,6 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     auto cend() const noexcept { return slab_.cend(); }
 
     auto data() noexcept { return slab_.data(); }
-
     auto data() const noexcept { return slab_.data(); }
 
   private:

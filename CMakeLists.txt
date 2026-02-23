@@ -13,7 +13,7 @@ endif()
 option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
 option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  ON)
 
-# We’ll use FetchContent for deps
+# We'll use FetchContent for deps
 include(FetchContent)
 
 # -------------------------------------------------------------------
