@@ -358,6 +358,16 @@ namespace spira::layout
             return static_cast<size_type>(it - columns_.begin());
         }
 
+        std::pair<std::span<I>, std::span<V>> data()
+        {
+            return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
+        }
+
+        const std::pair<std::span<I>, std::span<V>> cdata()
+        {
+            return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
+        }
+
         iterator begin() noexcept { return iterator(columns_.data(), values_.data()); }
         iterator end() noexcept { return iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
 

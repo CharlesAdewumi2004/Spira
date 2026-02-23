@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <span>
 
 #include <spira/config.hpp>
 #include <spira/concepts.hpp>
@@ -198,6 +199,16 @@ namespace spira::layout
                 [](entry_type const &e, I key)
                 { return e.column < key; });
             return static_cast<size_type>(std::distance(elements.begin(), it));
+        }
+
+        std::span<elementPair<I, V>> data()
+        {
+            return std::span{elements};
+        }
+
+        const std::span<elementPair<I, V>> cdata()
+        {
+            return std::span{elements};
         }
 
         iterator begin() noexcept { return iterator(elements.data()); }
