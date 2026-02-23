@@ -90,40 +90,11 @@ namespace spira::buffer::impls
         {
             layout_policy chunk;
             chunk.reserve(sz_);
+            deduplicate();
 
-            auto key_of = [](auto const &x) -> decltype(auto)
-            {
-                if constexpr (requires { x.column; })
-                    return x.column;
-                else if constexpr (requires { x.first_ref(); })
-                    return x.first_ref();
-                else
-                    return x.first;
-            };
-
-            for (size_t i = sz_; i-- > 0;)
-            {
-                I col = buf_[i].column;
-
-                bool seen = false;
-                for (auto it = chunk.begin(); it != chunk.end(); ++it)
-                {
-                    if (key_of(*it) == col)
-                    {
-                        seen = true;
-                        break;
-                    }
-                }
-                if (!seen)
-                    chunk.push_back(buf_[i].column, buf_[i].value);
+            for(size_t i = 0; i < sz_; i++){
+                chunk.push_back(buf_[i].column, buf_[i].value);
             }
-
-            if (chunk.empty())
-                return chunk;
-
-            std::stable_sort(chunk.begin(), chunk.end(),
-                             [&](auto const &a, auto const &b)
-                             { return key_of(a) < key_of(b); });
 
             clear();
             return chunk;
@@ -133,36 +104,23 @@ namespace spira::buffer::impls
         mutable std::array<entry_type, N> buf_{};
         mutable size_type sz_{0};
 
-        void deduplicate() const noexcept
+        void  deduplicate() const noexcept
         {
-            std::array<entry_type, N> tmp;
-            size_t out = 0;
+            if (sz_ == 0)
+                return;
 
-            for (size_t i = sz_; i-- > 0;)
-            {
-                bool seen = false;
+            auto first = buf_.begin();
+            auto last = first + sz_;
 
-                for (size_t j = 0; j < out; j++)
-                {
-                    if (tmp[j].column == buf_[i].column)
-                    {
-                        seen = true;
-                        break;
-                    }
-                }
+            std::reverse(first, last);
 
-                if (seen == false)
-                {
-                    tmp[out++] = buf_[i];
-                }
-            }
+            std::stable_sort(first, last, [](const auto &a, const auto &b)
+                             { return a.first_ref() < b.first_ref(); });
 
-            for (size_t i = 0; i < out; i++)
-            {
-                buf_[i] = tmp[i];
-            }
+            auto it = std::unique(first, last, [](const auto &a, const auto &b)
+                                  { return a.first_ref() == b.first_ref(); });
 
-            sz_ = out;
+            sz_ = static_cast<size_t>(std::distance(first, it));
         }
     };
 }

@@ -15,8 +15,9 @@ namespace spira::config
         constexpr void validate_or_throw() const
         {
             if (buffersize == 0)
-                throw std::invalid_argument(
-                    "mode_policy: buffersize must be > 0");
+            {
+                throw std::invalid_argument("mode_policy: buffersize must be > 0");
+            }
         }
     };
 
@@ -62,7 +63,6 @@ namespace spira::config
             return *this;
         }
 
-        // Finalize
         mode_policy build() const
         {
             policy_.validate_or_throw();
@@ -70,8 +70,7 @@ namespace spira::config
         }
 
     private:
-        explicit constexpr mode_policy_builder(mode_policy base)
-            : policy_(base)
+        explicit constexpr mode_policy_builder(mode_policy base) : policy_(base)
         {
         }
 
@@ -80,7 +79,7 @@ namespace spira::config
 
     using aos_search_policy = boundcraft::policy::hybrid<32>;
     using soa_search_policy = boundcraft::policy::hybrid<32>;
-    
+
     inline constexpr std::size_t default_row_reserve_hint = 0;
 
 }

@@ -25,7 +25,6 @@ namespace spira::layout
 
         operator std::pair<I, V>() const { return {*first, *second}; }
 
-        // write-through from pair
         soa_ref &operator=(std::pair<I, V> const &x)
         {
             *first = x.first;
@@ -379,7 +378,7 @@ namespace spira::layout
         std::vector<I> columns_;
         std::vector<V> values_;
     };
-} // namespace spira::layout
+}
 
 // =============================
 // tuple protocol for bindings
