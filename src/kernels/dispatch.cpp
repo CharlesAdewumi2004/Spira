@@ -1,5 +1,5 @@
 #include "cpu_detect.h"
-#include "spira/Kernels/kernels.h"
+#include "spira/kernels/kernels.h"
 #include <stddef.h>
 
 // ---- Always available (all platforms) ----
