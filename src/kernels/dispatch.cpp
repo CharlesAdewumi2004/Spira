@@ -3,32 +3,32 @@
 #include <stddef.h>
 
 // ---- Always available (all platforms) ----
-extern double sparse_dot_double_scalar(const double*, const int*, const double*, size_t);
-extern float  sparse_dot_float_scalar(const float*, const int*, const float*, size_t);
+extern double sparse_dot_double_scalar(const double*, const uint32_t*, const double*, size_t);
+extern float  sparse_dot_float_scalar(const float*, const uint32_t*, const float*, size_t);
 
 #if defined(SPIRA_ARCH_X86)
 // ---- x86: SSE4.2 ----
-extern double sparse_dot_double_sse(const double*, const int*, const double*, size_t);
-extern float  sparse_dot_float_sse(const float*, const int*, const float*, size_t);
+extern double sparse_dot_double_sse(const double*, const uint32_t*, const double*, size_t);
+extern float  sparse_dot_float_sse(const float*, const uint32_t*, const float*, size_t);
 
 // ---- x86: AVX2 + FMA ----
-extern double sparse_dot_double_avx2(const double*, const int*, const double*, size_t);
-extern float  sparse_dot_float_avx2(const float*, const int*, const float*, size_t);
+extern double sparse_dot_double_avx2(const double*, const uint32_t*, const double*, size_t);
+extern float  sparse_dot_float_avx2(const float*, const uint32_t*, const float*, size_t);
 
 // ---- x86: AVX-512 ----
-extern double sparse_dot_double_avx512(const double*, const int*, const double*, size_t);
-extern float  sparse_dot_float_avx512(const float*, const int*, const float*, size_t);
+extern double sparse_dot_double_avx512(const double*, const uint32_t*, const double*, size_t);
+extern float  sparse_dot_float_avx512(const float*, const uint32_t*, const float*, size_t);
 #endif
 
 #if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
 // ---- ARM: NEON ----
-extern double sparse_dot_double_neon(const double*, const int*, const double*, size_t);
-extern float  sparse_dot_float_neon(const float*, const int*, const float*, size_t);
+extern double sparse_dot_double_neon(const double*, const uint32_t*, const double*, size_t);
+extern float  sparse_dot_float_neon(const float*, const uint32_t*, const float*, size_t);
 #endif
 
 namespace spira::kernel {
-double (*sparse_dot_double)(const double *vals, const int *cols, const double *x, size_t n);
-float (*sparse_dot_float)(const float *vals, const int *cols, const float *x, size_t n);
+double (*sparse_dot_double)(const double *vals, const uint32_t *cols, const double *x, size_t n);
+float (*sparse_dot_float)(const float *vals, const uint32_t *cols, const float *x, size_t n);
 }
 
 static struct KernelInit {
