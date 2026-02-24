@@ -1,6 +1,4 @@
 #include "../src/kernels/simd_aliases.h"
-#include <cstddef>
-
 namespace spira::kernel::dot {
 using namespace spira::kernel::simd;
 
