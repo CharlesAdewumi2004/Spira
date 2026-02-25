@@ -1,4 +1,3 @@
-#include "../src/kernels/cpu_detect.h"
 
 #if defined(SPIRA_ARCH_X86)
 

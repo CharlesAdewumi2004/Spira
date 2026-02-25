@@ -1,5 +1,6 @@
-#include "../src/kernels/cpu_detect.h"
-#include "../src//kernels/simd_aliases_x86/simd_avx_aliases.h"
+#include <immintrin.h>
+#include <cstddef>
+#include <cstdint>
 
 #if defined(SPIRA_ARCH_X86)
 
