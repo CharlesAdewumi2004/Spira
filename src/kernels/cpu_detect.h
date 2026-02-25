@@ -8,11 +8,17 @@
 // ============================================================================
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#define SPIRA_ARCH_X86 1
+  #ifndef SPIRA_ARCH_X86
+    #define SPIRA_ARCH_X86 1
+  #endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#define SPIRA_ARCH_ARM64 1
+  #ifndef SPIRA_ARCH_ARM64
+    #define SPIRA_ARCH_ARM64 1
+  #endif
 #elif defined(__arm__) || defined(_M_ARM)
-#define SPIRA_ARCH_ARM32 1
+  #ifndef SPIRA_ARCH_ARM32
+    #define SPIRA_ARCH_ARM32 1
+  #endif
 #endif
 
 // ============================================================================

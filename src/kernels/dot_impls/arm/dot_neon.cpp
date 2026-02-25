@@ -6,8 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace spira::kernel::dot {
-
 double sparse_dot_double_neon(const double *vals, const uint32_t *cols, const double *x, size_t n) {
     size_t i = 0;
     float64x2_t acc = vdupq_n_f64(0.0); // [0.0, 0.0]
@@ -61,7 +59,5 @@ float sparse_dot_float_neon(const float *vals, const uint32_t *cols, const float
 
     return result;
 }
-
-} // namespace spira::kernel::dot
 
 #endif

@@ -14,7 +14,6 @@ option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
 option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  ON)
 option(SPIRA_ENABLE_SIMD       "Build SIMD-accelerated kernels" ON)
 
-# We'll use FetchContent for deps
 include(FetchContent)
 
 # -------------------------------------------------------------------
@@ -49,76 +48,101 @@ FetchContent_MakeAvailable(unordered_dense)
 
 # ---------- Library (header-only core) ----------
 add_library(spira INTERFACE)
-target_include_directories(spira INTERFACE ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(spira INTERFACE
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+)
 target_compile_features(spira INTERFACE cxx_std_23)
 
 # Make deps available to all spira consumers
 target_link_libraries(spira INTERFACE unordered_dense::unordered_dense ${_BOUNDCRAFT_TARGET})
 
+# ---------- Architecture Detection ----------
+unset(SPIRA_ARCH_X86 CACHE)
+unset(SPIRA_ARCH_ARM64 CACHE)
+unset(SPIRA_ARCH_ARM32 CACHE)
+
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
+  set(SPIRA_ARCH_X86 TRUE)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+  set(SPIRA_ARCH_ARM64 TRUE)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "armv[78]")
+  set(SPIRA_ARCH_ARM32 TRUE)
+endif()
+
 # ---------- SIMD Kernel Library ----------
 if (SPIRA_ENABLE_SIMD)
+
   set(KERNEL_SOURCES
     src/kernels/dispatch.cpp
     src/kernels/dot_impls/dot_scalar.cpp
   )
 
-   # x86 SIMD sources — only on x86 architectures
-   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
-        list(APPEND KERNEL_SOURCES
-        src/kernels/dot_impls/dot_scalar.cpp
+  if (SPIRA_ARCH_X86)
+    list(APPEND KERNEL_SOURCES
+      src/kernels/dot_impls/x86/dot_sse.cpp
+      src/kernels/dot_impls/x86/dot_avx2.cpp
+      src/kernels/dot_impls/x86/dot_avx512.cpp
     )
   endif()
 
-#   # ARM SIMD sources — only on ARM architectures
-#   if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64|armv[78]")
-#     list(APPEND KERNEL_SOURCES
-#       src/kernels/dot_neon.cpp
-#     )
-#   endif()
+  if (SPIRA_ARCH_ARM64 OR SPIRA_ARCH_ARM32)
+    list(APPEND KERNEL_SOURCES
+      src/kernels/dot_impls/arm/dot_neon.cpp
+    )
+  endif()
 
   add_library(spira_kernels STATIC ${KERNEL_SOURCES})
-  target_include_directories(spira_kernels PUBLIC ${PROJECT_SOURCE_DIR}/include)
+  target_include_directories(spira_kernels PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  )
+  target_include_directories(spira_kernels PRIVATE ${PROJECT_SOURCE_DIR}/src)
   target_compile_features(spira_kernels PUBLIC cxx_std_23)
 
-  # Per-file SIMD compile flags (x86 — GCC/Clang)
-  if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
+  if (SPIRA_ARCH_X86)
+    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_X86)
+  elseif (SPIRA_ARCH_ARM64)
+    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_ARM64)
+  elseif (SPIRA_ARCH_ARM32)
+    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_ARM32)
+  endif()
+
+  # Per-file SIMD compile flags (x86)
+  if (SPIRA_ARCH_X86)
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-      set_source_files_properties(src/kernels/dot_sse.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
         PROPERTIES COMPILE_OPTIONS "-msse4.2"
       )
-      set_source_files_properties(src/kernels/dot_avx2.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx2.cpp
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
       )
-      set_source_files_properties(src/kernels/dot_avx512.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
         PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512vl;-mavx512bw;-mavx512dq"
       )
-    elseif (MSVC)
-      set_source_files_properties(src/kernels/dot_sse.cpp
+    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
         PROPERTIES COMPILE_OPTIONS "/arch:SSE2"
       )
-      set_source_files_properties(src/kernels/dot_avx2.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx2.cpp
         PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
       )
-      set_source_files_properties(src/kernels/dot_avx512.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
         PROPERTIES COMPILE_OPTIONS "/arch:AVX512"
       )
     endif()
   endif()
 
-  # ARM: NEON is enabled by default on aarch64, no special flags needed
-
-  # Link kernels into spira
   target_link_libraries(spira INTERFACE spira_kernels)
 endif()
 
-# ---------- Perf-friendly flags for Debug / RelWithDebInfo ----------
+# ---------- Perf-friendly flags (apply only to your targets) ----------
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)
+  if (TARGET spira_kernels)
+    target_compile_options(spira_kernels PRIVATE -fno-omit-frame-pointer)
+  endif()
 endif()
 
 # ---------- Tests ----------
 if (SPIRA_BUILD_TESTS)
-  # Make sure no stale cache forces a local googletest path
   unset(FETCHCONTENT_SOURCE_DIR_GOOGLETEST CACHE)
   set(FETCHCONTENT_SOURCE_DIR_GOOGLETEST "" CACHE PATH "" FORCE)
 
@@ -144,14 +168,20 @@ if (SPIRA_BUILD_TESTS)
     tests/matrix_addition_tests.cpp
     tests/scaler_tests.cpp
     tests/matrix_operator_overloads_tests.cpp
+    tests/SIMD_dot_operator_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
+
+  if (SPIRA_ARCH_X86)
+  target_compile_definitions(unit_tests PRIVATE SPIRA_ARCH_X86)
+endif()
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
     target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    target_compile_options(unit_tests PRIVATE -fno-omit-frame-pointer)
   endif()
 
   if (UNIX AND NOT APPLE)
@@ -188,5 +218,6 @@ if (SPIRA_BUILD_BENCHMARKS)
     target_compile_options(GB_spira PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(GB_spira PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
     target_link_options(GB_spira PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    target_compile_options(GB_spira PRIVATE -fno-omit-frame-pointer)
   endif()
 endif()

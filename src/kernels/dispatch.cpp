@@ -37,7 +37,10 @@ static struct KernelInit {
         CpuFeatures cpu;
 
 #if defined(SPIRA_ARCH_X86)
-        if (cpu.avx2 && cpu.fma) {
+        if (cpu.avx512f) {
+            sparse_dot_double = sparse_dot_double_avx512;
+            sparse_dot_float = sparse_dot_float_avx512;
+        } else if (cpu.avx2 && cpu.fma) {
             sparse_dot_double = sparse_dot_double_avx2;
             sparse_dot_float = sparse_dot_float_avx2;
         } else if (cpu.sse42) {

@@ -1,11 +1,9 @@
 #ifndef SPIRA_KERNELS_SIMD_ALIASES_H
 #define SPIRA_KERNELS_SIMD_ALIASES_H
 
-#include <cstddef>
 #include <cstdint>
 #include <immintrin.h>
 
-namespace spira::kernel::simd {
 
 // ============================================================================
 // Register type aliases
@@ -821,6 +819,5 @@ inline reg512_double mask_fma_double_512(__mmask8 k, reg512_double a, reg512_dou
 }
 #endif
 
-} // namespace spira::kernel::simd
 
 #endif // SPIRA_KERNELS_SIMD_ALIASES_H

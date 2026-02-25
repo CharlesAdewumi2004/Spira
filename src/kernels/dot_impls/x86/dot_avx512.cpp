@@ -3,8 +3,6 @@
 #if defined(SPIRA_ARCH_X86)
 
 #include "../src/kernels/simd_aliases.h"
-namespace spira::kernel::dot {
-using namespace spira::kernel::simd;
 
 double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const double* x, size_t n) {
     size_t i = 0;
@@ -56,6 +54,5 @@ float sparse_dot_float_avx512(const float* vals, const uint32_t* cols, const flo
 
     return acc;
 }
-} // namespace spira::kernel::dot
 
 #endif

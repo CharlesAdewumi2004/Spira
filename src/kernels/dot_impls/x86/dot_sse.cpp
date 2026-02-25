@@ -4,9 +4,6 @@
 
 #include "../src/kernels/simd_aliases.h"
 
-namespace spira::kernel::dot {
-
-using namespace spira::kernel::simd;
 
 double sparse_dot_double_sse(const double* vals, const uint32_t* cols, const double* x, size_t n) {
     reg128_double acc = zero_double_128();
@@ -65,6 +62,6 @@ float sparse_dot_float_sse(const float* vals, const uint32_t* cols, const float*
     return result;
 }
 
-} // namespace spira::kernel::dot
+
 
 #endif
