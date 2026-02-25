@@ -1,3 +1,7 @@
+#include "../src/kernels/cpu_detect.h"
+
+#if defined(SPIRA_ARCH_X86)
+
 #include "../src/kernels/simd_aliases.h"
 
 namespace spira::kernel::dot {
@@ -62,3 +66,5 @@ float sparse_dot_float_sse(const float* vals, const uint32_t* cols, const float*
 }
 
 } // namespace spira::kernel::dot
+
+#endif

@@ -323,6 +323,9 @@ namespace spira
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
     void matrix<LayoutTag, I, V>::set_mode(mode::matrix_mode new_mode)
     {
+        if(new_mode == mode_){
+            return;
+        }
         mode_ = new_mode;
         for (auto &r : rows_)
         {

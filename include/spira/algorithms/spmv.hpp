@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <spira/kernels/kernels.h>
 #include <spira/matrix/matrix.hpp>
-#include <type_traits>
 #include <vector>
 
 namespace spira::algorithms {
@@ -56,7 +55,7 @@ spmv<layout::tags::soa_tag, uint32_t, float>(const spira::matrix<layout::tags::s
 template <>
 inline void
 spmv<layout::tags::soa_tag, uint32_t, double>(const spira::matrix<layout::tags::soa_tag, uint32_t, double> &matrix,
-                                             const std::vector<double> &x, std::vector<double> &y) {
+                                              const std::vector<double> &x, std::vector<double> &y) {
     using Layout = layout::tags::soa_tag;
     if (x.size() != matrix.n_cols()) {
         throw std::invalid_argument(
