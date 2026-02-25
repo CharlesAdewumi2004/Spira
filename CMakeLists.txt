@@ -80,7 +80,7 @@ if (SPIRA_ENABLE_SIMD)
   if (SPIRA_ARCH_X86)
     list(APPEND KERNEL_SOURCES
       src/kernels/dot_impls/x86/dot_sse.cpp
-      src/kernels/dot_impls/x86/dot_avx2.cpp
+      src/kernels/dot_impls/x86/dot_avx.cpp
       src/kernels/dot_impls/x86/dot_avx512.cpp
     )
   endif()
@@ -112,7 +112,7 @@ if (SPIRA_ENABLE_SIMD)
       set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
         PROPERTIES COMPILE_OPTIONS "-msse4.2"
       )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx2.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
       )
       set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
@@ -122,7 +122,7 @@ if (SPIRA_ENABLE_SIMD)
       set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
         PROPERTIES COMPILE_OPTIONS "/arch:SSE2"
       )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx2.cpp
+      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
         PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
       )
       set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp

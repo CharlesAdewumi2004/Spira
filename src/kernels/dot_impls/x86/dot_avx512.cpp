@@ -1,8 +1,7 @@
 #include "../src/kernels/cpu_detect.h"
+#include "../src//kernels/simd_aliases_x86/simd_avx_aliases.h"
 
 #if defined(SPIRA_ARCH_X86)
-
-#include "../src/kernels/simd_aliases.h"
 
 double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const double* x, size_t n) {
     size_t i = 0;
