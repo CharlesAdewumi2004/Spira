@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <iterator>
 #include <stdexcept>
@@ -100,15 +101,39 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
                                                                          std::declval<value_type &>())));
 
     // Container-like iteration over the slab (note: does not auto-flush).
-    auto begin() noexcept { return slab_.begin(); }
-    auto end() noexcept { return slab_.end(); }
-    auto begin() const noexcept { return slab_.begin(); }
-    auto end() const noexcept { return slab_.end(); }
-    auto cbegin() const noexcept { return slab_.cbegin(); }
-    auto cend() const noexcept { return slab_.cend(); }
+    auto begin() noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.begin();
+    }
+    auto end() noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.end();
+    }
+    auto begin() const noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.begin();
+    }
+    auto end() const noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.end();
+    }
+    auto cbegin() const noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.cbegin();
+    }
+    auto cend() const noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.cend();
+    }
 
-    auto data() noexcept { return slab_.data(); }
-    auto data() const noexcept { return slab_.data(); }
+    auto data() noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.data();
+    }
+    auto data() const noexcept {
+        assert(!dirty_ && "Operations requires flushed matrix");
+        return slab_.data();
+    }
 
   private:
     static constexpr size_type to_size(index_type i) noexcept { return static_cast<size_type>(i); }
@@ -358,9 +383,7 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 template <class Fn>
 void row<LayoutTag, I, V>::for_each_element(Fn &&f) const
     noexcept(noexcept(std::declval<Fn &>()(std::declval<index_type>(), std::declval<const value_type &>()))) {
-    if (dirty_) {
-        flush();
-    }
+    assert(!is_dirty() && "For each element requires a flushed matrix");
     for_each_slab_element(std::forward<Fn>(f));
 }
 
@@ -368,9 +391,7 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 template <class Fn>
 void row<LayoutTag, I, V>::for_each_element(Fn &&f) noexcept(
     noexcept(std::declval<Fn &>()(std::declval<index_type>(), std::declval<value_type &>()))) {
-    if (dirty_) {
-        flush();
-    }
+    assert(!is_dirty() && "For each element requires a flushed matrix");
     for_each_slab_element(std::forward<Fn>(f));
 }
 

@@ -13,6 +13,9 @@ namespace spira::algorithms
             throw std::invalid_argument("A.cols must equal B.rows");
         }
 
+        A.flush();
+        B.flush();
+
         spira::matrix<Layout, I, V> C(A.n_rows(), B.n_cols());
 
         C.set_mode(spira::mode::matrix_mode::insert_heavy);

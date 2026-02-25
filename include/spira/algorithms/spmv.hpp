@@ -17,6 +17,8 @@ inline void spmv(const spira::matrix<Layout, I, V> &matrix, const std::vector<V>
         throw std::invalid_argument("The size of the output vector y does not match the number of rows of the matrix");
     }
 
+    matrix.flush();
+
     auto SpMV = [&y, &x](const row<Layout, I, V> &row, I rowIndex) {
         V acc = traits::ValueTraits<V>::zero();
 

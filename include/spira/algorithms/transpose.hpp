@@ -7,6 +7,7 @@ namespace spira::algorithms
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     spira::matrix<Layout, I, V> transpose(const spira::matrix<Layout, I, V>& mat)
     {
+        mat.flush();
         auto [r, c] = mat.shape();
         spira::matrix<Layout, I, V> out(c, r);
 
@@ -34,6 +35,8 @@ namespace spira::algorithms
         if (r != c){
             throw std::logic_error("in-place transpose requires square matrix");
         }
+
+        mat.flush();
 
         auto out = transpose(mat);
         mat.swap(out);
