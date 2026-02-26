@@ -10,4 +10,5 @@
 #include <spira/matrix/matrix_operators.hpp>
 #include <spira/matrix/mode/matrix_mode.hpp>
 #include <spira/kernels/kernels.h>
+#include <spira/algorithms/accumulate.hpp>
 namespace spira {}

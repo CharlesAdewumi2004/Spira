@@ -36,8 +36,6 @@ namespace spira::algorithms
             throw std::logic_error("in-place transpose requires square matrix");
         }
 
-        mat.flush();
-
         auto out = transpose(mat);
         mat.swap(out);
     }

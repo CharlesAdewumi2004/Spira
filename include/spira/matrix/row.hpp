@@ -65,8 +65,17 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     // Size / capacity
     // -----------------------------
 
+    /// Returns true if both slab and buffer are empty.
     [[nodiscard]] bool empty() const noexcept;
+
+    /// Exact nnz count. Tier 2: self-flushes if dirty (not thread-safe).
     [[nodiscard]] size_type size() const noexcept;
+
+    /// O(1) upper-bound estimate: slab_.size() + buffer live count.
+    /// Never flushes — safe to call from any context including concurrent reads.
+    /// May over-count when buffer contains overwrites of existing slab entries.
+    [[nodiscard]] size_type size_hint() const noexcept;
+
     [[nodiscard]] size_type capacity() const noexcept;
 
     [[nodiscard]] size_type buffer_size() const noexcept;
@@ -84,12 +93,24 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     [[nodiscard]] bool contains(index_type col) const;
     [[nodiscard]] const value_type *get(index_type col) const;
 
+    /// Tier 2: self-flushes if dirty (not thread-safe).
     [[nodiscard]] value_type accumulate() const noexcept;
 
+    // -----------------------------
+    // Flush
+    // -----------------------------
+
+    /// Merge buffer contents into the slab. Logically const: the observable
+    /// set of (column, value) pairs is unchanged. Physically mutates internal
+    /// storage, hence the mutable members.
+    ///
+    /// Thread safety: concurrent flush() calls on the SAME row are NOT safe.
+    /// The intended pattern is a single-threaded flush() barrier followed by
+    /// parallel read-only access via tier-1 methods.
     void flush() const;
 
     // -----------------------------
-    // Iteration utilities
+    // Tier 1 iteration (require pre-flushed state)
     // -----------------------------
 
     template <class Fn>
@@ -100,38 +121,37 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     void for_each_element(Fn &&f) noexcept(noexcept(std::declval<Fn &>()(std::declval<index_type>(),
                                                                          std::declval<value_type &>())));
 
-    // Container-like iteration over the slab (note: does not auto-flush).
     auto begin() noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::begin() requires flushed state");
         return slab_.begin();
     }
     auto end() noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::end() requires flushed state");
         return slab_.end();
     }
     auto begin() const noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::begin() requires flushed state");
         return slab_.begin();
     }
     auto end() const noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::end() requires flushed state");
         return slab_.end();
     }
     auto cbegin() const noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::cbegin() requires flushed state");
         return slab_.cbegin();
     }
     auto cend() const noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::cend() requires flushed state");
         return slab_.cend();
     }
 
     auto data() noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::data() requires flushed state");
         return slab_.data();
     }
     auto data() const noexcept {
-        assert(!dirty_ && "Operations requires flushed matrix");
+        assert(!dirty_ && "row::data() requires flushed state");
         return slab_.data();
     }
 
@@ -178,9 +198,11 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     void reset_buffer_for_mode(mode::matrix_mode m);
 
   private:
+    // These are mutable because flush() is logically const: it reorganises
+    // internal storage without changing the observable (column, value) pairs.
+    // This is the same pattern as mutable std::mutex or a cached computation.
     mutable layout_policy slab_{};
     mutable buffer_variant buffer_{balanced_buffer{}};
-
     mutable bool dirty_{false};
 
     mode::matrix_mode mode_{mode::matrix_mode::balanced};
@@ -188,9 +210,9 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> class r
     size_type column_limit_{0};
 };
 
-// -----------------------------
+// =============================================================================
 // Constructors
-// -----------------------------
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 row<LayoutTag, I, V>::row(config::mode_policy mode_policy)
@@ -210,9 +232,9 @@ row<LayoutTag, I, V>::row(size_type reserve_hint, size_type column_limit, config
     slab_.reserve(reserve_hint);
 }
 
-// -----------------------------
+// =============================================================================
 // Mode / configuration
-// -----------------------------
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 void row<LayoutTag, I, V>::reset_buffer_for_mode(mode::matrix_mode m) {
@@ -243,9 +265,9 @@ void row<LayoutTag, I, V>::set_mode(mode::matrix_mode m) {
     recompute_dirty();
 }
 
-// -----------------------------
+// =============================================================================
 // Size / capacity
-// -----------------------------
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 bool row<LayoutTag, I, V>::empty() const noexcept {
@@ -257,11 +279,15 @@ bool row<LayoutTag, I, V>::empty() const noexcept {
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 auto row<LayoutTag, I, V>::size() const noexcept -> size_type {
-    recompute_dirty();
     if (dirty_) {
         flush();
     }
     return slab_.size();
+}
+
+template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+auto row<LayoutTag, I, V>::size_hint() const noexcept -> size_type {
+    return slab_.size() + buffer_size();
 }
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
@@ -274,9 +300,9 @@ void row<LayoutTag, I, V>::reserve(size_type n) {
     slab_.reserve(n);
 }
 
-// -----------------------------
+// =============================================================================
 // Mutations
-// -----------------------------
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> void row<LayoutTag, I, V>::clear() noexcept {
     slab_.clear();
@@ -286,7 +312,6 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> void ro
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 void row<LayoutTag, I, V>::insert(index_type col, const value_type &val) {
-    // Preserve your semantics: out-of-range col is ignored.
     if (to_size(col) >= column_limit_) {
         return;
     }
@@ -301,9 +326,9 @@ void row<LayoutTag, I, V>::insert(index_type col, const value_type &val) {
     });
 }
 
-// -----------------------------
+// =============================================================================
 // Queries
-// -----------------------------
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 bool row<LayoutTag, I, V>::contains(index_type col) const {
@@ -341,16 +366,12 @@ auto row<LayoutTag, I, V>::get(index_type col) const -> const value_type * {
     return nullptr;
 }
 
-// -----------------------------
-// Reductions
-// -----------------------------
+// =============================================================================
+// Accumulate
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 auto row<LayoutTag, I, V>::accumulate() const noexcept -> value_type {
-    if (dirty_) {
-        flush();
-    }
-
     value_type acc = traits::ValueTraits<value_type>::zero();
     for (const auto &entry : slab_) {
         acc += entry.second_ref();
@@ -358,9 +379,9 @@ auto row<LayoutTag, I, V>::accumulate() const noexcept -> value_type {
     return acc;
 }
 
-// -----------------------------
-// Flush / merge
-// -----------------------------
+// =============================================================================
+// Flush
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> void row<LayoutTag, I, V>::flush() const {
     layout_policy chunk =
@@ -375,15 +396,15 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> void ro
     recompute_dirty();
 }
 
-// -----------------------------
-// Iteration utilities
-// -----------------------------
+// =============================================================================
+// Tier 1 iteration (assert pre-flushed)
+// =============================================================================
 
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 template <class Fn>
 void row<LayoutTag, I, V>::for_each_element(Fn &&f) const
     noexcept(noexcept(std::declval<Fn &>()(std::declval<index_type>(), std::declval<const value_type &>()))) {
-    assert(!is_dirty() && "For each element requires a flushed matrix");
+    assert(!dirty_ && "row::for_each_element() requires flushed state");
     for_each_slab_element(std::forward<Fn>(f));
 }
 
@@ -391,7 +412,7 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 template <class Fn>
 void row<LayoutTag, I, V>::for_each_element(Fn &&f) noexcept(
     noexcept(std::declval<Fn &>()(std::declval<index_type>(), std::declval<value_type &>()))) {
-    assert(!is_dirty() && "For each element requires a flushed matrix");
+    assert(!dirty_ && "row::for_each_element() requires flushed state");
     for_each_slab_element(std::forward<Fn>(f));
 }
 

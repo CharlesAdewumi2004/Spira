@@ -192,30 +192,6 @@ TEST(MatrixBasicTest, ForEachRowVisitsAllRowsWithCorrectIndex)
         EXPECT_TRUE(b);
 }
 
-// ------------------ accumulate(row) ------------------
-
-TEST(MatrixBasicTest, AccumulateMatchesSumOfRow)
-{
-    using I = std::size_t;
-    using V = double;
-    spira::matrix<spira::layout::tags::soa_tag, I, V> mat(3, 3);
-
-    EXPECT_EQ(mat.is_row_dirty(1), false);
-    EXPECT_EQ(mat.buffer_size(1), 0);
-    EXPECT_EQ(mat.slab_size(1), 0);
-
-    mat.insert(1, 0, 2.5);
-    mat.insert(1, 2, 1.5);
-
-    EXPECT_EQ(mat.get(1, 0), 2.5);
-    EXPECT_EQ(mat.get(1, 2), 1.5);
-
-    EXPECT_DOUBLE_EQ(mat.accumulate(1), 4.0);
-
-    mat.flush();
-    EXPECT_DOUBLE_EQ(mat.accumulate(1), 4.0);
-}
-
 // ------------------ Mode propagation ------------------
 
 TEST(MatrixBasicTest, SetModeUpdatesMatrixMode)
