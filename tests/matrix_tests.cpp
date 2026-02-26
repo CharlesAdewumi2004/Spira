@@ -1,12 +1,6 @@
 #include <spira/spira.hpp>
 #include <gtest/gtest.h>
 
-#include <cstdint>
-#include <complex>
-#include <string>
-#include <type_traits>
-#include <unordered_map>
-
 // ------------------ Basic insertion / get / contains ------------------
 
 TEST(MatrixBasicTest, InsertAndContains_AOS)

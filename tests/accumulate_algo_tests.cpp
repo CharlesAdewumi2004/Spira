@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <complex>
-#include <limits>
 #include <vector>
 
 #include <spira/spira.hpp>

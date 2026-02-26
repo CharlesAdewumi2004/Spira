@@ -69,13 +69,13 @@ namespace spira::buffer::impls
             return chunk;
         }
 
-        std::unordered_map<I, V>::iterator begin() noexcept { return buf_.begin(); }
-        std::unordered_map<I, V>::iterator end() noexcept { return buf_.end(); }
+        auto begin() noexcept { return buf_.begin(); }
+        auto end() noexcept { return buf_.end(); }
 
         auto begin() const noexcept { return buf_.cbegin(); }
         auto end() const noexcept { return buf_.cend(); }
-        std::unordered_map<I, V>::const_iterator cbegin() const noexcept {return buf_.cbegin(); }
-        std::unordered_map<I, V>::const_iterator cend() const noexcept {return buf_.cend(); }
+        auto cbegin() const noexcept {return buf_.cbegin(); }
+        auto cend() const noexcept {return buf_.cend(); }
 
     private:
         ankerl::unordered_dense::map<I, V> buf_{};

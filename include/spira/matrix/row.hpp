@@ -313,7 +313,7 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V> void ro
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
 void row<LayoutTag, I, V>::insert(index_type col, const value_type &val) {
     if (to_size(col) >= column_limit_) {
-        return;
+        throw std::out_of_range("Column out of range of matrix");
     }
 
     dirty_ = true;
