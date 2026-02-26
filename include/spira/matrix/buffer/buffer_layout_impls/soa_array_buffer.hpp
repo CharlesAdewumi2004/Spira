@@ -6,8 +6,8 @@
 #include <cstddef>
 #include <iterator>
 #include <type_traits>
-#include <utility>
-#include <vector>
+
+#include <spira/traits.hpp>
 
 namespace spira::buffer::impls {
 template <class I, class V, std::size_t N> class soa_array_buffer {
@@ -71,31 +71,11 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
     template <class layout_policy> layout_policy normalize_buffer() {
         layout_policy chunk;
         chunk.reserve(sz_);
+        deduplicate();
 
-        for (size_t i = sz_; i-- > 0;) {
-            bool seen = false;
-
-            for (auto const &entry : chunk) {
-                if (entry.first_ref() == col_[i]) {
-                    seen = true;
-                    break;
-                }
-            }
-
-            if (!seen) {
-                chunk.push_back(col_[i], val_[i]);
-            }
+        for (size_t i = 0; i < sz_; i++) {
+            chunk.push_back(col_[i], val_[i]);
         }
-
-        auto key_of = [](auto const &x) -> decltype(auto) {
-            if constexpr (requires { x.first_ref(); })
-                return x.first_ref();
-            else
-                return x.first;
-        };
-
-        std::stable_sort(chunk.begin(), chunk.end(),
-                         [&](auto const &a, auto const &b) { return key_of(a) < key_of(b); });
 
         clear();
         return chunk;
@@ -263,60 +243,37 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
     mutable std::array<V, N> val_{};
     mutable size_type sz_{0};
 
-    // void deduplicate() const noexcept
-    // {
-    //     std::array<I, N> tmpCol;
-    //     std::array<V, N> tmpVal;
-    //     size_t out = 0;
-
-    //     for (size_t i = sz_; i-- > 0;)
-    //     {
-    //         bool seen = false;
-
-    //         for (size_t j = 0; j < out; j++)
-    //         {
-    //             if (tmpCol[j] == col_[i])
-    //             {
-    //                 seen = true;
-    //                 break;
-    //             }
-    //         }
-
-    //         if (seen == false)
-    //         {
-    //             tmpVal[out] = val_[i];
-    //             tmpCol[out++] = col_[i];
-    //         }
-    //     }
-
-    //     for (size_t i = 0; i < out; i++)
-    //     {
-    //         val_[i] = tmpVal[i];
-    //         col_[i] = tmpCol[i];
-    //     }
-
-    //     sz_ = out;
-    // }
-
     void deduplicate() const noexcept {
+    if (sz_ == 0) return;
 
-        auto col_end = col_.begin() + sz_;
-        auto val_end = val_.begin() + sz_; 
+    // Build index array, reversed so last-write comes first
+    std::array<size_type, N> idx;
+    for (size_type i = 0; i < sz_; ++i)
+        idx[i] = sz_ - 1 - i;
 
-        if (sz_ == 0) {
-            return;
+    // Sort indices by column value
+    std::stable_sort(idx.begin(), idx.begin() + sz_,
+        [&](size_type a, size_type b) { return col_[a] < col_[b]; });
+
+    // Compact: unique by column, keeping first occurrence (= last write)
+    std::array<I, N> tmpCol;
+    std::array<V, N> tmpVal;
+    size_type out = 0;
+
+    for (size_type i = 0; i < sz_; ++i) {
+        if (out == 0 || tmpCol[out - 1] != col_[idx[i]]) {
+            tmpCol[out] = col_[idx[i]];
+            tmpVal[out] = val_[idx[i]];
+            ++out;
         }
-        std::reverse(col_.back(), col_end);
-        std::reverse(val_.begin(), val_end);
-
-        std::stable_sort(col_.begin(), col_end);
-        std::stable_sort(val_.begin(), val_end);
-
-        std::unique(col_.begin(), col_end);
-        auto it = std::unique(val_.begin(), val_end);
-
-        sz_ = static_cast<size_t>(std::distance(val_.begin(), it));
     }
+
+    for (size_type i = 0; i < out; ++i) {
+        col_[i] = tmpCol[i];
+        val_[i] = tmpVal[i];
+    }
+    sz_ = out;
+}   
 };
 
 } // namespace spira::buffer::impls

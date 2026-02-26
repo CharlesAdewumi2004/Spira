@@ -20,9 +20,12 @@ namespace spira::algorithms
 
         C.set_mode(spira::mode::matrix_mode::insert_heavy);
 
+        ankerl::unordered_dense::map<I, V> acc;
+
         for (I i = 0; i < static_cast<I>(A.n_rows()); ++i)
         {
-            ankerl::unordered_dense::map<I, V> acc;
+            
+            acc.clear();
 
             auto &arow = A.row_at(i);
 

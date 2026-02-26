@@ -1,14 +1,10 @@
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <iterator>
 #include <stdexcept>
-#include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <spira/algorithms/merge.hpp>
 #include <spira/concepts.hpp>

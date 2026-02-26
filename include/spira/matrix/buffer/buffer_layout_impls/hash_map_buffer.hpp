@@ -1,11 +1,10 @@
 #pragma once
-
-#include <unordered_map>
 #include <numeric>
 
 #include <ankerl/unordered_dense.h>
 
 #include <spira/traits.hpp>
+#include <spira/config.hpp>
 #include <spira/matrix/layouts/element_pair.hpp>
 
 namespace spira::buffer::impls
