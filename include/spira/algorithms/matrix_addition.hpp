@@ -12,16 +12,8 @@ namespace spira::algorithms
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {
         out.clear();
-
-        if (A.is_dirty())
-        {
-            A.flush();
-        }
-
-        if (B.is_dirty())
-        {
-            B.flush();
-        }
+        A.flush();
+        B.flush();
 
         auto itA = A.begin();
         auto itB = B.begin();
@@ -78,6 +70,9 @@ namespace spira::algorithms
             throw std::invalid_argument("Matrices aren't the same size");
         }
 
+        A.flush();
+        B.flush();
+
         const auto [r, c] = A.shape();
         spira::matrix<Layout, I, V> out(r, c);
 
@@ -99,6 +94,9 @@ namespace spira::algorithms
         {
             throw std::invalid_argument("Matrices aren't the same size");
         }
+
+        A.flush();
+        B.flush();
 
         A.set_mode(spira::mode::matrix_mode::insert_heavy);
 
