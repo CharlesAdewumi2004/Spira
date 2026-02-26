@@ -4,10 +4,8 @@
 #include <cassert>
 #include <cstddef>
 #include <type_traits>
-#include <utility>
-#include <vector>
-#include <unordered_map>
 #include <type_traits>
+#include <algorithm>
 
 #include <spira/matrix/layouts/element_pair.hpp>
 
@@ -106,8 +104,8 @@ namespace spira::buffer::impls
 
         void  deduplicate() const noexcept
         {
-            if (sz_ == 0)
-                return;
+            if (sz_ == 0){
+                return;}
 
             auto first = buf_.begin();
             auto last = first + sz_;
