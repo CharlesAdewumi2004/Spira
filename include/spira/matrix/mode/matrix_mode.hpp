@@ -1,13 +1,9 @@
 #pragma once
 
-namespace spira::mode
-{
+// Mode enum is defined in config.hpp.
+// This header exists for convenience.
+#include <spira/config.hpp>
 
-    enum class matrix_mode
-    {
-        spmv,
-        balanced,
-        insert_heavy
-    };
-
+namespace spira::mode {
+    using spira::config::matrix_mode;
 }
