@@ -7,12 +7,13 @@
 
 #include <spira/config.hpp>
 #include <spira/concepts.hpp>
+#include <spira/matrix/layouts/layout_base.hpp>
 #include <spira/matrix/layouts/element_pair.hpp>
 
 namespace spira::layout
 {
     template <concepts::Indexable I, concepts::Valueable V>
-    class aos
+    class aos : public layout_base<aos<I, V>, I, V>
     {
     public:
         using size_type = std::size_t;
@@ -167,31 +168,30 @@ namespace spira::layout
             friend constexpr auto operator<=>(const const_iterator &, const const_iterator &) noexcept = default;
         };
 
-        [[nodiscard]] bool empty() const noexcept { return elements.empty(); }
-        [[nodiscard]] size_type size() const noexcept { return elements.size(); }
-        [[nodiscard]] size_type capacity() const noexcept { return elements.capacity(); }
+        [[nodiscard]] bool empty_impl() const noexcept { return elements.empty(); }
+        [[nodiscard]] size_type size_impl() const noexcept { return elements.size(); }
+        [[nodiscard]] size_type capacity_impl() const noexcept { return elements.capacity(); }
 
-        void reserve(size_type n) { elements.reserve(n); }
-        void clear() noexcept { elements.clear(); }
-        void resize(size_type n) { elements.resize(n); }
+        void reserve_impl(size_type n) { elements.reserve(n); }
+        void clear_impl() noexcept { elements.clear(); }
+        void resize_impl(size_type n) { elements.resize(n); }
+        void swap_impl(aos &other) noexcept { elements.swap(other.elements); }
 
-        void swap(aos &other) noexcept { elements.swap(other.elements); }
+        [[nodiscard]] I key_at_impl(size_type idx) const noexcept { return elements[idx].column; }
+        [[nodiscard]] V &value_at_impl(size_type idx) noexcept { return elements[idx].value; }
+        [[nodiscard]] V const &value_at_impl(size_type idx) const noexcept { return elements[idx].value; }
 
-        [[nodiscard]] I key_at(size_type idx) const noexcept { return elements[idx].column; }
-        [[nodiscard]] V &value_at(size_type idx) noexcept { return elements[idx].value; }
-        [[nodiscard]] V const &value_at(size_type idx) const noexcept { return elements[idx].value; }
-
-        void insert_at(size_type index, I col, V const &val)
+        void insert_at_impl(size_type index, I col, V const &val)
         {
             elements.insert(elements.begin() + static_cast<std::ptrdiff_t>(index), entry_type{col, val});
         }
 
-        void push_back(I col, V const &val)
+        void push_back_impl(I col, V const &val)
         {
             elements.push_back(entry_type{col, val});
         }
 
-        [[nodiscard]] size_type lower_bound(I col) const noexcept
+        [[nodiscard]] size_type lower_bound_impl(I col) const noexcept
         {
             auto s = boundcraft::searcher<config::aos_search_policy>();
             auto it = s.lower_bound(
@@ -201,23 +201,13 @@ namespace spira::layout
             return static_cast<size_type>(std::distance(elements.begin(), it));
         }
 
-        std::span<elementPair<I, V>> data() noexcept
-        {
-            return std::span{elements};
-        }
+        std::span<elementPair<I, V>> data_impl() noexcept { return std::span{elements}; }
+        std::span<const elementPair<I, V>> data_impl() const noexcept { return std::span{elements}; }
 
-        std::span<const elementPair<I, V>> data() const noexcept
-        {
-            return std::span{elements};
-        }
-
-        iterator begin() noexcept { return iterator(elements.data()); }
-        iterator end() noexcept { return iterator(elements.data() + elements.size()); }
-
-        const_iterator begin() const noexcept { return cbegin(); }
-        const_iterator end() const noexcept { return cend(); }
-        const_iterator cbegin() const noexcept { return const_iterator(elements.data()); }
-        const_iterator cend() const noexcept { return const_iterator(elements.data() + elements.size()); }
+        iterator begin_impl() noexcept { return iterator(elements.data()); }
+        iterator end_impl() noexcept { return iterator(elements.data() + elements.size()); }
+        const_iterator begin_impl() const noexcept { return const_iterator(elements.data()); }
+        const_iterator end_impl() const noexcept { return const_iterator(elements.data() + elements.size()); }
 
     private:
         std::vector<entry_type> elements;

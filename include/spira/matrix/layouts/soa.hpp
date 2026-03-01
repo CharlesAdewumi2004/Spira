@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <span>
+#include <tuple>
 #include <utility>
 #include <type_traits>
 
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
+#include <spira/matrix/layouts/layout_base.hpp>
 
 namespace spira::layout
 {
@@ -116,7 +119,7 @@ namespace spira::layout
     // SoA container + iterators
     // =============================
     template <concepts::Indexable I, concepts::Valueable V>
-    class soa
+    class soa : public layout_base<soa<I, V>, I, V>
     {
     public:
         using size_type = std::size_t;
@@ -221,7 +224,6 @@ namespace spira::layout
 
             friend value_type iter_move(iterator it) noexcept
             {
-                // materialize value
                 return static_cast<value_type>(*it);
             }
         };
@@ -309,72 +311,67 @@ namespace spira::layout
             friend bool operator>=(const_iterator a, const_iterator b) noexcept { return !(a < b); }
         };
 
-        [[nodiscard]] bool empty() const noexcept { return columns_.empty(); }
-        [[nodiscard]] size_type size() const noexcept { return columns_.size(); }
-        [[nodiscard]] size_type capacity() const noexcept { return columns_.capacity(); }
+        [[nodiscard]] bool empty_impl() const noexcept { return columns_.empty(); }
+        [[nodiscard]] size_type size_impl() const noexcept { return columns_.size(); }
+        [[nodiscard]] size_type capacity_impl() const noexcept { return columns_.capacity(); }
 
-        void clear()
+        void clear_impl()
         {
             columns_.clear();
             values_.clear();
         }
-        void reserve(size_type n)
+        void reserve_impl(size_type n)
         {
             columns_.reserve(n);
             values_.reserve(n);
         }
-        void resize(size_type n)
+        void resize_impl(size_type n)
         {
             columns_.resize(n);
             values_.resize(n);
         }
-
-        void swap(soa &other) noexcept
+        void swap_impl(soa &other) noexcept
         {
             columns_.swap(other.columns_);
             values_.swap(other.values_);
         }
 
-        [[nodiscard]] const I &key_at(size_type idx) const noexcept { return columns_[idx]; }
-        [[nodiscard]] V &value_at(size_type idx) noexcept { return values_[idx]; }
-        [[nodiscard]] const V &value_at(size_type idx) const noexcept { return values_[idx]; }
+        [[nodiscard]] const I &key_at_impl(size_type idx) const noexcept { return columns_[idx]; }
+        [[nodiscard]] V &value_at_impl(size_type idx) noexcept { return values_[idx]; }
+        [[nodiscard]] const V &value_at_impl(size_type idx) const noexcept { return values_[idx]; }
 
-        void insert_at(size_type idx, I col, V val)
+        void insert_at_impl(size_type idx, I col, V const &val)
         {
             columns_.insert(columns_.begin() + static_cast<std::ptrdiff_t>(idx), col);
-            values_.insert(values_.begin() + static_cast<std::ptrdiff_t>(idx), std::move(val));
+            values_.insert(values_.begin() + static_cast<std::ptrdiff_t>(idx), val);
         }
 
-        void push_back(I col, V const &val)
+        void push_back_impl(I col, V const &val)
         {
             columns_.push_back(col);
             values_.push_back(val);
         }
 
-        [[nodiscard]] size_type lower_bound(I col) const noexcept
+        [[nodiscard]] size_type lower_bound_impl(I col) const noexcept
         {
             auto s = boundcraft::searcher<config::soa_search_policy>();
             auto it = s.lower_bound(columns_.begin(), columns_.end(), col);
             return static_cast<size_type>(it - columns_.begin());
         }
 
-        std::pair<std::span<I>, std::span<V>> data() noexcept
+        std::pair<std::span<I>, std::span<V>> data_impl() noexcept
         {
-            return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
+            return {std::span{columns_}, std::span{values_}};
+        }
+        std::pair<std::span<const I>, std::span<const V>> data_impl() const noexcept
+        {
+            return {std::span{columns_}, std::span{values_}};
         }
 
-        std::pair<std::span<const I>, std::span<const V>> data() const noexcept
-        {
-            return std::pair<std::span<const I>, std::span<const V>>{std::span{columns_}, std::span{values_}};
-        }
-
-        iterator begin() noexcept { return iterator(columns_.data(), values_.data()); }
-        iterator end() noexcept { return iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
-
-        const_iterator begin() const noexcept { return cbegin(); }
-        const_iterator end() const noexcept { return cend(); }
-        const_iterator cbegin() const noexcept { return const_iterator(columns_.data(), values_.data()); }
-        const_iterator cend() const noexcept { return const_iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
+        iterator begin_impl() noexcept { return iterator(columns_.data(), values_.data()); }
+        iterator end_impl() noexcept { return iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
+        const_iterator begin_impl() const noexcept { return const_iterator(columns_.data(), values_.data()); }
+        const_iterator end_impl() const noexcept { return const_iterator(columns_.data() + columns_.size(), values_.data() + values_.size()); }
 
         template <class It, class F>
         static decltype(auto) with_entry(It it, F &&f)

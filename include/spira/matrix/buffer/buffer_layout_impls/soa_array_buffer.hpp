@@ -7,11 +7,14 @@
 #include <iterator>
 #include <type_traits>
 
+#include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/traits.hpp>
 
 namespace spira::buffer::impls {
-template <class I, class V, std::size_t N> class soa_array_buffer {
-  public:
+
+template <class I, class V, std::size_t N>
+class soa_array_buffer : public spira::buffer::base_buffer<soa_array_buffer<I, V, N>, I, V> {
+public:
     using size_type = std::size_t;
 
     struct entry_ref {
@@ -23,24 +26,24 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
         const V &value;
     };
 
-    [[nodiscard]] bool empty() const noexcept { return sz_ == 0; }
-    [[nodiscard]] size_type size() const noexcept {
+    [[nodiscard]] bool empty_impl() const noexcept { return sz_ == 0; }
+    [[nodiscard]] size_type size_impl() const noexcept {
         deduplicate();
         return sz_;
     }
-    [[nodiscard]] size_type remaining_capacity() const noexcept { return N - sz_; }
+    [[nodiscard]] size_type remaining_capacity_impl() const noexcept { return N - sz_; }
 
-    void clear() noexcept { sz_ = 0; }
+    void clear_impl() noexcept { sz_ = 0; }
 
-    void push_back(const I &col, const V &val) noexcept(std::is_nothrow_copy_assignable_v<I> &&
-                                                        std::is_nothrow_copy_assignable_v<V>) {
+    void push_back_impl(const I &col, const V &val) noexcept(std::is_nothrow_copy_assignable_v<I> &&
+                                                             std::is_nothrow_copy_assignable_v<V>) {
         assert(sz_ < N && "soa_array_buffer overflow: caller must ensure capacity");
         col_[sz_] = col;
         val_[sz_] = val;
         ++sz_;
     }
 
-    bool contains(I col) const noexcept {
+    bool contains_impl(I col) const noexcept {
         for (size_type i = sz_; i-- > 0;) {
             if (col_[i] == col)
                 return true;
@@ -48,7 +51,7 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
         return false;
     }
 
-    const V *get_ptr(I col) const noexcept {
+    const V *get_ptr_impl(I col) const noexcept {
         for (size_type i = sz_; i-- > 0;) {
             if (col_[i] == col)
                 return &val_[i];
@@ -56,7 +59,7 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
         return nullptr;
     }
 
-    V accumulate() const noexcept {
+    V accumulate_impl() const noexcept {
         deduplicate();
 
         V acc = traits::ValueTraits<V>::zero();
@@ -68,7 +71,7 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
         return acc;
     }
 
-    template <class layout_policy> layout_policy normalize_buffer() {
+    template <class layout_policy> layout_policy normalize_buffer_impl() {
         layout_policy chunk;
         chunk.reserve(sz_);
         deduplicate();
@@ -77,12 +80,12 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
             chunk.push_back(col_[i], val_[i]);
         }
 
-        clear();
+        clear_impl();
         return chunk;
     }
 
     class iterator {
-      public:
+    public:
         using iterator_category = std::random_access_iterator_tag;
         using difference_type = std::ptrdiff_t;
         using value_type = entry_ref;
@@ -149,13 +152,13 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
 
         reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
-      private:
+    private:
         I *c_{nullptr};
         V *v_{nullptr};
     };
 
     class const_iterator {
-      public:
+    public:
         using iterator_category = std::random_access_iterator_tag;
         using difference_type = std::ptrdiff_t;
         using value_type = entry_cref;
@@ -224,56 +227,50 @@ template <class I, class V, std::size_t N> class soa_array_buffer {
 
         reference operator[](difference_type n) const noexcept { return *(*this + n); }
 
-      private:
+    private:
         const I *c_{nullptr};
         const V *v_{nullptr};
     };
 
-    [[nodiscard]] iterator begin() noexcept { return iterator(col_.data(), val_.data()); }
-    [[nodiscard]] iterator end() noexcept { return iterator(col_.data() + sz_, val_.data() + sz_); }
+    [[nodiscard]] iterator begin_impl() noexcept { return iterator(col_.data(), val_.data()); }
+    [[nodiscard]] iterator end_impl() noexcept { return iterator(col_.data() + sz_, val_.data() + sz_); }
 
-    [[nodiscard]] const_iterator begin() const noexcept { return const_iterator(col_.data(), val_.data()); }
-    [[nodiscard]] const_iterator end() const noexcept { return const_iterator(col_.data() + sz_, val_.data() + sz_); }
+    [[nodiscard]] const_iterator begin_impl() const noexcept { return const_iterator(col_.data(), val_.data()); }
+    [[nodiscard]] const_iterator end_impl() const noexcept { return const_iterator(col_.data() + sz_, val_.data() + sz_); }
 
-    [[nodiscard]] const_iterator cbegin() const noexcept { return begin(); }
-    [[nodiscard]] const_iterator cend() const noexcept { return end(); }
-
-  private:
+private:
     mutable std::array<I, N> col_{};
     mutable std::array<V, N> val_{};
     mutable size_type sz_{0};
 
     void deduplicate() const noexcept {
-    if (sz_ == 0) return;
+        if (sz_ == 0) return;
 
-    // Build index array, reversed so last-write comes first
-    std::array<size_type, N> idx;
-    for (size_type i = 0; i < sz_; ++i)
-        idx[i] = sz_ - 1 - i;
+        std::array<size_type, N> idx;
+        for (size_type i = 0; i < sz_; ++i)
+            idx[i] = sz_ - 1 - i;
 
-    // Sort indices by column value
-    std::stable_sort(idx.begin(), idx.begin() + sz_,
-        [&](size_type a, size_type b) { return col_[a] < col_[b]; });
+        std::stable_sort(idx.begin(), idx.begin() + sz_,
+            [&](size_type a, size_type b) { return col_[a] < col_[b]; });
 
-    // Compact: unique by column, keeping first occurrence (= last write)
-    std::array<I, N> tmpCol;
-    std::array<V, N> tmpVal;
-    size_type out = 0;
+        std::array<I, N> tmpCol;
+        std::array<V, N> tmpVal;
+        size_type out = 0;
 
-    for (size_type i = 0; i < sz_; ++i) {
-        if (out == 0 || tmpCol[out - 1] != col_[idx[i]]) {
-            tmpCol[out] = col_[idx[i]];
-            tmpVal[out] = val_[idx[i]];
-            ++out;
+        for (size_type i = 0; i < sz_; ++i) {
+            if (out == 0 || tmpCol[out - 1] != col_[idx[i]]) {
+                tmpCol[out] = col_[idx[i]];
+                tmpVal[out] = val_[idx[i]];
+                ++out;
+            }
         }
-    }
 
-    for (size_type i = 0; i < out; ++i) {
-        col_[i] = tmpCol[i];
-        val_[i] = tmpVal[i];
+        for (size_type i = 0; i < out; ++i) {
+            col_[i] = tmpCol[i];
+            val_[i] = tmpVal[i];
+        }
+        sz_ = out;
     }
-    sz_ = out;
-}   
 };
 
 } // namespace spira::buffer::impls

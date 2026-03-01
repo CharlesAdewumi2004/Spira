@@ -9,8 +9,10 @@
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
 #include <spira/matrix/buffer/buffer.hpp>
+#include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
 #include <spira/matrix/buffer/buffer_tags.hpp>
+#include <spira/matrix/layouts/layout_base.hpp>
 #include <spira/matrix/layouts/layout_of.hpp>
 #include <spira/traits.hpp>
 
@@ -41,6 +43,8 @@ namespace spira {
 template <class LayoutTag, concepts::Indexable I, concepts::Valueable V,
           class BufferTag = buffer::tags::array_buffer<LayoutTag>,
           std::size_t BufferN = 64>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<LayoutTag, I, V>, I, V>
 class row {
 public:
   using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;

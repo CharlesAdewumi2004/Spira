@@ -11,7 +11,7 @@ endif()
 
 # ---------- Options ----------
 option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
-option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  ON)
+option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  OFF)
 option(SPIRA_ENABLE_SIMD       "Build SIMD-accelerated kernels" ON)
 
 include(FetchContent)

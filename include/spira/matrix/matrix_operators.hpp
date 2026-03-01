@@ -3,6 +3,10 @@
 #include <vector>
 
 #include <spira/matrix/matrix.hpp>
+#include <spira/matrix/buffer/buffer_base.hpp>
+#include <spira/matrix/buffer/buffer_tag_traits.hpp>
+#include <spira/matrix/layouts/layout_base.hpp>
+#include <spira/matrix/layouts/layout_of.hpp>
 #include <spira/algorithms/spgemm.hpp>
 #include <spira/algorithms/spmv.hpp>
 #include <spira/algorithms/transpose.hpp>
@@ -17,6 +21,8 @@ namespace spira
 // =====================
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator+(const matrix &other) const
 {
@@ -24,6 +30,8 @@ matrix<L, I, V, BT, BN>::operator+(const matrix &other) const
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator-(const matrix &other) const
 {
@@ -35,6 +43,8 @@ matrix<L, I, V, BT, BN>::operator-(const matrix &other) const
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator+=(const matrix &other)
 {
@@ -43,6 +53,8 @@ matrix<L, I, V, BT, BN>::operator+=(const matrix &other)
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator-=(const matrix &other)
 {
@@ -59,6 +71,8 @@ matrix<L, I, V, BT, BN>::operator-=(const matrix &other)
 // =====================
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator*(const matrix &other) const
 {
@@ -66,6 +80,8 @@ matrix<L, I, V, BT, BN>::operator*(const matrix &other) const
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator*=(const matrix &other)
 {
@@ -78,6 +94,8 @@ matrix<L, I, V, BT, BN>::operator*=(const matrix &other)
 // =====================
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline std::vector<V>
 matrix<L, I, V, BT, BN>::operator*(const std::vector<V> &x) const
 {
@@ -91,6 +109,8 @@ matrix<L, I, V, BT, BN>::operator*(const std::vector<V> &x) const
 // =====================
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator*(V s) const
 {
@@ -100,6 +120,8 @@ matrix<L, I, V, BT, BN>::operator*(V s) const
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator*=(V s)
 {
@@ -108,6 +130,8 @@ matrix<L, I, V, BT, BN>::operator*=(V s)
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator/(V s) const
 {
@@ -117,6 +141,8 @@ matrix<L, I, V, BT, BN>::operator/(V s) const
 }
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator/=(V s)
 {
@@ -129,6 +155,8 @@ matrix<L, I, V, BT, BN>::operator/=(V s)
 // =====================
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+  requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V>
+        && layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator~() const
 {

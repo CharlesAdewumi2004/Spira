@@ -20,3 +20,4 @@ Thumbs.db
 
 .clang-format
 .vscode/
+.clangd-format
