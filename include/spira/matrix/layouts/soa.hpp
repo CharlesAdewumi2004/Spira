@@ -365,7 +365,7 @@ namespace spira::layout
 
         std::pair<std::span<const I>, std::span<const V>> data() const noexcept
         {
-            return std::pair<std::span<I>, std::span<V>>{std::span{columns_}, std::span{values_}};
+            return std::pair<std::span<const I>, std::span<const V>>{std::span{columns_}, std::span{values_}};
         }
 
         iterator begin() noexcept { return iterator(columns_.data(), values_.data()); }

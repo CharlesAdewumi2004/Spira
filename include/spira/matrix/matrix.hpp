@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -12,7 +13,7 @@
 
 namespace spira {
 
-template <class LayoutTag, concepts::Indexable I, concepts::Valueable V,
+template <class LayoutTag, concepts::Indexable I = uint32_t, concepts::Valueable V = double,
           class BufferTag = buffer::tags::array_buffer<LayoutTag>,
           std::size_t BufferN = 64>
 class matrix {

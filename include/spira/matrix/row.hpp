@@ -273,7 +273,12 @@ private:
     if (chunk.size() == 0)
       return;
     if (slab_.size() == 0) {
-      slab_ = chunk;
+      slab_.reserve(chunk.size());
+      for (auto bit = chunk.cbegin(), bend = chunk.cend(); bit != bend; ++bit) {
+        auto be = *bit;
+        if (!traits::ValueTraits<V>::is_zero(val_of(be)))
+          slab_.push_back(key_of(be), val_of(be));
+      }
       return;
     }
 

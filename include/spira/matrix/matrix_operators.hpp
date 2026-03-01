@@ -27,6 +27,8 @@ template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::
 inline matrix<L, I, V, BT, BN>
 matrix<L, I, V, BT, BN>::operator-(const matrix &other) const
 {
+    if (this->shape() != other.shape())
+        throw std::invalid_argument("operator-: matrix shapes must match");
     matrix out(other);
     algorithms::multiplication_scaler(other, out, V{-1});
     return algorithms::MatrixAddition(*this, out);
@@ -44,6 +46,8 @@ template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::
 inline matrix<L, I, V, BT, BN>&
 matrix<L, I, V, BT, BN>::operator-=(const matrix &other)
 {
+    if (this->shape() != other.shape())
+        throw std::invalid_argument("operator-=: matrix shapes must match");
     matrix out(other);
     algorithms::multiplication_scaler(other, out, V{-1});
     *this = algorithms::MatrixAddition(*this, out);
