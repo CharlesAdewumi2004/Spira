@@ -348,6 +348,7 @@ void matrix<L, I, V, BT, BN>::insert(index_type row_index, index_type col_index,
   assert(mode_ == config::matrix_mode::open &&
          "matrix::insert() requires open mode");
   validate_row_index(row_index);
+  validate_col_index(col_index);
   rows_[to_size(row_index)].insert(col_index, val);
 }
 
@@ -402,7 +403,7 @@ template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
 template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) const {
   for (size_type i = 0; i < row_limit_; ++i) {
-    std::forward<Func>(f)(rows_[i], static_cast<index_type>(i));
+    f(rows_[i], static_cast<index_type>(i));
   }
 }
 
@@ -413,7 +414,7 @@ template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
 template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) {
   for (size_type i = 0; i < row_limit_; ++i) {
-    std::forward<Func>(f)(rows_[i], static_cast<index_type>(i));
+    f(rows_[i], static_cast<index_type>(i));
   }
 }
 
@@ -425,7 +426,7 @@ template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_nnz_row(Func &&f) const {
   for (size_type i = 0; i < row_limit_; ++i) {
     if (!rows_[i].empty()) {
-      std::forward<Func>(f)(rows_[i], static_cast<index_type>(i));
+      f(rows_[i], static_cast<index_type>(i));
     }
   }
 }

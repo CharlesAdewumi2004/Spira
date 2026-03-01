@@ -19,7 +19,6 @@ public:
 
     [[nodiscard]] bool empty_impl() const noexcept { return sz_ == 0; }
     [[nodiscard]] size_type size_impl() const noexcept {
-        deduplicate();
         return sz_;
     }
     [[nodiscard]] size_type remaining_capacity_impl() const noexcept { return N - sz_; }

@@ -37,7 +37,7 @@ matrix<L, I, V, BT, BN>::operator-(const matrix &other) const
 {
     if (this->shape() != other.shape())
         throw std::invalid_argument("operator-: matrix shapes must match");
-    matrix out(other);
+    matrix<L, I, V, BT, BN> out(other.shape().first, other.shape().second);
     algorithms::multiplication_scaler(other, out, V{-1});
     return algorithms::MatrixAddition(*this, out);
 }
@@ -60,7 +60,7 @@ matrix<L, I, V, BT, BN>::operator-=(const matrix &other)
 {
     if (this->shape() != other.shape())
         throw std::invalid_argument("operator-=: matrix shapes must match");
-    matrix out(other);
+    matrix<L, I, V, BT, BN> out(other.shape().first, other.shape().second);
     algorithms::multiplication_scaler(other, out, V{-1});
     *this = algorithms::MatrixAddition(*this, out);
     return *this;
