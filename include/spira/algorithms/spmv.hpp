@@ -1,12 +1,14 @@
 #pragma once
 
 #include "spira/matrix/layouts/layout_tags.hpp"
+#include <cassert>
 #include <cstdint>
 #include <spira/kernels/kernels.h>
 #include <spira/matrix/matrix.hpp>
 #include <vector>
 
 namespace spira::algorithms {
+
 template <class Layout, concepts::Indexable I, concepts::Valueable V>
 inline void spmv(const spira::matrix<Layout, I, V> &matrix, const std::vector<V> &x, std::vector<V> &y) {
     if (x.size() != matrix.n_cols()) {
@@ -17,7 +19,7 @@ inline void spmv(const spira::matrix<Layout, I, V> &matrix, const std::vector<V>
         throw std::invalid_argument("The size of the output vector y does not match the number of rows of the matrix");
     }
 
-    matrix.flush();
+    assert(matrix.is_locked() && "spmv: input matrix must be locked");
 
     auto SpMV = [&y, &x](const row<Layout, I, V> &row, I rowIndex) {
         V acc = traits::ValueTraits<V>::zero();
@@ -45,7 +47,7 @@ spmv<layout::tags::soa_tag, uint32_t, float>(const spira::matrix<layout::tags::s
         throw std::invalid_argument("The size of the output vector y does not match the number of rows of the matrix");
     }
 
-    matrix.flush();
+    assert(matrix.is_locked() && "spmv: input matrix must be locked");
 
     auto SpMV = [&y, &x](const row<Layout, uint32_t, float> &row, uint32_t rowIndex) {
         y[rowIndex] = kernel::sparse_dot_float(row.data().second.data(), row.data().first.data(), x.data(), row.size());
@@ -67,7 +69,7 @@ spmv<layout::tags::soa_tag, uint32_t, double>(const spira::matrix<layout::tags::
         throw std::invalid_argument("The size of the output vector y does not match the number of rows of the matrix");
     }
 
-    matrix.flush();
+    assert(matrix.is_locked() && "spmv: input matrix must be locked");
 
     auto SpMV = [&y, &x](const row<Layout, uint32_t, double> &row, uint32_t rowIndex) {
         y[rowIndex] = kernel::sparse_dot_double(row.data().second.data(), row.data().first.data(), x.data(), row.size());

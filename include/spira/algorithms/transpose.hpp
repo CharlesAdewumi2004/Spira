@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cassert>
+#include <stdexcept>
+
 #include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
@@ -7,12 +10,10 @@ namespace spira::algorithms
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     spira::matrix<Layout, I, V> transpose(const spira::matrix<Layout, I, V>& mat)
     {
-        mat.flush();
+        assert(mat.is_locked() && "transpose: input matrix must be locked");
+
         auto [r, c] = mat.shape();
         spira::matrix<Layout, I, V> out(c, r);
-
-        auto original_mode = mat.mode();
-        out.set_mode(spira::mode::matrix_mode::insert_heavy);
 
         for (std::size_t i = 0; i < r; ++i)
         {
@@ -24,7 +25,7 @@ namespace spira::algorithms
             });
         }
 
-        out.set_mode(original_mode);
+        out.lock();
         return out;
     }
 
@@ -39,4 +40,4 @@ namespace spira::algorithms
         auto out = transpose(mat);
         mat.swap(out);
     }
-}
+} // namespace spira::algorithms

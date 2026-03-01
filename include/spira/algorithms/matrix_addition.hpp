@@ -1,19 +1,39 @@
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <stdexcept>
-#include <utility>
 
 #include <spira/matrix/matrix.hpp>
 
 namespace spira::algorithms
 {
+
+    // Helper: extract key from iterator element regardless of AoS/SoA proxy type.
+    namespace detail {
+        auto key_of(const auto& entry) -> decltype(auto) {
+            if constexpr (requires { entry.first_ref(); })
+                return entry.first_ref();
+            else
+                return entry.first;
+        }
+        auto val_of(const auto& entry) -> decltype(auto) {
+            if constexpr (requires { entry.second_ref(); })
+                return entry.second_ref();
+            else
+                return entry.second;
+        }
+    }
+
+    /// Merge two locked, sorted rows into a single open output row.
+    /// A and B must be locked (sorted slabs). out must be in open mode and empty.
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {
+        assert(A.is_locked() && "addRows: row A must be locked");
+        assert(B.is_locked() && "addRows: row B must be locked");
+
         out.clear();
-        A.flush();
-        B.flush();
 
         auto itA = A.begin();
         auto itB = B.begin();
@@ -22,8 +42,12 @@ namespace spira::algorithms
 
         while (itA != endA && itB != endB)
         {
-            const auto &[a_col, a_val] = *itA;
-            const auto &[b_col, b_val] = *itB;
+            auto ae = *itA;
+            auto be = *itB;
+            const auto a_col = detail::key_of(ae);
+            const auto b_col = detail::key_of(be);
+            const auto a_val = detail::val_of(ae);
+            const auto b_val = detail::val_of(be);
 
             if (a_col == b_col)
             {
@@ -49,16 +73,14 @@ namespace spira::algorithms
 
         while (itA != endA)
         {
-            const auto &[a_col, a_val] = *itA;
-            out.insert(a_col, a_val);
-            ++itA;
+            auto ae = *itA++;
+            out.insert(detail::key_of(ae), detail::val_of(ae));
         }
 
         while (itB != endB)
         {
-            const auto &[b_col, b_val] = *itB;
-            out.insert(b_col, b_val);
-            ++itB;
+            auto be = *itB++;
+            out.insert(detail::key_of(be), detail::val_of(be));
         }
     }
 
@@ -70,13 +92,11 @@ namespace spira::algorithms
             throw std::invalid_argument("Matrices aren't the same size");
         }
 
-        A.flush();
-        B.flush();
+        assert(A.is_locked() && "MatrixAddition: A must be locked");
+        assert(B.is_locked() && "MatrixAddition: B must be locked");
 
         const auto [r, c] = A.shape();
         spira::matrix<Layout, I, V> out(r, c);
-
-        out.set_mode(spira::mode::matrix_mode::insert_heavy);
 
         for (std::size_t i = 0; i < A.n_rows(); ++i)
         {
@@ -84,34 +104,8 @@ namespace spira::algorithms
             addRows(A.row_at(ri), B.row_at(ri), out.row_at_mut(ri));
         }
 
+        out.lock();
         return out;
     }
 
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
-    void MatrixAdditionInPlace(spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
-    {
-        if (A.shape() != B.shape())
-        {
-            throw std::invalid_argument("Matrices aren't the same size");
-        }
-
-        A.flush();
-        B.flush();
-
-        A.set_mode(spira::mode::matrix_mode::insert_heavy);
-
-        for (std::size_t i = 0; i < A.n_rows(); ++i)
-        {
-            const I ri = static_cast<I>(i);
-
-            auto tmp = A.row_at(ri);
-            tmp.clear();
-
-            addRows(A.row_at(ri), B.row_at(ri), tmp);
-
-            using std::swap;
-            swap(A.row_at_mut(ri), tmp);
-        }
-    }
-
-}
+} // namespace spira::algorithms
