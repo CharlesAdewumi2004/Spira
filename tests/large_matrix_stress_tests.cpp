@@ -9,7 +9,7 @@
 namespace {
 
 template<class LayoutTag>
-void bulk_insert_mode_switch_spmv_correctness()
+void bulk_insert_lock_spmv_correctness()
 {
     using I = std::size_t;
     using V = double;
@@ -18,13 +18,12 @@ void bulk_insert_mode_switch_spmv_correctness()
     constexpr int INSERTS = 100000;
 
     spira::matrix<LayoutTag, I, V> mat(N, N);
-    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
     std::mt19937_64 rng(42);
     std::uniform_int_distribution<I> dist_index(0, N - 1);
     std::uniform_int_distribution<int> dist_val(-10, 10);
 
-    // ground truth sparse storage (dedupbed; zero == erased)
+    // ground truth sparse storage (deduped; zero == erased)
     std::map<std::pair<I, I>, V> expected;
 
     for (int k = 0; k < INSERTS; ++k) {
@@ -55,12 +54,8 @@ void bulk_insert_mode_switch_spmv_correctness()
         mat.insert(i, j, val);
     }
 
-    // force materialization
-    mat.flush();
-
-    // switch to spmv mode and ensure internal state is consistent
-    mat.set_mode(spira::mode::matrix_mode::spmv);
-    mat.flush();
+    // lock: sort+dedup all rows, freeze matrix for spmv
+    mat.lock();
 
     ASSERT_EQ(mat.nnz(), expected.size());
 
@@ -82,7 +77,6 @@ void bulk_insert_mode_switch_spmv_correctness()
     spira::algorithms::spmv(mat, x, y);
 
     // ----- Compare -----
-    // Values are small-ish; still use a tolerance because order of accumulation can differ.
     constexpr double ABS_EPS = 1e-10;
     constexpr double REL_EPS = 1e-10;
 
@@ -97,25 +91,24 @@ void bulk_insert_mode_switch_spmv_correctness()
 
 
 
-TEST(LargeMatrixSpmvTest, BulkInsertModeSwitchSpmvCorrectness_AOS) {
-    bulk_insert_mode_switch_spmv_correctness<spira::layout::tags::aos_tag>();
+TEST(LargeMatrixSpmvTest, BulkInsertLockSpmvCorrectness_AOS) {
+    bulk_insert_lock_spmv_correctness<spira::layout::tags::aos_tag>();
 }
 
-TEST(LargeMatrixSpmvTest, BulkInsertModeSwitchSpmvCorrectness_SOA) {
-    bulk_insert_mode_switch_spmv_correctness<spira::layout::tags::soa_tag>();
+TEST(LargeMatrixSpmvTest, BulkInsertLockSpmvCorrectness_SOA) {
+    bulk_insert_lock_spmv_correctness<spira::layout::tags::soa_tag>();
 }
 
 template<class LayoutTag>
-void bulk_insert_and_mode_switch_integrity()
+void bulk_insert_and_lock_integrity()
 {
     using I = std::size_t;
     using V = double;
 
     constexpr I N = 10000;
-    constexpr int INSERTS = 100000; 
+    constexpr int INSERTS = 100000;
 
     spira::matrix<LayoutTag, I, V> mat(N, N);
-    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
 
     std::mt19937_64 rng(42);
     std::uniform_int_distribution<I> dist_index(0, N - 1);
@@ -151,7 +144,7 @@ void bulk_insert_and_mode_switch_integrity()
         mat.insert(i, j, val);
     }
 
-    mat.flush();
+    mat.lock();
 
     EXPECT_EQ(mat.nnz(), expected.size());
 
@@ -169,26 +162,15 @@ void bulk_insert_and_mode_switch_integrity()
             EXPECT_DOUBLE_EQ(mat.get(i, j), 0.0);
         }
     }
-
-    mat.set_mode(spira::mode::matrix_mode::spmv);
-    mat.flush();
-
-    EXPECT_EQ(mat.nnz(), expected.size());
-    for (auto const& [key, vexp] : expected) {
-        I i = key.first;
-        I j = key.second;
-        EXPECT_TRUE(mat.contains(i, j));
-        EXPECT_DOUBLE_EQ(mat.get(i, j), vexp);
-    }
 }
 
 }
 
 
-TEST(LargeMatrixStressTest, BulkInsertAndModeSwitchIntegrity_AOS) {
-    bulk_insert_and_mode_switch_integrity<spira::layout::tags::aos_tag>();
+TEST(LargeMatrixStressTest, BulkInsertAndLockIntegrity_AOS) {
+    bulk_insert_and_lock_integrity<spira::layout::tags::aos_tag>();
 }
 
-TEST(LargeMatrixStressTest, BulkInsertAndModeSwitchIntegrity_SOA) {
-    bulk_insert_and_mode_switch_integrity<spira::layout::tags::soa_tag>();
+TEST(LargeMatrixStressTest, BulkInsertAndLockIntegrity_SOA) {
+    bulk_insert_and_lock_integrity<spira::layout::tags::soa_tag>();
 }

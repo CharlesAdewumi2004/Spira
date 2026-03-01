@@ -83,7 +83,7 @@ TEST(MatrixBasicTest, Overwrite_LastWriteWins_AOS)
     EXPECT_DOUBLE_EQ(mat.get(r, c), 7.5);
     EXPECT_TRUE(mat.contains(r, c));
 
-    mat.flush();
+    mat.lock();
     EXPECT_TRUE(mat.contains(r, c));
     EXPECT_DOUBLE_EQ(mat.get(r, c), 7.5);
 
@@ -102,7 +102,7 @@ TEST(MatrixBasicTest, Overwrite_LastWriteWins_SOA)
     mat.insert(r, c, 7.5);
 
     EXPECT_DOUBLE_EQ(mat.get(r, c), 7.5);
-    mat.flush();
+    mat.lock();
     EXPECT_DOUBLE_EQ(mat.get(r, c), 7.5);
 
     EXPECT_EQ(mat.nnz(), 1u);
@@ -186,91 +186,22 @@ TEST(MatrixBasicTest, ForEachRowVisitsAllRowsWithCorrectIndex)
         EXPECT_TRUE(b);
 }
 
-// ------------------ Mode propagation ------------------
+// ------------------ Mode ------------------
 
-TEST(MatrixBasicTest, SetModeUpdatesMatrixMode)
+TEST(MatrixBasicTest, ModeTransitions)
 {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(2, 2);
 
-    EXPECT_EQ(mat.mode(), spira::mode::matrix_mode::balanced);
+    EXPECT_EQ(mat.mode(), spira::config::matrix_mode::open);
+    EXPECT_FALSE(mat.is_locked());
 
-    mat.set_mode(spira::mode::matrix_mode::spmv);
-    EXPECT_EQ(mat.mode(), spira::mode::matrix_mode::spmv);
+    mat.lock();
+    EXPECT_EQ(mat.mode(), spira::config::matrix_mode::locked);
+    EXPECT_TRUE(mat.is_locked());
 
-    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-    EXPECT_EQ(mat.mode(), spira::mode::matrix_mode::insert_heavy);
-}
-
-// ------------------ Size Of Buffer/Runs ------------------
-TEST(MatrixBasicTest, SizeOfBufferAndNumberOfRuns)
-{
-    using I = std::size_t;
-    using V = double;
-    spira::matrix<spira::layout::tags::aos_tag, I, V> mat(10, 10);
-
-    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-
-    mat.insert(0, 0, 1);
-    EXPECT_EQ(mat.get(0, 0), 1);
-    mat.insert(0, 1, 2);
-    EXPECT_EQ(mat.get(0, 1), 2);
-    mat.insert(0, 2, 3);
-    EXPECT_EQ(mat.get(0, 2), 3);
-    mat.insert(0, 3, 4);
-    EXPECT_EQ(mat.get(0, 3), 4);
-
-    EXPECT_EQ(mat.buffer_size(0), 4);
-
-    mat.flush(0);
-
-    mat.set_mode(spira::mode::matrix_mode::spmv);
-
-    EXPECT_EQ(mat.mode(), spira::mode::matrix_mode::spmv);
-
-    EXPECT_EQ(mat.buffer_size(0), 0);
-
-    mat.insert(0, 2, 3);
-    EXPECT_EQ(mat.get(0, 2), 3);
-    mat.insert(0, 3, 4);
-    EXPECT_EQ(mat.get(0, 3), 4);
-}
-
-// ------------------ Dirty Correctness ------------------
-TEST(MatrixBasicTest, IsDirtyCorrectness)
-{
-    using I = std::size_t;
-    using V = double;
-
-    const size_t R = spira::config::balanced.slab_merge_threshold * 2;
-    const size_t C = spira::config::balanced.slab_merge_threshold * 2;
-
-    spira::matrix<spira::layout::tags::aos_tag, I, V> mat(R, C);
-
-    EXPECT_FALSE(mat.is_row_dirty(0));
-
-    mat.insert(0, 0, 1.0);
-    mat.insert(0, 1, 2.0);
-    EXPECT_TRUE(mat.is_row_dirty(0));
-
-    mat.flush(0);
-
-    EXPECT_EQ(mat.buffer_size(0), 0u);
-
-    // Switching to spmv must fully settle (no runs allowed)
-    mat.set_mode(spira::mode::matrix_mode::spmv);
-    EXPECT_EQ(mat.buffer_size(0), 0u);
-    EXPECT_FALSE(mat.is_row_dirty(0));
-
-    mat.set_mode(spira::mode::matrix_mode::balanced);
-
-    const size_t limit = spira::config::balanced.slab_merge_threshold + 64;
-    for (size_t i = 0; i < limit; ++i)
-        mat.insert(0, i, static_cast<double>(i + 1));
-
-    EXPECT_TRUE(mat.is_row_dirty(0));
-
-    mat.flush(0);
-    EXPECT_EQ(mat.buffer_size(0), 0u);
+    mat.open();
+    EXPECT_EQ(mat.mode(), spira::config::matrix_mode::open);
+    EXPECT_FALSE(mat.is_locked());
 }

@@ -40,17 +40,17 @@ namespace
 
 TEST(AddRows, DisjointColumns_MergesBoth)
 {
-    Mat dummy(1, 10);
-    Row A(0, 10);
-    Row B(0, 10);
-    Row out(0, 10);
+    Row A(10);
+    Row B(10);
+    Row out(10);
 
     insert_row(A, {{1, 1.0}, {4, 4.0}});
     insert_row(B, {{2, 2.0}, {8, 8.0}});
 
-    spira::algorithms::addRows(A, B, out);   
-
-    out.flush();
+    A.lock();
+    B.lock();
+    spira::algorithms::addRows(A, B, out);
+    out.lock();
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
@@ -74,16 +74,17 @@ TEST(AddRows, DisjointColumns_MergesBoth)
 
 TEST(AddRows, OverlappingColumns_SumsValues)
 {
-    Row A(0, 10);
-    Row B(0, 10);
-    Row out(0, 10);
+    Row A(10);
+    Row B(10);
+    Row out(10);
 
     insert_row(A, {{1, 1.5}, {4, 4.0}});
     insert_row(B, {{1, 2.5}, {8, 8.0}});
 
+    A.lock();
+    B.lock();
     spira::algorithms::addRows(A, B, out);
-
-    out.flush();
+    out.lock();
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
@@ -103,16 +104,17 @@ TEST(AddRows, OverlappingColumns_SumsValues)
 
 TEST(AddRows, OverlappingColumns_ZeroSumIsDropped)
 {
-    Row A(0, 10);
-    Row B(0, 10);
-    Row out(0, 10);
+    Row A(10);
+    Row B(10);
+    Row out(10);
 
     insert_row(A, {{3, 5.0}});
     insert_row(B, {{3, -5.0}});
 
+    A.lock();
+    B.lock();
     spira::algorithms::addRows(A, B, out);
-
-    out.flush();
+    out.lock();
 
     EXPECT_EQ(out.begin(), out.end())
         << "If this fails, your zero-sum branch is inverted (you are inserting zeros).";
@@ -120,15 +122,16 @@ TEST(AddRows, OverlappingColumns_ZeroSumIsDropped)
 
 TEST(AddRows, OneSideEmpty_CopiesOther)
 {
-    Row A(0, 10);
-    Row B(0, 10);
-    Row out(0, 10);
+    Row A(10);
+    Row B(10);
+    Row out(10);
 
     insert_row(B, {{0, 1.0}, {9, 2.0}});
 
+    A.lock();
+    B.lock();
     spira::algorithms::addRows(A, B, out);
-
-    out.flush();
+    out.lock();
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
@@ -151,6 +154,7 @@ TEST(MatrixAddition, ThrowsOnShapeMismatch)
     Mat A(2, 3);
     Mat B(3, 2);
 
+    // Shape check fires before locked assert — no lock needed
     EXPECT_THROW(spira::algorithms::MatrixAddition(A, B), std::invalid_argument);
 }
 
@@ -171,6 +175,8 @@ TEST(MatrixAddition, AddsMatricesElementwise_Sparse)
                       {2, 1, -3.0},
                   });
 
+    A.lock();
+    B.lock();
     auto C = spira::algorithms::MatrixAddition(A, B);
 
     auto [r, c] = C.shape();
@@ -178,15 +184,12 @@ TEST(MatrixAddition, AddsMatricesElementwise_Sparse)
     EXPECT_EQ(c, 4u);
 
     EXPECT_EQ(C.get(0, 0), 11.0);
-
     EXPECT_EQ(C.get(0, 3), 2.0);
-
     EXPECT_EQ(C.get(1, 2), 20.0);
-
     EXPECT_EQ(C.get(2, 1), 0.0);
-
     EXPECT_EQ(C.get(2, 3), 0.0);
 
+    // Inputs unchanged
     EXPECT_EQ(A.get(0, 0), 1.0);
     EXPECT_EQ(B.get(0, 0), 10.0);
     EXPECT_EQ(A.get(2, 1), 3.0);
@@ -203,6 +206,8 @@ TEST(MatrixAddition, ZeroMatrix_AdditionKeepsOriginal)
                       {1, 0, 9.0},
                   });
 
+    A.lock();
+    Z.lock();
     auto C = spira::algorithms::MatrixAddition(A, Z);
 
     EXPECT_EQ(C.get(0, 1), 7.0);

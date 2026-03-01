@@ -49,6 +49,7 @@ static M make_matrix(std::size_t R, std::size_t C,
     for (auto [r, c, v] : entries) {
         A.insert(r, c, v);
     }
+    A.lock();
     return A;
 }
 
@@ -124,8 +125,9 @@ static M from_dense(const std::vector<std::vector<V>>& D) {
     M A(R, C);
     for (std::size_t r = 0; r < R; ++r)
         for (std::size_t c = 0; c < C; ++c)
-            if (std::abs(D[r][c]) > 0) 
+            if (std::abs(D[r][c]) > 0)
                 A.insert(static_cast<I>(r), static_cast<I>(c), D[r][c]);
+    A.lock();
     return A;
 }
 
@@ -297,6 +299,7 @@ TEST(MatrixOps, AddShapeMismatchThrows) {
     M A(2, 2);
     M B(2, 3);
 
+    // Shape check fires before locked assert — no lock needed
     EXPECT_THROW((void)(A + B), std::invalid_argument);
     EXPECT_THROW((void)(A - B), std::invalid_argument);
 }

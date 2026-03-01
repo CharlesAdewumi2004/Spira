@@ -42,6 +42,7 @@ namespace
 TEST(Transpose, EmptyMatrix_ShapeSwapsAndStaysEmpty)
 {
     Matrix m(3, 5);
+    m.lock();
     auto out = spira::algorithms::transpose(m);
 
     auto [r, c] = out.shape();
@@ -61,13 +62,12 @@ TEST(Transpose, SingleElement_GoesToCorrectPlace)
 {
     Matrix m(4, 6);
     m.insert(2, 5, 7.5);
+    m.lock();
 
     auto out = spira::algorithms::transpose(m);
 
     EXPECT_EQ(out.get(5, 2), 7.5);
-
     EXPECT_EQ(m.get(2, 5), 7.5);
-
     EXPECT_EQ(out.get(2, 3), 0.0);
 }
 
@@ -79,6 +79,7 @@ TEST(Transpose, MultipleEntries_AllMoveCorrectly)
                       {0, 3, 2.0},
                       {2, 1, 3.0},
                   });
+    m.lock();
 
     auto out = spira::algorithms::transpose(m);
 
@@ -100,6 +101,7 @@ TEST(Transpose, DoubleTranspose_ReturnsOriginalValuesAndShape)
                       {0, 1, 11.0},
                       {1, 2, 22.0},
                   });
+    m.lock();
 
     auto t1 = spira::algorithms::transpose(m);
     auto t2 = spira::algorithms::transpose(t1);
@@ -119,6 +121,7 @@ TEST(Transpose, DoubleTranspose_ReturnsOriginalValuesAndShape)
 TEST(TransposeItself, ThrowsOnNonSquare)
 {
     Matrix m(2, 3);
+    // Shape check fires first in transpose_itself — no lock needed
     EXPECT_THROW(spira::algorithms::transpose_itself(m), std::logic_error);
 }
 
@@ -126,6 +129,7 @@ TEST(TransposeItself, WorksOnSquare_SingleElement)
 {
     Matrix m(4, 4);
     m.insert(1, 3, 9.0);
+    m.lock();
 
     spira::algorithms::transpose_itself(m);
 
@@ -141,6 +145,7 @@ TEST(TransposeItself, WorksOnSquare_ManyEntries)
                       {1, 0, 6.0},
                       {2, 1, 7.0},
                   });
+    m.lock();
 
     spira::algorithms::transpose_itself(m);
 
@@ -161,6 +166,7 @@ TEST(TransposeItself, DoubleTransposeItself_ReturnsOriginal)
                       {2, 2, 4.5},
                       {1, 0, -3.0},
                   });
+    m.lock();
 
     const auto a01 = m.get(0, 1);
     const auto a22 = m.get(2, 2);

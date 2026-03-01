@@ -25,7 +25,6 @@ using AosMatI = spira::matrix<layout::tags::aos_tag, uint32_t, int>;
 
 TEST(AccumulateSingleRow, EmptyRowReturnsZero) {
     AosMat mat(3, 5);
-    mat.flush();
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 0.0);
     EXPECT_DOUBLE_EQ(accumulate(mat, 1), 0.0);
     EXPECT_DOUBLE_EQ(accumulate(mat, 2), 0.0);
@@ -73,6 +72,7 @@ TEST(AccumulateSingleRow, OverwrittenElementUsesLatestValue) {
     AosMat mat(1, 5);
     mat.insert(0, 0, 10.0);
     mat.insert(0, 0, 25.0);
+    mat.lock();
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 25.0);
 }
 
@@ -124,63 +124,34 @@ TEST(AccumulateWholeMatrix, ResultSizeMatchesRowCount) {
 }
 
 // ─────────────────────────────────────────────────────
-// Flush behaviour
+// Open and locked mode both work
 // ─────────────────────────────────────────────────────
 
-TEST(AccumulateFlush, WorksOnUnflushedMatrix) {
+TEST(AccumulateMode, WorksInOpenMode) {
     AosMat mat(1, 5);
     mat.insert(0, 0, 1.0);
     mat.insert(0, 1, 2.0);
     mat.insert(0, 2, 3.0);
-    // deliberately not calling mat.flush()
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 6.0);
 }
 
-TEST(AccumulateFlush, WorksOnAlreadyFlushedMatrix) {
+TEST(AccumulateMode, WorksInLockedMode) {
     AosMat mat(1, 5);
     mat.insert(0, 0, 1.0);
     mat.insert(0, 1, 2.0);
-    mat.flush();
+    mat.lock();
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 3.0);
 }
 
-TEST(AccumulateFlush, WorksOnPartiallyFlushedMatrix) {
+TEST(AccumulateMode, OpenAndLockedGiveSameResult) {
     AosMat mat(2, 5);
     mat.insert(0, 0, 1.0);
-    mat.flush(0);
     mat.insert(1, 0, 5.0);
-    // row 0 is flushed, row 1 is dirty
-    auto result = accumulate(mat);
-    EXPECT_DOUBLE_EQ(result[0], 1.0);
-    EXPECT_DOUBLE_EQ(result[1], 5.0);
-}
-
-// ─────────────────────────────────────────────────────
-// Modes
-// ─────────────────────────────────────────────────────
-
-TEST(AccumulateModes, BalancedMode) {
-    AosMat mat(1, 5);
-    mat.set_mode(mode::matrix_mode::balanced);
-    mat.insert(0, 0, 2.0);
-    mat.insert(0, 1, 3.0);
-    EXPECT_DOUBLE_EQ(accumulate(mat, 0), 5.0);
-}
-
-TEST(AccumulateModes, InsertHeavyMode) {
-    AosMat mat(1, 5);
-    mat.set_mode(mode::matrix_mode::insert_heavy);
-    mat.insert(0, 0, 2.0);
-    mat.insert(0, 1, 3.0);
-    EXPECT_DOUBLE_EQ(accumulate(mat, 0), 5.0);
-}
-
-TEST(AccumulateModes, SpmvMode) {
-    AosMat mat(1, 5);
-    mat.set_mode(mode::matrix_mode::spmv);
-    mat.insert(0, 0, 2.0);
-    mat.insert(0, 1, 3.0);
-    EXPECT_DOUBLE_EQ(accumulate(mat, 0), 5.0);
+    auto open_result = accumulate(mat);
+    mat.lock();
+    auto locked_result = accumulate(mat);
+    EXPECT_DOUBLE_EQ(open_result[0], locked_result[0]);
+    EXPECT_DOUBLE_EQ(open_result[1], locked_result[1]);
 }
 
 // ─────────────────────────────────────────────────────
@@ -244,9 +215,8 @@ TEST(AccumulateValueTypes, IntegerWholeMatrix) {
 // ─────────────────────────────────────────────────────
 
 TEST(AccumulateStress, FullyDenseRow) {
-    const uint32_t cols = 1000;
+    const uint32_t cols = 50; // keep under default BufferN=64 for open-mode test
     AosMat mat(1, cols);
-    mat.set_mode(mode::matrix_mode::insert_heavy);
 
     double expected = 0.0;
     for (uint32_t c = 0; c < cols; ++c) {
@@ -262,7 +232,6 @@ TEST(AccumulateStress, ManyRows) {
     const uint32_t rows = 500;
     const uint32_t cols = 10;
     AosMat mat(rows, cols);
-    mat.set_mode(mode::matrix_mode::insert_heavy);
 
     for (uint32_t r = 0; r < rows; ++r) {
         mat.insert(r, 0, static_cast<double>(r));
@@ -291,7 +260,7 @@ TEST(AccumulateEdge, AllZeroValues) {
     AosMat mat(1, 5);
     mat.insert(0, 0, 0.0);
     mat.insert(0, 1, 0.0);
-    mat.flush();
+    mat.lock();
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 0.0);
 }
 
@@ -316,7 +285,8 @@ TEST(AccumulateEdge, RepeatedOverwrites) {
     for (int i = 0; i < 100; ++i) {
         mat.insert(0, 0, static_cast<double>(i));
     }
-    // final value at (0,0) should be 99
+    mat.lock();
+    // final value at (0,0) should be 99 (last write wins after dedup)
     EXPECT_DOUBLE_EQ(accumulate(mat, 0), 99.0);
 }
 
