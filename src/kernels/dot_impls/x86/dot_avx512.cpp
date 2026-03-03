@@ -4,7 +4,7 @@
 
 #if defined(SPIRA_ARCH_X86)
 
-double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const double* x, size_t n) {
+double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const double* x, size_t n, size_t x_size) {
     size_t i = 0;
     __m512d acc_reg = _mm512_setzero_pd();
 
@@ -27,7 +27,7 @@ double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const 
     return acc;
 }
 
-float sparse_dot_float_avx512(const float* vals, const uint32_t* cols, const float* x, size_t n) {
+float sparse_dot_float_avx512(const float* vals, const uint32_t* cols, const float* x, size_t n, size_t x_size) {
     size_t i = 0;
     __m512 acc_reg = _mm512_setzero_ps();
 

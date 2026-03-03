@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
-double sparse_dot_double_neon(const double *vals, const uint32_t *cols, const double *x, size_t n) {
+double sparse_dot_double_neon(const double *vals, const uint32_t *cols, const double *x, size_t n, size_t x_size) {
     size_t i = 0;
     float64x2_t acc = vdupq_n_f64(0.0); // [0.0, 0.0]
 
@@ -33,7 +33,7 @@ double sparse_dot_double_neon(const double *vals, const uint32_t *cols, const do
     return result;
 }
 
-float sparse_dot_float_neon(const float *vals, const uint32_t *cols, const float *x, size_t n) {
+float sparse_dot_float_neon(const float *vals, const uint32_t *cols, const float *x, size_t n, size_t x_size) {
     size_t i = 0;
     float32x4_t acc = vdupq_n_f32(0.0f); // [0, 0, 0, 0]
 

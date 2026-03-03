@@ -4,7 +4,7 @@
 #include "../src/kernels/simd_aliases_x86/simd_avx_aliases.h"
 
 double sparse_dot_double_avx(const double *vals, const uint32_t *cols,
-                             const double *x, size_t n) {
+                             const double *x, size_t n, size_t x_size) {
   size_t i = 0;
   spira::kernel::simd::reg256_double acc_reg =
       spira::kernel::simd::zero_double_256();
@@ -30,7 +30,7 @@ double sparse_dot_double_avx(const double *vals, const uint32_t *cols,
 }
 
 float sparse_dot_float_avx(const float *vals, const uint32_t *cols,
-                           const float *x, size_t n) {
+                           const float *x, size_t n, size_t x_size) {
   size_t i = 0;
   spira::kernel::simd::reg256_float acc_reg =
       spira::kernel::simd::zero_float_256();
