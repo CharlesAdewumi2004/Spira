@@ -48,7 +48,7 @@ spmv<layout::tags::soa_tag, uint32_t, float>(const spira::matrix<layout::tags::s
     matrix.flush();
 
     auto SpMV = [&y, &x](const row<Layout, uint32_t, float> &row, uint32_t rowIndex) {
-        y[rowIndex] = kernel::sparse_dot_float(row.data().second.data(), row.data().first.data(), x.data(), row.size());
+        y[rowIndex] = kernel::sparse_dot_float(row.data().second.data(), row.data().first.data(), x.data(), row.size(), x.size());
     };
 
     matrix.for_each_row(SpMV);
@@ -70,7 +70,7 @@ spmv<layout::tags::soa_tag, uint32_t, double>(const spira::matrix<layout::tags::
     matrix.flush();
 
     auto SpMV = [&y, &x](const row<Layout, uint32_t, double> &row, uint32_t rowIndex) {
-        y[rowIndex] = kernel::sparse_dot_double(row.data().second.data(), row.data().first.data(), x.data(), row.size());
+        y[rowIndex] = kernel::sparse_dot_double(row.data().second.data(), row.data().first.data(), x.data(), row.size(), x.size());
     };
 
     matrix.for_each_row(SpMV);

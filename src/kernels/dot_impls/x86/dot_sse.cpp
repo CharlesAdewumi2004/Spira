@@ -5,7 +5,7 @@
 #include "../src/kernels/simd_aliases_x86/simd_sse_aliases.h"
 
 
-double sparse_dot_double_sse(const double* vals, const uint32_t* cols, const double* x, size_t n) {
+double sparse_dot_double_sse(const double* vals, const uint32_t* cols, const double* x, size_t n, size_t x_size) {
     spira::kernel::simd::reg128_double acc = spira::kernel::simd::zero_double_128();
     size_t i = 0;
 
@@ -27,7 +27,7 @@ double sparse_dot_double_sse(const double* vals, const uint32_t* cols, const dou
     return result;
 }
 
-float sparse_dot_float_sse(const float* vals, const uint32_t* cols, const float* x, size_t n) {
+float sparse_dot_float_sse(const float* vals, const uint32_t* cols, const float* x, size_t n, size_t x_size) {
     spira::kernel::simd::reg128_float acc = spira::kernel::simd::zero_float_128();
     size_t i = 0;
 
