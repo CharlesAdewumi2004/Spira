@@ -44,10 +44,10 @@ template <class LayoutTag, concepts::Indexable I, concepts::Valueable V,
           class BufferTag = buffer::tags::array_buffer<LayoutTag>,
           std::size_t BufferN = 64>
   requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V>
-        && layout::Layout<layout::of::storage_of_t<LayoutTag, I, V>, I, V>
+        && layout::Layout<layout::detail::storage_of_t<LayoutTag, I, V>, I, V>
 class row {
 public:
-  using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
+  using layout_policy = layout::detail::storage_of_t<LayoutTag, I, V>;
   using buffer_t = buffer::traits::traits_of_type<BufferTag, I, V, BufferN>;
   using index_type = I;
   using value_type = V;

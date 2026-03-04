@@ -1,5 +1,5 @@
-#ifndef SPIRA_KERNELS_HW_DETECT_H
-#define SPIRA_KERNELS_HW_DETECT_H
+#ifndef SPIRA_KERNELS_HW_DETECT_HPP
+#define SPIRA_KERNELS_HW_DETECT_HPP
 
 #include <algorithm>
 #include <chrono>

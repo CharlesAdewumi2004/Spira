@@ -1,5 +1,5 @@
-#ifndef SPIRA_KERNELS_SIMD_ALIASES_SSE_H
-#define SPIRA_KERNELS_SIMD_ALIASES_SSE_H
+#ifndef SPIRA_KERNELS_SIMD_ALIASES_SSE_HPP
+#define SPIRA_KERNELS_SIMD_ALIASES_SSE_HPP
 
 #include <cstdint>
 #include <immintrin.h>

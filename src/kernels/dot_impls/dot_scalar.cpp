@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stddef.h>
-#include "../runtime_config.h"
+#include "../runtime_config.hpp"
 
 double sparse_dot_double_scalar(const double *vals, const uint32_t *cols, const double *x, size_t n, size_t x_size)
 {

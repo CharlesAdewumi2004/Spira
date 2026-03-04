@@ -1,5 +1,5 @@
 #pragma once
-#include "hw_detect.h"
+#include "hw_detect.hpp"
 
 namespace spira::kernel
 {

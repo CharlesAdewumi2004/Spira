@@ -1,4 +1,4 @@
-// test_scalers.cpp
+// test_scalars.cpp
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -6,7 +6,7 @@
 #include <tuple>
 
 #include <spira/matrix/matrix.hpp>
-#include <spira/algorithms/scalers.hpp>
+#include <spira/algorithms/scalars.hpp>
 
 using LayoutTag = spira::layout::tags::aos_tag;
 

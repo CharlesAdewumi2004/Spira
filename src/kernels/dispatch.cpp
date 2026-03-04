@@ -1,4 +1,4 @@
-#include "runtime_config.h"
+#include "runtime_config.hpp"
 #include "spira/kernels/kernels.h"
 #include <stddef.h>
 

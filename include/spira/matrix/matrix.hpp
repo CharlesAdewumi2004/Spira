@@ -24,10 +24,10 @@ template <class LayoutTag, concepts::Indexable I = uint32_t,
   requires buffer::Buffer<
                buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I,
                V> &&
-           layout::Layout<layout::of::storage_of_t<LayoutTag, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<LayoutTag, I, V>, I, V>
 class matrix {
 public:
-  using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
+  using layout_policy = layout::detail::storage_of_t<LayoutTag, I, V>;
   using index_type = I;
   using value_type = V;
   using storage_type = row<LayoutTag, I, V, BufferTag, BufferN>;
@@ -163,14 +163,14 @@ private:
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 matrix<L, I, V, BT, BN>::matrix(size_type row_limit, size_type column_limit)
     : matrix(row_limit, column_limit, config::default_row_reserve_hint) {}
 
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 matrix<L, I, V, BT, BN>::matrix(size_type row_limit, size_type column_limit,
                                 size_type reserve_per_row)
     : mode_{config::matrix_mode::open}, rows_{}, row_limit_{row_limit},
@@ -188,7 +188,7 @@ matrix<L, I, V, BT, BN>::matrix(size_type row_limit, size_type column_limit,
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::shape() const noexcept -> shape_type {
   return {row_limit_, column_limit_};
 }
@@ -196,7 +196,7 @@ auto matrix<L, I, V, BT, BN>::shape() const noexcept -> shape_type {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::n_rows() const noexcept -> size_type {
   return row_limit_;
 }
@@ -204,7 +204,7 @@ auto matrix<L, I, V, BT, BN>::n_rows() const noexcept -> size_type {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::n_cols() const noexcept -> size_type {
   return column_limit_;
 }
@@ -216,7 +216,7 @@ auto matrix<L, I, V, BT, BN>::n_cols() const noexcept -> size_type {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::mode() const noexcept -> config::matrix_mode {
   return mode_;
 }
@@ -224,7 +224,7 @@ auto matrix<L, I, V, BT, BN>::mode() const noexcept -> config::matrix_mode {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 bool matrix<L, I, V, BT, BN>::is_locked() const noexcept {
   return mode_ == config::matrix_mode::locked;
 }
@@ -232,7 +232,7 @@ bool matrix<L, I, V, BT, BN>::is_locked() const noexcept {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 void matrix<L, I, V, BT, BN>::lock() {
   if (mode_ == config::matrix_mode::locked)
     return;
@@ -245,7 +245,7 @@ void matrix<L, I, V, BT, BN>::lock() {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 void matrix<L, I, V, BT, BN>::open() {
   if (mode_ == config::matrix_mode::open)
     return;
@@ -262,7 +262,7 @@ void matrix<L, I, V, BT, BN>::open() {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::row_nnz(index_type row_index) const -> size_type {
   validate_row_index(row_index);
   return rows_[to_size(row_index)].size();
@@ -271,7 +271,7 @@ auto matrix<L, I, V, BT, BN>::row_nnz(index_type row_index) const -> size_type {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 bool matrix<L, I, V, BT, BN>::empty() const noexcept {
   for (const auto &r : rows_) {
     if (!r.empty())
@@ -283,7 +283,7 @@ bool matrix<L, I, V, BT, BN>::empty() const noexcept {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::nnz() const noexcept -> size_type {
   size_type total = 0;
   for (const auto &r : rows_) {
@@ -295,7 +295,7 @@ auto matrix<L, I, V, BT, BN>::nnz() const noexcept -> size_type {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::row_at(index_type row_index) const
     -> const storage_type & {
   validate_row_index(row_index);
@@ -305,7 +305,7 @@ auto matrix<L, I, V, BT, BN>::row_at(index_type row_index) const
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 bool matrix<L, I, V, BT, BN>::contains(index_type row_index,
                                        index_type col_index) const {
   validate_row_index(row_index);
@@ -316,7 +316,7 @@ bool matrix<L, I, V, BT, BN>::contains(index_type row_index,
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::get(index_type row_index,
                                   index_type col_index) const -> value_type {
   validate_row_index(row_index);
@@ -328,7 +328,7 @@ auto matrix<L, I, V, BT, BN>::get(index_type row_index,
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::accumulate(index_type row_index) const
     -> value_type {
   validate_row_index(row_index);
@@ -342,7 +342,7 @@ auto matrix<L, I, V, BT, BN>::accumulate(index_type row_index) const
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 void matrix<L, I, V, BT, BN>::insert(index_type row_index, index_type col_index,
                                      const value_type &val) {
   assert(mode_ == config::matrix_mode::open &&
@@ -355,7 +355,7 @@ void matrix<L, I, V, BT, BN>::insert(index_type row_index, index_type col_index,
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 void matrix<L, I, V, BT, BN>::clear() noexcept {
   assert(mode_ == config::matrix_mode::open &&
          "matrix::clear() requires open mode");
@@ -367,7 +367,7 @@ void matrix<L, I, V, BT, BN>::clear() noexcept {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-               layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+               layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 auto matrix<L, I, V, BT, BN>::row_at_mut(index_type row_index)
     -> storage_type & {
   assert(mode_ == config::matrix_mode::open &&
@@ -383,7 +383,7 @@ auto matrix<L, I, V, BT, BN>::row_at_mut(index_type row_index)
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 void matrix<L, I, V, BT, BN>::swap(matrix &other) noexcept {
   using std::swap;
   swap(mode_, other.mode_);
@@ -399,7 +399,7 @@ void matrix<L, I, V, BT, BN>::swap(matrix &other) noexcept {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) const {
   for (size_type i = 0; i < row_limit_; ++i) {
@@ -410,7 +410,7 @@ void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) const {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) {
   for (size_type i = 0; i < row_limit_; ++i) {
@@ -421,7 +421,7 @@ void matrix<L, I, V, BT, BN>::for_each_row(Func &&f) {
 template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
           std::size_t BN>
   requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-           layout::Layout<layout::of::storage_of_t<L, I, V>, I, V>
+           layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
 template <class Func>
 void matrix<L, I, V, BT, BN>::for_each_nnz_row(Func &&f) const {
   for (size_type i = 0; i < row_limit_; ++i) {

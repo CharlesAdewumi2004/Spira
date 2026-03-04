@@ -4,7 +4,7 @@
 #include "aos.hpp"
 #include "soa.hpp"
 
-namespace spira::layout::of
+namespace spira::layout::detail
 {
 
     template <class Tag, class I, class V>
