@@ -1,4 +1,4 @@
-#include "cpu_detect.h"
+#include "hw_detect.h"
 #include "spira/kernels/kernels.h"
 #include <stddef.h>
 

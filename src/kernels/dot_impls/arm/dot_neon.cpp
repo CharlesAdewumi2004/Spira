@@ -1,4 +1,4 @@
-#include "../src/kernels/cpu_detect.h"
+#include "../src/kernels/hw_detect.h"
 
 #if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
 
