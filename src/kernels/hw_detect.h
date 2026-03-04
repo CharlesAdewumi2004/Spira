@@ -534,7 +534,7 @@ namespace spira::kernel
     inline MemoryLatencyInfo measure_memory_latency()
     {
         // Allocate a buffer much larger than L3 (force DRAM access)
-        constexpr size_t BUF_SIZE = 256 * 1024 * 1024; // 256MB
+        constexpr size_t BUF_SIZE = 32 * 1024 * 1024; // 32MB — larger than typical L3
         constexpr size_t N = BUF_SIZE / sizeof(size_t);
 
         std::vector<size_t> buf(N);
@@ -561,8 +561,8 @@ namespace spira::kernel
         auto end = std::chrono::high_resolution_clock::now();
 
         // Prevent the compiler optimising away the loop
-        if (pos == SIZE_MAX)
-            printf("");
+        volatile size_t sink = pos;
+        (void)sink;
 
         double ns_per_access =
             std::chrono::duration<double, std::nano>(end - start).count() / ITERATIONS;

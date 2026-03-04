@@ -4,30 +4,65 @@
 
 #include "../src/kernels/simd_aliases_x86/simd_sse_aliases.h"
 
-double sparse_dot_double_sse(const double *vals, const uint32_t *cols,
-                             const double *x, size_t n, size_t x_size)
+double sparse_dot_double_sse(const double *vals, const uint32_t *cols, const double *x, size_t n, size_t x_size)
 {
-    spira::kernel::simd::reg128_double acc =
-        spira::kernel::simd::zero_double_128();
+    spira::kernel::simd::reg128_double acc = spira::kernel::simd::zero_double_128();
     size_t i = 0;
+    double result;
 
-    for (; i + 2 <= n; i += 2)
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n))
     {
-        spira::kernel::simd::reg128_double v =
-            spira::kernel::simd::load_double_128(vals + i);
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t prefetch_end = n - d;
 
-        spira::kernel::simd::reg128_double xv =
-            _mm_set_pd(x[cols[i + 1]], x[cols[i]]);
+        for (; i + 2 <= prefetch_end; i += 2)
+        {
+            __builtin_prefetch(&x[cols[i + d]], 0, 3);
+            __builtin_prefetch(&x[cols[i + 1 + d]], 0, 3);
 
-        acc = spira::kernel::simd::add_double_128(
-            acc, spira::kernel::simd::mul_double_128(v, xv));
+            spira::kernel::simd::reg128_double v = spira::kernel::simd::load_double_128(vals + i);
+
+            spira::kernel::simd::reg128_double xv = _mm_set_pd(x[cols[i + 1]], x[cols[i]]);
+
+            acc = spira::kernel::simd::add_double_128(acc, spira::kernel::simd::mul_double_128(v, xv));
+        }
+
+        for (; i + 2 <= n; i += 2)
+        {
+            spira::kernel::simd::reg128_double v = spira::kernel::simd::load_double_128(vals + i);
+
+            spira::kernel::simd::reg128_double xv = _mm_set_pd(x[cols[i + 1]], x[cols[i]]);
+
+            acc = spira::kernel::simd::add_double_128(acc, spira::kernel::simd::mul_double_128(v, xv));
+        }
+
+        result = spira::kernel::simd::reduce_sum_double_128(acc);
+
+        for (; i < n; i++)
+        {
+            result += vals[i] * x[cols[i]];
+        }
     }
-
-    double result = spira::kernel::simd::reduce_sum_double_128(acc);
-
-    for (; i < n; i++)
+    else
     {
-        result += vals[i] * x[cols[i]];
+        for (; i + 2 <= n; i += 2)
+        {
+            spira::kernel::simd::reg128_double v =
+                spira::kernel::simd::load_double_128(vals + i);
+
+            spira::kernel::simd::reg128_double xv =
+                _mm_set_pd(x[cols[i + 1]], x[cols[i]]);
+
+            acc = spira::kernel::simd::add_double_128(
+                acc, spira::kernel::simd::mul_double_128(v, xv));
+        }
+
+        result = spira::kernel::simd::reduce_sum_double_128(acc);
+
+        for (; i < n; i++)
+        {
+            result += vals[i] * x[cols[i]];
+        }
     }
 
     return result;
@@ -38,24 +73,72 @@ float sparse_dot_float_sse(const float *vals, const uint32_t *cols, const float 
     spira::kernel::simd::reg128_float acc = spira::kernel::simd::zero_float_128();
     size_t i = 0;
 
-    for (; i + 4 <= n; i += 4)
+    float result;
+
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n))
     {
-        spira::kernel::simd::reg128_float v = spira::kernel::simd::load_float_128(vals + i);
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t prefetch_end = n - d;
 
-        spira::kernel::simd::reg128_float xv = _mm_set_ps(
-            x[cols[i + 3]],
-            x[cols[i + 2]],
-            x[cols[i + 1]],
-            x[cols[i]]);
+        for (; i + 4 <= prefetch_end; i += 4)
+        {
+            __builtin_prefetch(&x[cols[i + d]], 0, 3);
+            __builtin_prefetch(&x[cols[i + 1 + d]], 0, 3);
+            __builtin_prefetch(&x[cols[i + 2 + d]], 0, 3);
+            __builtin_prefetch(&x[cols[i + 3 + d]], 0, 3);
 
-        acc = spira::kernel::simd::add_float_128(acc, spira::kernel::simd::mul_float_128(v, xv));
+            spira::kernel::simd::reg128_float v = spira::kernel::simd::load_float_128(vals + i);
+
+            spira::kernel::simd::reg128_float xv = _mm_set_ps(
+                x[cols[i + 3]],
+                x[cols[i + 2]],
+                x[cols[i + 1]],
+                x[cols[i]]);
+
+            acc = spira::kernel::simd::add_float_128(acc, spira::kernel::simd::mul_float_128(v, xv));
+        }
+
+        for (; i + 4 <= n; i += 4)
+        {
+            spira::kernel::simd::reg128_float v = spira::kernel::simd::load_float_128(vals + i);
+
+            spira::kernel::simd::reg128_float xv = _mm_set_ps(
+                x[cols[i + 3]],
+                x[cols[i + 2]],
+                x[cols[i + 1]],
+                x[cols[i]]);
+
+            acc = spira::kernel::simd::add_float_128(acc, spira::kernel::simd::mul_float_128(v, xv));
+        }
+
+        result = spira::kernel::simd::reduce_sum_float_128(acc);
+
+        for (; i < n; i++)
+        {
+            result += vals[i] * x[cols[i]];
+        }
     }
-
-    float result = spira::kernel::simd::reduce_sum_float_128(acc);
-
-    for (; i < n; i++)
+    else
     {
-        result += vals[i] * x[cols[i]];
+        for (; i + 4 <= n; i += 4)
+        {
+            spira::kernel::simd::reg128_float v = spira::kernel::simd::load_float_128(vals + i);
+
+            spira::kernel::simd::reg128_float xv = _mm_set_ps(
+                x[cols[i + 3]],
+                x[cols[i + 2]],
+                x[cols[i + 1]],
+                x[cols[i]]);
+
+            acc = spira::kernel::simd::add_float_128(acc, spira::kernel::simd::mul_float_128(v, xv));
+        }
+
+        result = spira::kernel::simd::reduce_sum_float_128(acc);
+
+        for (; i < n; i++)
+        {
+            result += vals[i] * x[cols[i]];
+        }
     }
 
     return result;
