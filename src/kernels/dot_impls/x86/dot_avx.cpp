@@ -1,9 +1,9 @@
 
-#include "../src/kernels/runtime_config.h"
+#include "../src/kernels/runtime_config.hpp"
 
 #if defined(SPIRA_ARCH_X86)
 
-#include "../src/kernels/simd_aliases_x86/simd_avx_aliases.h"
+#include "../src/kernels/simd_aliases/x86/simd_avx_aliases.hpp"
 
 double sparse_dot_double_avx(const double *vals, const uint32_t *cols,
                              const double *x, size_t n, size_t x_size)

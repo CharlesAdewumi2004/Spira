@@ -1,7 +1,7 @@
 #include <immintrin.h>
 #include <cstddef>
 #include <cstdint>
-#include "../src/kernels/runtime_config.h"
+#include "../src/kernels/runtime_config.hpp"
 
 #if defined(SPIRA_ARCH_X86)
 

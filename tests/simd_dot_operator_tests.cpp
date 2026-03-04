@@ -5,7 +5,7 @@
 #include <random>
 #include <vector>
 
-#include "../src/kernels/hw_detect.h"
+#include "../src/kernels/hw_detect.hpp"
 #include "spira/kernels/kernels.h"
 
 // ============================================================================

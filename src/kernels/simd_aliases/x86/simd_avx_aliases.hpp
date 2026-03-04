@@ -1,10 +1,10 @@
-#ifndef SPIRA_KERNELS_SIMD_ALIASES_AVX_H
-#define SPIRA_KERNELS_SIMD_ALIASES_AVX_H
+#ifndef SPIRA_KERNELS_SIMD_ALIASES_AVX_HPP
+#define SPIRA_KERNELS_SIMD_ALIASES_AVX_HPP
 
 #include <cstdint>
 #include <immintrin.h>
 
-#include "simd_sse_aliases.h"
+#include "simd_sse_aliases.hpp"
 
 namespace spira::kernel::simd {
 

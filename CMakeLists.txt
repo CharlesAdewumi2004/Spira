@@ -157,7 +157,7 @@ if (SPIRA_BUILD_TESTS)
   enable_testing()
 
   add_executable(unit_tests
-    tests/layout_and_type_constraits_tests.cpp
+    tests/layout_and_type_constraints_tests.cpp
     tests/matrix_tests.cpp
     tests/flush_behaviour_tests.cpp
     tests/mode_switch_tests.cpp
@@ -166,9 +166,9 @@ if (SPIRA_BUILD_TESTS)
     tests/spgemm_tests.cpp
     tests/transpose_tests.cpp
     tests/matrix_addition_tests.cpp
-    tests/scaler_tests.cpp
+    tests/scalar_tests.cpp
     tests/matrix_operator_overloads_tests.cpp
-    tests/SIMD_dot_operator_tests.cpp
+    tests/simd_dot_operator_tests.cpp
     tests/accumulate_algo_tests.cpp
   )
 
