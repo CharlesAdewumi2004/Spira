@@ -1,4 +1,4 @@
-#include "hw_detect.h"
+#include "runtime_config.h"
 #include "spira/kernels/kernels.h"
 #include <stddef.h>
 
@@ -34,16 +34,16 @@ float (*sparse_dot_float)(const float *vals, const uint32_t *cols, const float *
 static struct KernelInit {
     KernelInit() {
         using namespace spira::kernel;
-        CpuFeatures cpu;
+        const auto& cfg = RuntimeConfig::get();
 
 #if defined(SPIRA_ARCH_X86)
-        if (cpu.avx512f) {
+        if (cfg.cpu.avx512f) {
             sparse_dot_double = sparse_dot_double_avx512;
             sparse_dot_float = sparse_dot_float_avx512;
-        } else if (cpu.avx2 && cpu.fma) {
+        } else if (cfg.cpu.avx2 && cfg.cpu.fma) {
             sparse_dot_double = sparse_dot_double_avx;
             sparse_dot_float = sparse_dot_float_avx;
-        } else if (cpu.sse42) {
+        } else if (cfg.cpu.sse42) {
             sparse_dot_double = sparse_dot_double_sse;
             sparse_dot_float = sparse_dot_float_sse;
         } else {
@@ -52,7 +52,7 @@ static struct KernelInit {
         }
 
 #elif defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
-        if (cpu.neon) {
+        if (cfg.cpu.neon) {
             sparse_dot_double = sparse_dot_double_neon;
             sparse_dot_float = sparse_dot_float_neon;
         } else {
