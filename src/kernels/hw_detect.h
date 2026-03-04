@@ -1,10 +1,15 @@
-#ifndef SPIRA_KERNELS_CPU_DETECT_H
-#define SPIRA_KERNELS_CPU_DETECT_H
+#ifndef SPIRA_KERNELS_HW_DETECT_H
+#define SPIRA_KERNELS_HW_DETECT_H
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <numeric>
+#include <random>
+#include <vector>
 
 // ============================================================================
 // Platform detection
@@ -424,6 +429,82 @@ struct CpuFeatures {
 
 #endif // SPIRA_ARCH_ARM64 || SPIRA_ARCH_ARM32
 };
+
+// ============================================================================
+// Memory latency measurement
+// ============================================================================
+
+struct MemoryLatencyInfo {
+    double dram_latency_ns;
+    int    dram_latency_cycles;
+    int    l3_latency_cycles;
+    int    estimated_prefetch_distance;
+};
+
+inline double get_cpu_frequency_ghz() {
+#if defined(__linux__)
+    FILE* f = fopen("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "r");
+    if (f) {
+        unsigned long khz = 0;
+        if (fscanf(f, "%lu", &khz) == 1) {
+            fclose(f);
+            return static_cast<double>(khz) / 1e6;
+        }
+        fclose(f);
+    }
+#endif
+    return 3.0; // fallback
+}
+
+inline MemoryLatencyInfo measure_memory_latency() {
+    // Allocate a buffer much larger than L3 (force DRAM access)
+    constexpr size_t BUF_SIZE = 256 * 1024 * 1024; // 256MB
+    constexpr size_t N = BUF_SIZE / sizeof(size_t);
+
+    std::vector<size_t> buf(N);
+
+    // Build a random pointer chain — defeats hardware prefetcher
+    // Each element points to another random element
+    std::vector<size_t> indices(N);
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(),
+                 std::mt19937{std::random_device{}()});
+
+    for (size_t i = 0; i < N - 1; i++)
+        buf[indices[i]] = indices[i + 1];
+    buf[indices[N - 1]] = indices[0]; // close the chain
+
+    // Chase the chain — each load depends on the previous
+    // so OoO can't overlap them — true latency measurement
+    constexpr int ITERATIONS = 10000;
+    size_t pos = 0;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < ITERATIONS; i++)
+        pos = buf[pos];
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Prevent the compiler optimising away the loop
+    if (pos == SIZE_MAX) printf("");
+
+    double ns_per_access =
+        std::chrono::duration<double, std::nano>(end - start).count()
+        / ITERATIONS;
+
+    double ghz    = get_cpu_frequency_ghz();
+    int    cycles = static_cast<int>(ns_per_access * ghz);
+
+    // Prefetch distance: how many iterations ahead to issue a prefetch so the
+    // data arrives in time.  Assumes ~4 cycles per loop iteration.
+    int prefetch_distance = std::max(1, cycles / 4);
+
+    return MemoryLatencyInfo {
+        .dram_latency_ns          = ns_per_access,
+        .dram_latency_cycles      = cycles,
+        .l3_latency_cycles        = cycles / 5, // rough heuristic
+        .estimated_prefetch_distance = prefetch_distance,
+    };
+}
 
 } // namespace spira::kernel
 

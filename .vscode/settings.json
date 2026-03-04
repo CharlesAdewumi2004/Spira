@@ -20,7 +20,7 @@
 
   "[cpp]": {
     "editor.tabSize": 4,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "ms-vscode.cpptools"
   },
   "[c]": {
     "editor.tabSize": 4,
