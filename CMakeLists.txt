@@ -190,7 +190,7 @@ endif()
   endif()
 
   include(GoogleTest)
-  gtest_discover_tests(unit_tests)
+  gtest_discover_tests(unit_tests DISCOVERY_TIMEOUT 30)
 endif()
 
 # ---------- Benchmarks ----------
