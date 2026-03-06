@@ -15,9 +15,12 @@ namespace spira::kernel
             return instance;
         }
 
-        static bool dotRunPrefetch(size_t sizeInBytesOfVector, size_t rowSize){
+        static bool dotRunPrefetch(size_t sizeInBytesOfVector, size_t rowSize,
+                                   int stride = 1, int cycles_per_iter = 4)
+        {
+            int d = get().memory.prefetch_distance_for(stride, cycles_per_iter);
             return sizeInBytesOfVector > (size_t)get().cpu.cache.l2_size &&
-                   rowSize >= (size_t)(get().memory.estimated_prefetch_distance * 2);
+                   rowSize >= (size_t)(d * 2);
         }
 
         RuntimeConfig(const RuntimeConfig &) = delete;

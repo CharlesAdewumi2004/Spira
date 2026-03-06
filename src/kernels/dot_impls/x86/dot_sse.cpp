@@ -10,9 +10,9 @@ double sparse_dot_double_sse(const double *vals, const uint32_t *cols, const dou
     size_t i = 0;
     double result;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n, 2, 4))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(2, 4);
         const size_t prefetch_end = n - d;
 
         for (; i + 2 <= prefetch_end; i += 2)
@@ -75,9 +75,9 @@ float sparse_dot_float_sse(const float *vals, const uint32_t *cols, const float 
 
     float result;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n, 4, 8))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(4, 8);
         const size_t prefetch_end = n - d;
 
         for (; i + 4 <= prefetch_end; i += 4)

@@ -510,7 +510,16 @@ namespace spira::kernel
         double dram_latency_ns;
         int dram_latency_cycles;
         int l3_latency_cycles;
-        int estimated_prefetch_distance;
+        int estimated_prefetch_distance; // calibrated for scalar (~4 cycles/iter, stride 1)
+
+        // Compute the index-offset prefetch distance for a loop with the given
+        // stride and estimated cycles per iteration.
+        // d = latency * stride / cycles ensures x[cols[i+d]] is ready when the
+        // loop reaches index i+d (which takes d/stride iterations to arrive).
+        int prefetch_distance_for(int stride, int cycles_per_iter) const
+        {
+            return std::max(stride, dram_latency_cycles * stride / cycles_per_iter);
+        }
     };
 
     inline double get_cpu_frequency_ghz()
@@ -564,8 +573,7 @@ namespace spira::kernel
         volatile size_t sink = pos;
         (void)sink;
 
-        double ns_per_access =
-            std::chrono::duration<double, std::nano>(end - start).count() / ITERATIONS;
+        double ns_per_access = std::chrono::duration<double, std::nano>(end - start).count() / ITERATIONS;
 
         double ghz = get_cpu_frequency_ghz();
         int cycles = static_cast<int>(ns_per_access * ghz);

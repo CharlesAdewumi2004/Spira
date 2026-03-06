@@ -10,9 +10,9 @@ double sparse_dot_double_avx512(const double* vals, const uint32_t* cols, const 
     __m512d acc_reg = _mm512_setzero_pd();
     double acc;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n, 8, 16))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(8, 16);
         const size_t prefetch_end = n - d;
 
         for (; i + 8 <= prefetch_end; i += 8) {
@@ -77,9 +77,9 @@ float sparse_dot_float_avx512(const float* vals, const uint32_t* cols, const flo
     __m512 acc_reg = _mm512_setzero_ps();
     float acc;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n, 16, 32))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(16, 32);
         const size_t prefetch_end = n - d;
 
         for (; i + 16 <= prefetch_end; i += 16) {

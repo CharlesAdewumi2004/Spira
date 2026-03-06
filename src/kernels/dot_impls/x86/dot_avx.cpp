@@ -13,9 +13,9 @@ double sparse_dot_double_avx(const double *vals, const uint32_t *cols,
         spira::kernel::simd::zero_double_256();
     double acc;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(double), n, 4, 8))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(4, 8);
         const size_t prefetch_end = n - d;
 
         for (; i + 4 <= prefetch_end; i += 4)
@@ -85,9 +85,9 @@ float sparse_dot_float_avx(const float *vals, const uint32_t *cols,
         spira::kernel::simd::zero_float_256();
     float acc;
 
-    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n))
+    if (spira::kernel::RuntimeConfig::dotRunPrefetch(x_size * sizeof(float), n, 8, 16))
     {
-        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.estimated_prefetch_distance;
+        const size_t d = (size_t)spira::kernel::RuntimeConfig::get().memory.prefetch_distance_for(8, 16);
         const size_t prefetch_end = n - d;
 
         for (; i + 8 <= prefetch_end; i += 8)
