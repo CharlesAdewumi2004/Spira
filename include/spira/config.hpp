@@ -17,6 +17,16 @@ enum class matrix_mode : uint8_t {
 };
 
 // ─────────────────────────────────────────────
+// Lock policy
+// ─────────────────────────────────────────────
+
+enum class lock_policy : uint8_t {
+    no_compact,       // locked mode uses per-row buffers directly; no CSR built
+    compact_preserve, // build CSR at lock(), keep per-row buffers (2x memory, O(1) open())
+    compact_move      // build CSR at lock(), free per-row buffers (1x memory, O(n) open())
+};
+
+// ─────────────────────────────────────────────
 // Search policies
 // ─────────────────────────────────────────────
 
