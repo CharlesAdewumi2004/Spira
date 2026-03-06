@@ -248,6 +248,7 @@ TEST(MatrixOps, ScalarMultiplyDivide) {
         M ref = from_dense<M>(d);
 
         M B = A;
+        B.open();
         B *= s;
         expect_matrix_eq(B, ref);
     }
@@ -267,6 +268,7 @@ TEST(MatrixOps, ScalarMultiplyDivide) {
         M ref = from_dense<M>(d);
 
         M B = A;
+        B.open();
         B /= s;
         expect_matrix_eq(B, ref);
     }

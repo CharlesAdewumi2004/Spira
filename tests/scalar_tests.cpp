@@ -35,7 +35,6 @@ TEST(Scalers, MultiplicationScaler_ScalesExistingEntries)
         {0, 3, -2.0},
         {2, 1, 4.0},
     });
-    m.lock();
 
     spira::algorithms::multiplication_scaler(m, 3.0);
 
@@ -55,7 +54,6 @@ TEST(Scalers, DivisionScaler_ScalesExistingEntries)
         {0, 2, 10.0},
         {1, 0, -6.0},
     });
-    m.lock();
 
     spira::algorithms::division_scaler(m, 2.0);
 
@@ -74,7 +72,6 @@ TEST(Scalers, MultiplyThenDivide_ReturnsOriginal_ForNonZeroScaler)
         {2, 2, -9.0},
         {1, 0,  0.5},
     });
-    m.lock();
 
     // snapshot original values
     const Value a01 = m.get(0, 1);
@@ -102,7 +99,6 @@ TEST(Scalers, MultiplyByZero_MakesEntriesZero)
         {0, 0, 3.0},
         {1, 1, -4.0},
     });
-    m.lock();
 
     spira::algorithms::multiplication_scaler(m, 0.0);
 
@@ -116,6 +112,6 @@ TEST(Scalers, DivisionByZero_Behavior)
     insert(m, {
         {0, 1, 2.0},
     });
-    // Zero divisor check fires before locked assert — no lock needed
+    // Zero divisor check fires before open assert — matrix is open by default
     EXPECT_THROW(spira::algorithms::division_scaler(m, 0.0), std::domain_error);
 }

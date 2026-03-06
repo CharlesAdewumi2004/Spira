@@ -32,12 +32,16 @@ namespace spira::algorithms
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
     void transpose_itself(spira::matrix<Layout, I, V>& mat)
     {
+        assert(mat.is_open() && "transpose_itself: matrix must be open");
+
         auto [r, c] = mat.shape();
         if (r != c){
             throw std::logic_error("in-place transpose requires square matrix");
         }
 
+        mat.lock();
         auto out = transpose(mat);
         mat.swap(out);
+        mat.open();
     }
 } // namespace spira::algorithms

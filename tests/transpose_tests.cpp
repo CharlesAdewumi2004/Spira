@@ -121,7 +121,7 @@ TEST(Transpose, DoubleTranspose_ReturnsOriginalValuesAndShape)
 TEST(TransposeItself, ThrowsOnNonSquare)
 {
     Matrix m(2, 3);
-    // Shape check fires first in transpose_itself — no lock needed
+    // Matrix is open by default; shape check fires after open assert
     EXPECT_THROW(spira::algorithms::transpose_itself(m), std::logic_error);
 }
 
@@ -129,7 +129,6 @@ TEST(TransposeItself, WorksOnSquare_SingleElement)
 {
     Matrix m(4, 4);
     m.insert(1, 3, 9.0);
-    m.lock();
 
     spira::algorithms::transpose_itself(m);
 
@@ -145,7 +144,6 @@ TEST(TransposeItself, WorksOnSquare_ManyEntries)
                       {1, 0, 6.0},
                       {2, 1, 7.0},
                   });
-    m.lock();
 
     spira::algorithms::transpose_itself(m);
 
@@ -166,7 +164,6 @@ TEST(TransposeItself, DoubleTransposeItself_ReturnsOriginal)
                       {2, 2, 4.5},
                       {1, 0, -3.0},
                   });
-    m.lock();
 
     const auto a01 = m.get(0, 1);
     const auto a22 = m.get(2, 2);
