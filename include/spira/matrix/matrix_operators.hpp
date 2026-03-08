@@ -5,8 +5,6 @@
 #include <spira/matrix/matrix.hpp>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
-#include <spira/matrix/layouts/layout_base.hpp>
-#include <spira/matrix/layouts/layout_of.hpp>
 #include <spira/algorithms/spgemm.hpp>
 #include <spira/algorithms/spmv.hpp>
 #include <spira/algorithms/transpose.hpp>
@@ -21,7 +19,7 @@ namespace spira
     // =====================
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator+(const matrix &other) const
     {
@@ -29,7 +27,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator-(const matrix &other) const
     {
@@ -41,7 +39,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator+=(const matrix &other)
     {
@@ -50,7 +48,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator-=(const matrix &other)
     {
@@ -67,7 +65,7 @@ namespace spira
     // =====================
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator*(const matrix &other) const
     {
@@ -75,7 +73,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator*=(const matrix &other)
     {
@@ -88,7 +86,7 @@ namespace spira
     // =====================
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline std::vector<V>
     matrix<L, I, V, BT, BN, LP>::operator*(const std::vector<V> &x) const
     {
@@ -102,7 +100,7 @@ namespace spira
     // =====================
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator*(V s) const
     {
@@ -112,7 +110,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator*=(V s)
     {
@@ -121,7 +119,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator/(V s) const
     {
@@ -131,7 +129,7 @@ namespace spira
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator/=(V s)
     {
@@ -144,7 +142,7 @@ namespace spira
     // =====================
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator~() const
     {

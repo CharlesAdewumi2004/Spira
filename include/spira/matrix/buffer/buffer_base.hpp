@@ -41,12 +41,6 @@ namespace spira::buffer
             return self().accumulate_impl();
         }
 
-        template <class LayoutPolicy>
-        LayoutPolicy normalize_buffer()
-        {
-            return self().template normalize_buffer_impl<LayoutPolicy>();
-        }
-
         /// Sort by column, deduplicate (last-write wins), and filter zero values.
         /// After this call the buffer is sorted, unique, and zero-free.
         void sort_and_dedup() { self().sort_and_dedup(); }
