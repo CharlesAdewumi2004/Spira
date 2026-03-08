@@ -8,12 +8,12 @@
 
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
-#include <spira/matrix/buffer/buffer.hpp>
+#include <spira/matrix/buffer/buffer_tag_traits.hpp>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
 #include <spira/matrix/buffer/buffer_tags.hpp>
-#include <spira/matrix/layouts/layout_base.hpp>
-#include <spira/matrix/layouts/layout_of.hpp>
+#include <spira/matrix/csr_storage.hpp>
+#include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/traits.hpp>
 
 namespace spira
@@ -22,33 +22,36 @@ namespace spira
     // ─────────────────────────────────────────────────────────────────────────────
     // row<LayoutTag, I, V, BufferTag, BufferN>
     //
-    // Two-mode slab+buffer design:
+    // Two-mode buffer+CSR design:
     //
-    //   Open mode  — inserts stage in buffer_ (unsorted); slab_ from prior lock
-    //                cycles is preserved and readable via get()/contains().
-    //   Locked mode — buffer_ merged into slab_; one sorted array per row;
-    //                 zero-overhead binary-search reads; no mutations allowed.
+    //   Open mode  — inserts stage in buffer_ (unsorted, growable).
+    //                Reads check buffer first (last-write wins), then the
+    //                committed CSR slice from the previous lock cycle.
     //
-    // lock()  — sort buffer, merge into slab (buffer wins on key collision),
-    //           clear buffer, set locked.  O(k log k + n)
-    // open()  — set flag to open; slab untouched, buffer ready.  O(1)
+    //   Locked mode — buffer_ is sorted, deduplicated, and zero-filtered in-place.
+    //                 matrix::lock() then builds/merges a flat CSR and calls
+    //                 set_csr_slice() to install the slice, then calls
+    //                 clear_buffer_content() to free the staging area.
+    //                 Reads use the CSR slice.
+    //                 For no_compact the CSR slice is never set; reads fall back
+    //                 to the sorted buffer.
     //
-    // BufferTag selects the staging buffer implementation:
-    //   buffer::tags::array_buffer<LayoutTag>  — fixed-size, cache-friendly
-    //   buffer::tags::hash_map_buffer          — unbounded, O(1) dedup on insert
+    // lock()  — sort+dedup+filter buffer in-place; set locked.  O(k log k)
+    // open()  — set flag to open; CSR slice and buffer left as-is.  O(1)
     //
-    // When an array buffer fills up, insert() automatically flushes it into the
-    // slab so the user never needs to manage buffer capacity manually.
+    // The CSR slice type depends on LayoutTag (soa_tag -> separate cols/vals
+    // pointers; aos_tag -> interleaved elementPair pointer).  Slice pointers are
+    // owned by the parent matrix::csr_ object and remain valid until the next
+    // lock() call on the matrix (which may reallocate csr_).
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class LayoutTag, concepts::Indexable I, concepts::Valueable V,
-              class BufferTag = buffer::tags::array_buffer<LayoutTag>,
+              class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
               std::size_t BufferN = 64>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> && layout::Layout<layout::detail::storage_of_t<LayoutTag, I, V>, I, V>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> && layout::ValidLayoutTag<LayoutTag>
     class row
     {
     public:
-        using layout_policy = layout::detail::storage_of_t<LayoutTag, I, V>;
         using buffer_t = buffer::traits::traits_of_type<BufferTag, I, V, BufferN>;
         using index_type = I;
         using value_type = V;
@@ -62,10 +65,11 @@ namespace spira
 
         explicit row(size_type column_limit) : column_limit_{column_limit} {}
 
-        row(size_type reserve_hint, size_type column_limit)
+        // reserve_hint is accepted for API compatibility; buffer capacity is
+        // controlled by BufferN (the initial vector reserve hint).
+        row(size_type /*reserve_hint*/, size_type column_limit)
             : column_limit_{column_limit}
         {
-            slab_.reserve(reserve_hint);
         }
 
         // ─────────────────────────────────────────
@@ -78,48 +82,67 @@ namespace spira
             return mode_ == config::matrix_mode::locked;
         }
 
-        /// Merge buffer into slab and freeze.  O(k log k + n)
+        /// Sort + dedup + filter buffer in-place, then freeze.  O(k log k)
         void lock()
         {
             if (mode_ == config::matrix_mode::locked)
                 return;
-            if (!buffer_.empty())
-            {
-                flush_buffer_to_slab();
-            }
+            buffer_.sort_and_dedup();
             mode_ = config::matrix_mode::locked;
         }
 
-        /// Reopen for mutations.  O(1) — slab untouched, buffer already empty.
+        /// Reopen for mutations.  O(1) — CSR slice and buffer left as-is.
         void open() { mode_ = config::matrix_mode::open; }
+
+        // ─────────────────────────────────────────
+        // CSR slice management (called by matrix)
+        // ─────────────────────────────────────────
+
+        /// Install a layout-appropriate CSR slice from the parent matrix's flat CSR.
+        /// The slice remains valid until the next matrix::lock() call.
+        void set_csr_slice(csr_slice<LayoutTag, I, V> s) noexcept
+        {
+            csr_slice_ = s;
+        }
+
+        /// Detach CSR slice (called at start of matrix::lock() before rebuild).
+        void reset_csr_slice() noexcept { csr_slice_.reset(); }
+
+        /// Clear staging buffer content (but keep allocation).
+        /// Called by matrix::lock() after the CSR has been built.
+        void clear_buffer_content() noexcept { buffer_.clear(); }
+
+        /// Release staging buffer storage (compact_move policy).
+        void release_buffer() noexcept { buffer_t{}.swap(buffer_); }
 
         // ─────────────────────────────────────────
         // Size / capacity
         // ─────────────────────────────────────────
 
-        /// Locked: exact deduplicated count.
-        /// Open:   slab_size + buffer_size (upper bound; may include duplicates).
+        /// Locked compact_*: csr_slice_.nnz (exact).
+        /// Locked no_compact: buffer_.size() (sorted+deduped, exact).
+        /// Open: csr_slice_.nnz + buffer_.size() (upper bound; buffer may have dups).
         [[nodiscard]] size_type size() const noexcept
         {
-            return slab_.size() + buffer_.size();
+            return csr_slice_.nnz + buffer_.size();
         }
 
         [[nodiscard]] bool empty() const noexcept
         {
-            return slab_.size() == 0 && buffer_.empty();
+            return csr_slice_.nnz == 0 && buffer_.empty();
         }
-
-        [[nodiscard]] size_type capacity() const noexcept { return slab_.capacity(); }
-
-        void reserve(size_type n) { slab_.reserve(n); }
 
         void clear() noexcept
         {
             assert(mode_ == config::matrix_mode::open &&
                    "row::clear() requires open mode");
-            slab_.clear();
             buffer_.clear();
+            // CSR slice not touched — committed history persists.
         }
+
+        void reserve(size_type /*n*/) noexcept {} // no-op: buffer is growable
+
+        [[nodiscard]] size_type capacity() const noexcept { return 0; }
 
         // ─────────────────────────────────────────
         // Mutation (open mode only)
@@ -130,22 +153,15 @@ namespace spira
             assert(mode_ == config::matrix_mode::open &&
                    "row::insert() requires open mode");
             if (to_size(col) >= column_limit_)
-            {
                 throw std::out_of_range("Column index out of range");
-            }
-            // If array buffer is full, merge into slab to make room.
-            if (buffer_.remaining_capacity() == 0)
-            {
-                flush_buffer_to_slab();
-            }
             buffer_.push_back(col, val);
         }
 
         // ─────────────────────────────────────────
         // Queries (both modes)
         //
-        // Open:   buffer first (linear, last-write wins), then slab (binary).
-        // Locked: slab only (binary search).
+        // Open:   buffer first (reverse linear, last-write wins), then CSR.
+        // Locked: CSR slice if set; else sorted buffer (no_compact fallback).
         // ─────────────────────────────────────────
 
         [[nodiscard]] bool contains(index_type col) const
@@ -154,9 +170,12 @@ namespace spira
             {
                 if (buffer_.contains(col))
                     return true;
+                return csr_slice_.binary_search(col) != nullptr;
             }
-            const auto pos = slab_.lower_bound(col);
-            return pos < slab_.size() && slab_.key_at(pos) == col;
+            // Locked
+            if (csr_slice_.is_set())
+                return csr_slice_.binary_search(col) != nullptr;
+            return buffer_.contains(col);
         }
 
         [[nodiscard]] const value_type *get(index_type col) const
@@ -167,100 +186,71 @@ namespace spira
             {
                 if (const value_type *p = buffer_.get_ptr(col); p != nullptr)
                     return p;
+                return csr_slice_.binary_search(col);
             }
-            const auto pos = slab_.lower_bound(col);
-            if (pos < slab_.size() && slab_.key_at(pos) == col)
-                return &slab_.value_at(pos);
-            return nullptr;
+            // Locked
+            if (csr_slice_.is_set())
+                return csr_slice_.binary_search(col);
+            return buffer_.get_ptr(col);
         }
 
         [[nodiscard]] value_type accumulate() const noexcept
         {
             if (mode_ == config::matrix_mode::locked)
             {
+                if (csr_slice_.is_set())
+                    return csr_slice_.accumulate();
+                // no_compact — sorted buffer
                 value_type acc = traits::ValueTraits<value_type>::zero();
-                for (const auto &entry : slab_)
-                {
-                    acc += val_of(entry);
-                }
+                for (const auto &entry : buffer_)
+                    acc += entry.second_ref();
                 return acc;
             }
-            else
+            // Open mode — buffer (deduped, last-write wins) + CSR entries not
+            // shadowed by the buffer.
+            value_type acc = buffer_.accumulate();
+            if (csr_slice_.is_set())
             {
-                // Open mode: buffer sum (deduped) + slab entries not shadowed by buffer.
-                value_type acc = buffer_.accumulate();
-                for (const auto &entry : slab_)
-                {
-                    if (!buffer_.contains(key_of(entry)))
-                        acc += val_of(entry);
-                }
-                return acc;
+                csr_slice_.for_each([&](I col, V val)
+                                    {
+                    if (!buffer_.contains(col))
+                        acc += val; });
             }
+            return acc;
         }
 
         // ─────────────────────────────────────────
-        // Iteration (locked mode — sorted slab)
+        // Iteration
+        //
+        // begin()/end() return buffer iterators.
+        //   — In locked mode (before set_csr_slice), buffer is sorted+deduped
+        //     and ready to be consumed by build_csr / merge_csr.
+        //   — In open mode, buffer is unsorted insertion-order.
+        //
+        // for_each_element() (const, locked) iterates the CSR slice if set,
+        // otherwise the sorted buffer (no_compact fallback).
         // ─────────────────────────────────────────
 
-        auto begin() noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::begin() requires locked mode");
-            return slab_.begin();
-        }
-        auto end() noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::end() requires locked mode");
-            return slab_.end();
-        }
-        auto begin() const noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::begin() requires locked mode");
-            return slab_.begin();
-        }
-        auto end() const noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::end() requires locked mode");
-            return slab_.end();
-        }
-        auto cbegin() const noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::cbegin() requires locked mode");
-            return slab_.cbegin();
-        }
-        auto cend() const noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::cend() requires locked mode");
-            return slab_.cend();
-        }
-
-        auto data() noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::data() requires locked mode");
-            return slab_.data();
-        }
-        auto data() const noexcept
-        {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::data() requires locked mode");
-            return slab_.data();
-        }
+        auto begin() noexcept { return buffer_.begin(); }
+        auto end() noexcept { return buffer_.end(); }
+        auto begin() const noexcept { return buffer_.begin(); }
+        auto end() const noexcept { return buffer_.end(); }
+        auto cbegin() const noexcept { return buffer_.cbegin(); }
+        auto cend() const noexcept { return buffer_.cend(); }
 
         template <class Fn>
         void for_each_element(Fn &&f) const
         {
             assert(mode_ == config::matrix_mode::locked &&
                    "row::for_each_element() requires locked mode");
-            for (auto it = slab_.cbegin(); it != slab_.cend(); ++it)
+            if (csr_slice_.is_set())
             {
-                const auto &entry = *it;
-                std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+                csr_slice_.for_each(std::forward<Fn>(f));
+            }
+            else
+            {
+                for (const auto &entry : buffer_)
+                    std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }
         }
 
@@ -268,16 +258,26 @@ namespace spira
         void for_each_element(Fn &&f)
         {
             assert(mode_ == config::matrix_mode::open &&
-                   "row::for_each_element() requires open mode");
-            for (auto it = slab_.begin(); it != slab_.end(); ++it)
-            {
-                auto &entry = *it;
+                   "mutable row::for_each_element() requires open mode");
+            for (auto &entry : buffer_)
                 std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+        }
+
+        /// Iterate committed (CSR slice or sorted buffer) entries, works in any mode.
+        /// Used by scalar multiplication and similar algorithms that need to read
+        /// committed data while in open mode.
+        template <class Fn>
+        void for_each_committed_element(Fn &&f) const
+        {
+            if (csr_slice_.is_set())
+            {
+                csr_slice_.for_each(std::forward<Fn>(f));
             }
-            for (auto it = buffer_.begin(); it != buffer_.end(); ++it)
+            else
             {
-                auto &entry = *it;
-                std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+                // no_compact: committed data lives in the sorted buffer.
+                for (const auto &entry : buffer_)
+                    std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }
         }
 
@@ -287,105 +287,9 @@ namespace spira
             return static_cast<size_type>(i);
         }
 
-        // Extract column key from an iterator element (aos elementPair and soa
-        // proxy types both expose first_ref()).
-        static decltype(auto) key_of(const auto &entry)
-        {
-            if constexpr (requires { entry.first_ref(); })
-                return entry.first_ref();
-            else
-                return entry.first;
-        }
-
-        static decltype(auto) val_of(const auto &entry)
-        {
-            if constexpr (requires { entry.second_ref(); })
-                return entry.second_ref();
-            else
-                return entry.second;
-        }
-
-        // Sort + dedup buffer via normalize_buffer, merge into slab, clear buffer.
-        void flush_buffer_to_slab()
-        {
-            layout_policy chunk = buffer_.template normalize_buffer<layout_policy>();
-            buffer_.clear();
-            merge_slab_with_chunk(chunk);
-        }
-
-        // Two-pointer merge: sorted slab_ + sorted chunk → new slab_.
-        // chunk wins on key collision (buffer is more recent than slab).
-        // Zero values are filtered out during merge.
-        void merge_slab_with_chunk(const layout_policy &chunk)
-        {
-            if (chunk.size() == 0)
-                return;
-            if (slab_.size() == 0)
-            {
-                slab_.reserve(chunk.size());
-                for (auto bit = chunk.cbegin(), bend = chunk.cend(); bit != bend; ++bit)
-                {
-                    auto be = *bit;
-                    if (!traits::ValueTraits<V>::is_zero(val_of(be)))
-                        slab_.push_back(key_of(be), val_of(be));
-                }
-                return;
-            }
-
-            layout_policy new_slab;
-            new_slab.reserve(slab_.size() + chunk.size());
-
-            auto sit = slab_.cbegin(), send = slab_.cend();
-            auto bit = chunk.cbegin(), bend = chunk.cend();
-
-            while (sit != send && bit != bend)
-            {
-                auto se = *sit;
-                auto be = *bit;
-
-                const auto s_col = key_of(se);
-                const auto b_col = key_of(be);
-
-                if (s_col < b_col)
-                {
-                    if (!traits::ValueTraits<V>::is_zero(val_of(se)))
-                        new_slab.push_back(s_col, val_of(se));
-                    ++sit;
-                }
-                else if (b_col < s_col)
-                {
-                    if (!traits::ValueTraits<V>::is_zero(val_of(be)))
-                        new_slab.push_back(b_col, val_of(be));
-                    ++bit;
-                }
-                else
-                {
-                    // Same column: chunk (buffer) wins — it carries the newer value.
-                    if (!traits::ValueTraits<V>::is_zero(val_of(be)))
-                        new_slab.push_back(b_col, val_of(be));
-                    ++sit;
-                    ++bit;
-                }
-            }
-            while (sit != send)
-            {
-                auto se = *sit++;
-                if (!traits::ValueTraits<V>::is_zero(val_of(se)))
-                    new_slab.push_back(key_of(se), val_of(se));
-            }
-            while (bit != bend)
-            {
-                auto be = *bit++;
-                if (!traits::ValueTraits<V>::is_zero(val_of(be)))
-                    new_slab.push_back(key_of(be), val_of(be));
-            }
-
-            slab_ = std::move(new_slab);
-        }
-
     private:
-        layout_policy slab_{}; // sorted; canonical data from prior lock cycles
-        buffer_t buffer_{};    // unsorted; new inserts since last open()
+        buffer_t buffer_{};
+        csr_slice<LayoutTag, I, V> csr_slice_{};
         config::matrix_mode mode_{config::matrix_mode::open};
         size_type column_limit_{0};
     };

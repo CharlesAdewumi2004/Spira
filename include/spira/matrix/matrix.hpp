@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -10,8 +11,9 @@
 #include <spira/config.hpp>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
-#include <spira/matrix/layouts/layout_base.hpp>
-#include <spira/matrix/layouts/layout_of.hpp>
+#include <spira/matrix/csr_build.hpp>
+#include <spira/matrix/csr_storage.hpp>
+#include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/matrix/row.hpp>
 #include <spira/traits.hpp>
 
@@ -20,15 +22,14 @@ namespace spira
 
     template <class LayoutTag, concepts::Indexable I = uint32_t,
               concepts::Valueable V = double,
-              class BufferTag = buffer::tags::array_buffer<LayoutTag>,
+              class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
               std::size_t BufferN = 64,
               config::lock_policy LP = config::lock_policy::compact_preserve>
         requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<LayoutTag, I, V>, I, V>
+                 layout::ValidLayoutTag<LayoutTag>
     class matrix
     {
     public:
-        using layout_policy = layout::detail::storage_of_t<LayoutTag, I, V>;
         using index_type = I;
         using value_type = V;
         using storage_type = row<LayoutTag, I, V, BufferTag, BufferN>;
@@ -83,6 +84,12 @@ namespace spira
         [[nodiscard]] size_type nnz() const noexcept;
 
         [[nodiscard]] const storage_type &row_at(index_type row_index) const;
+
+        /// Returns a pointer to the built CSR storage, or nullptr if not yet built.
+        [[nodiscard]] const csr_storage<LayoutTag, I, V> *csr() const noexcept
+        {
+            return csr_ ? &*csr_ : nullptr;
+        }
 
         [[nodiscard]] bool contains(index_type row_index, index_type col_index) const;
         [[nodiscard]] value_type get(index_type row_index,
@@ -162,6 +169,7 @@ namespace spira
         std::vector<storage_type> rows_{};
         size_type row_limit_{0};
         size_type column_limit_{0};
+        std::optional<csr_storage<LayoutTag, I, V>> csr_{};
     };
 
     // ═════════════════════════════════════════════
@@ -171,7 +179,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     matrix<L, I, V, BT, BN, LP>::matrix(size_type row_limit, size_type column_limit)
         : matrix(row_limit, column_limit, config::default_row_reserve_hint)
     {
@@ -180,7 +188,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                     layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                     layout::ValidLayoutTag<L>
     matrix<L, I, V, BT, BN, LP>::matrix(size_type row_limit, size_type column_limit,
                                         size_type reserve_per_row)
         : mode_{config::matrix_mode::open}, rows_{}, row_limit_{row_limit},
@@ -200,7 +208,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::shape() const noexcept -> shape_type
     {
         return {row_limit_, column_limit_};
@@ -209,7 +217,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::n_rows() const noexcept -> size_type
     {
         return row_limit_;
@@ -218,7 +226,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::n_cols() const noexcept -> size_type
     {
         return column_limit_;
@@ -231,7 +239,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::mode() const noexcept -> config::matrix_mode
     {
         return mode_;
@@ -240,7 +248,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     bool matrix<L, I, V, BT, BN, LP>::is_locked() const noexcept
     {
         return mode_ == config::matrix_mode::locked;
@@ -249,7 +257,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     bool matrix<L, I, V, BT, BN, LP>::is_open() const noexcept
     {
         return mode_ == config::matrix_mode::open;
@@ -258,31 +266,74 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     void matrix<L, I, V, BT, BN, LP>::lock()
     {
         if (mode_ == config::matrix_mode::locked)
             return;
+
+        // Detach stale CSR slice pointers before rebuilding.
         for (auto &r : rows_)
-        {
+            r.reset_csr_slice();
+
+        // Sort + dedup + filter each row's buffer in-place.
+        for (auto &r : rows_)
             r.lock();
-        }
+
         mode_ = config::matrix_mode::locked;
+
+        if constexpr (LP == config::lock_policy::compact_preserve ||
+                      LP == config::lock_policy::compact_move)
+        {
+            // Build or merge the flat CSR (layout-appropriate).
+            if (csr_)
+                csr_ = merge_csr<L>(rows_, *csr_);
+            else
+                csr_ = build_csr<L>(rows_);
+
+            // Install layout-appropriate CSR slices on every row.
+            const std::size_t *off = csr_->offsets.get();
+            if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+            {
+                const I *cols_flat = csr_->cols.get();
+                const V *vals_flat = csr_->vals.get();
+                for (std::size_t i = 0; i < rows_.size(); ++i)
+                    rows_[i].set_csr_slice(csr_slice<L, I, V>{
+                        cols_flat + off[i], vals_flat + off[i], off[i + 1] - off[i]});
+            }
+            else // aos_tag
+            {
+                const auto *pairs_flat = csr_->pairs.get();
+                for (std::size_t i = 0; i < rows_.size(); ++i)
+                    rows_[i].set_csr_slice(csr_slice<L, I, V>{
+                        pairs_flat + off[i], off[i + 1] - off[i]});
+            }
+
+            // Clear staging buffers (data now lives in the flat CSR).
+            for (auto &r : rows_)
+                r.clear_buffer_content();
+
+            if constexpr (LP == config::lock_policy::compact_move)
+            {
+                for (auto &r : rows_)
+                    r.release_buffer();
+            }
+        }
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     void matrix<L, I, V, BT, BN, LP>::open()
     {
         if (mode_ == config::matrix_mode::open)
             return;
         for (auto &r : rows_)
-        {
             r.open();
-        }
         mode_ = config::matrix_mode::open;
+        // csr_ is intentionally NOT reset: it holds committed history and
+        // will be used as the base for merge_csr() on the next lock().
     }
 
     // ═════════════════════════════════════════════
@@ -292,7 +343,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::row_nnz(index_type row_index) const -> size_type
     {
         validate_row_index(row_index);
@@ -302,7 +353,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     bool matrix<L, I, V, BT, BN, LP>::empty() const noexcept
     {
         for (const auto &r : rows_)
@@ -316,7 +367,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::nnz() const noexcept -> size_type
     {
         size_type total = 0;
@@ -330,7 +381,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::row_at(index_type row_index) const
         -> const storage_type &
     {
@@ -341,7 +392,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     bool matrix<L, I, V, BT, BN, LP>::contains(index_type row_index,
                                                index_type col_index) const
     {
@@ -353,7 +404,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::get(index_type row_index,
                                           index_type col_index) const -> value_type
     {
@@ -366,7 +417,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::accumulate(index_type row_index) const
         -> value_type
     {
@@ -381,7 +432,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     void matrix<L, I, V, BT, BN, LP>::insert(index_type row_index, index_type col_index,
                                              const value_type &val)
     {
@@ -395,7 +446,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     void matrix<L, I, V, BT, BN, LP>::clear() noexcept
     {
         assert(mode_ == config::matrix_mode::open &&
@@ -409,7 +460,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     auto matrix<L, I, V, BT, BN, LP>::row_at_mut(index_type row_index)
         -> storage_type &
     {
@@ -426,7 +477,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     void matrix<L, I, V, BT, BN, LP>::swap(matrix &other) noexcept
     {
         using std::swap;
@@ -434,6 +485,7 @@ namespace spira
         swap(rows_, other.rows_);
         swap(row_limit_, other.row_limit_);
         swap(column_limit_, other.column_limit_);
+        swap(csr_, other.csr_);
     }
 
     // ═════════════════════════════════════════════
@@ -443,7 +495,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     template <class Func>
     void matrix<L, I, V, BT, BN, LP>::for_each_row(Func &&f) const
     {
@@ -456,7 +508,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     template <class Func>
     void matrix<L, I, V, BT, BN, LP>::for_each_row(Func &&f)
     {
@@ -469,7 +521,7 @@ namespace spira
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::Layout<layout::detail::storage_of_t<L, I, V>, I, V>
+                 layout::ValidLayoutTag<L>
     template <class Func>
     void matrix<L, I, V, BT, BN, LP>::for_each_nnz_row(Func &&f) const
     {
