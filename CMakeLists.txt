@@ -170,6 +170,7 @@ if (SPIRA_BUILD_TESTS)
     tests/matrix_operator_overloads_tests.cpp
     tests/simd_dot_operator_tests.cpp
     tests/accumulate_algo_tests.cpp
+    tests/compaction_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
