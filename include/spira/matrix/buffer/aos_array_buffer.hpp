@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <spira/matrix/buffer/buffer_base.hpp>
-#include <spira/matrix/layouts/element_pair.hpp>
+#include <spira/matrix/layout/element_pair.hpp>
 #include <spira/traits.hpp>
 
 namespace spira::buffer::impls
@@ -73,18 +73,6 @@ namespace spira::buffer::impls
             for (const auto &e : buf_)
                 acc += e.value;
             return acc;
-        }
-
-        template <class layout_policy>
-        layout_policy normalize_buffer_impl()
-        {
-            sort_and_dedup();
-            layout_policy chunk;
-            chunk.reserve(buf_.size());
-            for (const auto &e : buf_)
-                chunk.push_back(e.column, e.value);
-            clear_impl();
-            return chunk;
         }
 
         /// Sort by column, deduplicate (last-write wins), and filter zero values.

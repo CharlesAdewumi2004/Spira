@@ -91,18 +91,6 @@ namespace spira::buffer::impls
             return acc;
         }
 
-        template <class layout_policy>
-        layout_policy normalize_buffer_impl()
-        {
-            sort_and_dedup();
-            layout_policy chunk;
-            chunk.reserve(col_.size());
-            for (std::size_t i = 0; i < col_.size(); ++i)
-                chunk.push_back(col_[i], val_[i]);
-            clear_impl();
-            return chunk;
-        }
-
         /// Sort by column, deduplicate (last-write wins), and filter zero values.
         /// After this call the buffer is sorted, unique, and zero-free.
         void sort_and_dedup() const

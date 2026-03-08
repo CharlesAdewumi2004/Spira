@@ -2,11 +2,11 @@
 
 #include <cstddef>
 
-#include <spira/matrix/layouts/layout_tags.hpp>
+#include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/matrix/buffer/buffer_tags.hpp>
-#include <spira/matrix/buffer/buffer_layout_impls/aos_array_buffer.hpp>
-#include <spira/matrix/buffer/buffer_layout_impls/soa_array_buffer.hpp>
-#include <spira/matrix/buffer/buffer_layout_impls/hash_map_buffer.hpp>
+#include <spira/matrix/buffer/aos_array_buffer.hpp>
+#include <spira/matrix/buffer/soa_array_buffer.hpp>
+#include <spira/matrix/buffer/hash_map_buffer.hpp>
 
 namespace spira::buffer::traits
 {

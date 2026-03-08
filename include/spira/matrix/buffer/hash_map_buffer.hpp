@@ -9,7 +9,7 @@
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/traits.hpp>
 #include <spira/config.hpp>
-#include <spira/matrix/layouts/element_pair.hpp>
+#include <spira/matrix/layout/element_pair.hpp>
 
 namespace spira::buffer::impls {
 
@@ -59,17 +59,6 @@ public:
                       return a.first_ref() < b.first_ref();
                   });
         buf_.clear();
-    }
-
-    template <class layout_policy>
-    layout_policy normalize_buffer_impl() {
-        sort_and_dedup();
-        layout_policy chunk;
-        chunk.reserve(sorted_.size());
-        for (const auto &e : sorted_)
-            chunk.push_back(e.column, e.value);
-        sorted_.clear();
-        return chunk;
     }
 
     // Iterators return raw pointers into sorted_ (random-access, expose first_ref/second_ref).
