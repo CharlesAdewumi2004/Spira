@@ -3,8 +3,11 @@
 #include <cassert>
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include <spira/matrix/matrix.hpp>
+#include <spira/traits.hpp>
 
 namespace spira::algorithms
 {
@@ -25,8 +28,10 @@ namespace spira::algorithms
         }
     }
 
-    /// Merge two locked, sorted rows into a single open output row.
-    /// A and B must be locked (sorted slabs). out must be in open mode and empty.
+    /// Merge two locked rows into a single open output row.
+    /// A and B must be locked. out must be in open mode and empty.
+    /// Iteration is via for_each_element which dispatches to the CSR slice
+    /// (compact_*) or sorted buffer (no_compact) as appropriate.
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {
@@ -35,53 +40,43 @@ namespace spira::algorithms
 
         out.clear();
 
-        auto itA = A.begin();
-        auto itB = B.begin();
-        const auto endA = A.end();
-        const auto endB = B.end();
+        // Collect A and B entries into flat arrays for two-pointer merge.
+        std::vector<std::pair<I, V>> a_entries, b_entries;
+        a_entries.reserve(A.size());
+        b_entries.reserve(B.size());
 
-        while (itA != endA && itB != endB)
+        A.for_each_element([&a_entries](const I &col, const V &val) {
+            a_entries.push_back({col, val});
+        });
+        B.for_each_element([&b_entries](const I &col, const V &val) {
+            b_entries.push_back({col, val});
+        });
+
+        std::size_t ai = 0, bi = 0;
+        while (ai < a_entries.size() && bi < b_entries.size())
         {
-            auto ae = *itA;
-            auto be = *itB;
-            const auto a_col = detail::key_of(ae);
-            const auto b_col = detail::key_of(be);
-            const auto a_val = detail::val_of(ae);
-            const auto b_val = detail::val_of(be);
-
+            const auto a_col = a_entries[ai].first;
+            const auto b_col = b_entries[bi].first;
             if (a_col == b_col)
             {
-                V sum = a_val + b_val;
+                V sum = a_entries[ai].second + b_entries[bi].second;
                 if (!spira::traits::ValueTraits<V>::is_zero(sum))
-                {
                     out.insert(a_col, sum);
-                }
-                ++itA;
-                ++itB;
+                ++ai; ++bi;
             }
             else if (a_col < b_col)
             {
-                out.insert(a_col, a_val);
-                ++itA;
+                out.insert(a_col, a_entries[ai].second);
+                ++ai;
             }
             else
             {
-                out.insert(b_col, b_val);
-                ++itB;
+                out.insert(b_col, b_entries[bi].second);
+                ++bi;
             }
         }
-
-        while (itA != endA)
-        {
-            auto ae = *itA++;
-            out.insert(detail::key_of(ae), detail::val_of(ae));
-        }
-
-        while (itB != endB)
-        {
-            auto be = *itB++;
-            out.insert(detail::key_of(be), detail::val_of(be));
-        }
+        while (ai < a_entries.size()) { out.insert(a_entries[ai].first, a_entries[ai].second); ++ai; }
+        while (bi < b_entries.size()) { out.insert(b_entries[bi].first, b_entries[bi].second); ++bi; }
     }
 
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>

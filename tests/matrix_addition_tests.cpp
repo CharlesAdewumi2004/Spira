@@ -54,20 +54,20 @@ TEST(AddRows, DisjointColumns_MergesBoth)
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 1u);
-    EXPECT_EQ(*it.val_ptr, 1.0);
+    EXPECT_EQ(it->column, 1u);
+    EXPECT_EQ(it->value, 1.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 2u);
-    EXPECT_EQ(*it.val_ptr, 2.0);
+    EXPECT_EQ(it->column, 2u);
+    EXPECT_EQ(it->value, 2.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 4u);
-    EXPECT_EQ(*it.val_ptr, 4.0);
+    EXPECT_EQ(it->column, 4u);
+    EXPECT_EQ(it->value, 4.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 8u);
-    EXPECT_EQ(*it.val_ptr, 8.0);
+    EXPECT_EQ(it->column, 8u);
+    EXPECT_EQ(it->value, 8.0);
     ++it;
     EXPECT_EQ(it, out.end());
 }
@@ -88,16 +88,16 @@ TEST(AddRows, OverlappingColumns_SumsValues)
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 1u);
-    EXPECT_EQ(*it.val_ptr, 4.0);
+    EXPECT_EQ(it->column, 1u);
+    EXPECT_EQ(it->value, 4.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 4u);
-    EXPECT_EQ(*it.val_ptr, 4.0);
+    EXPECT_EQ(it->column, 4u);
+    EXPECT_EQ(it->value, 4.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 8u);
-    EXPECT_EQ(*it.val_ptr, 8.0);
+    EXPECT_EQ(it->column, 8u);
+    EXPECT_EQ(it->value, 8.0);
     ++it;
     EXPECT_EQ(it, out.end());
 }
@@ -135,12 +135,12 @@ TEST(AddRows, OneSideEmpty_CopiesOther)
 
     auto it = out.begin();
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 0u);
-    EXPECT_EQ(*it.val_ptr, 1.0);
+    EXPECT_EQ(it->column, 0u);
+    EXPECT_EQ(it->value, 1.0);
     ++it;
     ASSERT_NE(it, out.end());
-    EXPECT_EQ(*it.col_ptr, 9u);
-    EXPECT_EQ(*it.val_ptr, 2.0);
+    EXPECT_EQ(it->column, 9u);
+    EXPECT_EQ(it->value, 2.0);
     ++it;
     EXPECT_EQ(it, out.end());
 }
