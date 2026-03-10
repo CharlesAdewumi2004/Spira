@@ -152,6 +152,11 @@ namespace spira
             // Track actual nnz per row (computed during the reverse merge pass).
             auto actual_nnz = std::make_unique<std::size_t[]>(n_rows);
 
+            // Scratch buffers for the aliasing case (see below).
+            thread_local std::vector<I> tl_old_c;
+            thread_local std::vector<V> tl_old_v;
+            thread_local std::vector<layout::elementPair<I, V>> tl_old_p;
+
             for (std::size_t ri = 0; ri < n_rows; ++ri)
             {
                 const std::size_t i = n_rows - 1 - ri; // reverse order
@@ -162,19 +167,38 @@ namespace spira
                 auto bit = rows[i].begin();
                 auto bend = rows[i].end();
 
+                // Aliasing guard: when ub_starts[i] == old_begin (no prior row has
+                // buffer entries, so write cursor starts at the same position as the
+                // old-data read cursor), emitting buffer entries before old entries
+                // will overwrite unread old data in-place.  Copy old row data to a
+                // thread-local scratch buffer so reads are safe.
+                const bool aliased = (ub_starts[i] == old_begin) && (bit != bend) && (old_nnz > 0);
+                if (aliased)
+                {
+                    if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                    {
+                        tl_old_c.assign(out.cols.get() + old_begin, out.cols.get() + old_begin + old_nnz);
+                        tl_old_v.assign(out.vals.get() + old_begin, out.vals.get() + old_begin + old_nnz);
+                    }
+                    else
+                    {
+                        tl_old_p.assign(out.pairs.get() + old_begin, out.pairs.get() + old_begin + old_nnz);
+                    }
+                }
+
                 auto old_col = [&](std::size_t k) -> I
                 {
                     if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
-                        return out.cols.get()[old_begin + k];
+                        return aliased ? tl_old_c[k] : out.cols.get()[old_begin + k];
                     else
-                        return out.pairs.get()[old_begin + k].column;
+                        return aliased ? tl_old_p[k].column : out.pairs.get()[old_begin + k].column;
                 };
                 auto old_val = [&](std::size_t k) -> V
                 {
                     if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
-                        return out.vals.get()[old_begin + k];
+                        return aliased ? tl_old_v[k] : out.vals.get()[old_begin + k];
                     else
-                        return out.pairs.get()[old_begin + k].value;
+                        return aliased ? tl_old_p[k].value : out.pairs.get()[old_begin + k].value;
                 };
 
                 std::size_t wp = ub_starts[i];

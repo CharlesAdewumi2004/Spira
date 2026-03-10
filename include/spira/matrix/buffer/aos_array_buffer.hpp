@@ -68,10 +68,19 @@ namespace spira::buffer::impls
 
         V accumulate_impl() const noexcept
         {
-            sort_and_dedup();
+            // Do not call sort_and_dedup() here: that mutates mutable state under
+            // a const call, which is a data race once multiple threads read the
+            // same row concurrently. Instead use a backward scan for last-write-wins
+            // deduplication without touching the buffer.
             V acc = traits::ValueTraits<V>::zero();
-            for (const auto &e : buf_)
-                acc += e.value;
+            for (auto i = buf_.size(); i-- > 0;)
+            {
+                bool is_latest = true;
+                for (auto j = i + 1; j < buf_.size(); ++j)
+                    if (buf_[j].column == buf_[i].column) { is_latest = false; break; }
+                if (is_latest)
+                    acc += buf_[i].value;
+            }
             return acc;
         }
 
