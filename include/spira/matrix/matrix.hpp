@@ -389,12 +389,9 @@ namespace spira
         return rows_[to_size(row_index)];
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
-              std::size_t BN, config::lock_policy LP>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
-                 layout::ValidLayoutTag<L>
-    bool matrix<L, I, V, BT, BN, LP>::contains(index_type row_index,
-                                               index_type col_index) const
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
+    requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
+    bool matrix<L, I, V, BT, BN, LP>::contains(index_type row_index,index_type col_index) const
     {
         validate_row_index(row_index);
         validate_col_index(col_index);

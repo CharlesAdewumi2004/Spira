@@ -92,15 +92,15 @@ namespace spira::buffer::impls
         }
 
         /// Sort by column, deduplicate (last-write wins), and filter zero values.
-        /// After this call the buffer is sorted, unique, and zero-free.
+        /// Only one allocation (idx). The sort permutation is applied to col_/val_
+        /// in-place via cycle decomposition, then dedup+filter uses a write pointer.
         void sort_and_dedup() const
         {
             const std::size_t sz = col_.size();
             if (sz == 0)
                 return;
 
-            // Build index array reversed so last-inserted element appears first
-            // after sort, giving last-write-wins semantics on equal columns.
+            // Build reversed index so stable_sort gives last-write-wins on equal columns.
             std::vector<size_type> idx(sz);
             for (size_type i = 0; i < sz; ++i)
                 idx[i] = sz - 1 - i;
@@ -109,30 +109,51 @@ namespace spira::buffer::impls
                              [&](size_type a, size_type b)
                              { return col_[a] < col_[b]; });
 
-            std::vector<I> new_col;
-            std::vector<V> new_val;
-            new_col.reserve(sz);
-            new_val.reserve(sz);
-
-            // Track the last column processed (regardless of zero-filtering) so
-            // that a zero last-write truly erases all prior writes for that column.
-            I last_col{};
-            bool first = true;
-            for (size_type i = 0; i < sz; ++i)
+            // Apply permutation in-place via cycle decomposition.
+            // Each cycle is traced from its lowest unprocessed index; idx[j] is
+            // overwritten with j once element j has been placed, so visited
+            // elements are naturally skipped.
+            for (std::size_t i = 0; i < sz; ++i)
             {
-                const size_type j = idx[i];
-                if (!first && col_[j] == last_col)
-                    continue; // duplicate — last-written (first occurrence) already handled
-                last_col = col_[j];
-                first = false;
-                if (traits::ValueTraits<V>::is_zero(val_[j]))
-                    continue; // last-write was zero = deletion, don't emit
-                new_col.push_back(col_[j]);
-                new_val.push_back(val_[j]);
+                if (idx[i] == i)
+                    continue;
+                I   tmp_col = col_[i];
+                V   tmp_val = val_[i];
+                std::size_t j = i;
+                while (idx[j] != i)
+                {
+                    col_[j] = col_[idx[j]];
+                    val_[j] = val_[idx[j]];
+                    const std::size_t k = idx[j];
+                    idx[j] = j; // mark placed
+                    j = k;
+                }
+                col_[j] = tmp_col;
+                val_[j] = tmp_val;
+                idx[j] = j; // close cycle
             }
 
-            col_ = std::move(new_col);
-            val_ = std::move(new_val);
+            // Compact in-place: dedup + zero-filter with a write pointer.
+            std::size_t write = 0;
+            I last_col{};
+            bool first = true;
+            for (std::size_t i = 0; i < sz; ++i)
+            {
+                if (!first && col_[i] == last_col)
+                    continue;
+                last_col = col_[i];
+                first = false;
+                if (traits::ValueTraits<V>::is_zero(val_[i]))
+                    continue;
+                if (write != i)
+                {
+                    col_[write] = col_[i];
+                    val_[write] = val_[i];
+                }
+                ++write;
+            }
+            col_.resize(write);
+            val_.resize(write);
         }
 
         class iterator

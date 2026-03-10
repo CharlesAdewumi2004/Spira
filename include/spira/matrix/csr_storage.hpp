@@ -33,10 +33,9 @@ namespace spira
         csr_buf<T> alloc_csr_buf(std::size_t n)
         {
             if (n == 0)
-                return {nullptr, {}};
+                return {nullptr};
             return {
-                static_cast<T *>(::operator new(n * sizeof(T), std::align_val_t{csr_alignment})),
-                {}};
+                static_cast<T *>(::operator new(n * sizeof(T), std::align_val_t{csr_alignment})), {}};
         }
 
     } // namespace detail
@@ -69,9 +68,9 @@ namespace spira
         std::size_t n_rows{0};
         std::size_t nnz{0};
 
-        std::unique_ptr<std::size_t[]> offsets; // [n_rows + 1]
-        detail::csr_buf<I> cols;                // [nnz], 64-byte aligned
-        detail::csr_buf<V> vals;                // [nnz], 64-byte aligned
+        std::unique_ptr<std::size_t[]> offsets;
+        detail::csr_buf<I> cols;
+        detail::csr_buf<V> vals;
 
         csr_storage() = default;
 
