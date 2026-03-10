@@ -101,7 +101,7 @@ namespace spira::buffer::impls
                 return;
 
             // Build reversed index so stable_sort gives last-write-wins on equal columns.
-            std::vector<size_type> idx(sz);
+            thread_local std::vector<size_type> idx(sz);
             for (size_type i = 0; i < sz; ++i)
                 idx[i] = sz - 1 - i;
 
@@ -117,8 +117,8 @@ namespace spira::buffer::impls
             {
                 if (idx[i] == i)
                     continue;
-                I   tmp_col = col_[i];
-                V   tmp_val = val_[i];
+                I tmp_col = col_[i];
+                V tmp_val = val_[i];
                 std::size_t j = i;
                 while (idx[j] != i)
                 {
@@ -207,10 +207,23 @@ namespace spira::buffer::impls
                 return *this;
             }
 
-            friend iterator operator+(iterator it, difference_type n) noexcept { it += n; return it; }
-            friend iterator operator+(difference_type n, iterator it) noexcept { it += n; return it; }
-            friend iterator operator-(iterator it, difference_type n) noexcept { it -= n; return it; }
-            friend difference_type operator-(const iterator &a, const iterator &b) noexcept {
+            friend iterator operator+(iterator it, difference_type n) noexcept
+            {
+                it += n;
+                return it;
+            }
+            friend iterator operator+(difference_type n, iterator it) noexcept
+            {
+                it += n;
+                return it;
+            }
+            friend iterator operator-(iterator it, difference_type n) noexcept
+            {
+                it -= n;
+                return it;
+            }
+            friend difference_type operator-(const iterator &a, const iterator &b) noexcept
+            {
                 return a.col_ptr - b.col_ptr;
             }
 

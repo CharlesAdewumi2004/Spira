@@ -287,7 +287,7 @@ namespace spira
         {
             // Build or merge the flat CSR (layout-appropriate).
             if (csr_)
-                csr_ = merge_csr<L>(rows_, *csr_);
+                csr_ = merge_csr<L>(rows_, std::move(*csr_));
             else
                 csr_ = build_csr<L>(rows_);
 

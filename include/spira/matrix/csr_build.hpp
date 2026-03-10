@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 #include <spira/matrix/csr_storage.hpp>
@@ -81,63 +82,212 @@ namespace spira
     // merge_csr<LayoutTag>
     //
     // Subsequent-lock merge: for each row, performs a two-pointer merge of the
-    // existing CSR slice (committed history) with the row's sorted buffer delta
-    // (new inserts since last open()). Buffer wins on column collision (newer
-    // write replaces older committed value). Zero values are filtered.
+    // existing CSR slice (committed history) with the row's sorted buffer delta.
+    // Buffer wins on column collision. Zero values are filtered.
     //
-    // Allocation strategy: pre-compute an upper-bound total nnz (old nnz + all
-    // buffer entries), allocate one output CSR at that size, then merge each row
-    // directly into it at its upper-bound write position. A single front-to-back
-    // memmove pass compacts any gaps left by zero-filtered entries. This reduces
-    // heap allocations from O(n_rows) to O(1), regardless of matrix size.
+    // Allocation strategy:
+    //
+    //   total_ub = old_csr.nnz + Σ buf_nnz[i]  (upper bound; zeros may reduce it)
+    //
+    //   Reuse  (total_ub <= old.capacity):
+    //     Merge rows in reverse order directly into the existing allocation so
+    //     that writes never reach unread old data. One extra alloc for ub_starts
+    //     and one for actual_nnz. CSR arrays are reused (zero new array allocs).
+    //
+    //   Grow   (total_ub > old.capacity):
+    //     Allocate a new CSR at capacity = total_ub × 1.5 to amortise future
+    //     growth. Forward merge into the new allocation. Compact with memmove.
+    //
+    // Takes old_csr by move: the caller gives up ownership. In the reuse path
+    // the same storage is returned. In the grow path the old storage is freed.
     //
     // Precondition: every row in `rows` must be in locked mode.
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class LayoutTag, class RowType>
-    auto merge_csr(const std::vector<RowType> &rows,
-                   const csr_storage<LayoutTag,
-                                     typename RowType::index_type,
-                                     typename RowType::value_type> &old_csr)
+    auto merge_csr(
+        const std::vector<RowType> &rows,
+        csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type> &&old_csr)
         -> csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type>
     {
         using I = typename RowType::index_type;
         using V = typename RowType::value_type;
+        using Csr = csr_storage<LayoutTag, I, V>;
 
         const std::size_t n_rows = rows.size();
 
         // Upper-bound nnz: every old entry + every new buffer entry.
-        // The actual count can only be equal or smaller (zero-filtered writes reduce it).
         std::size_t total_ub = old_csr.nnz;
         for (std::size_t i = 0; i < n_rows; ++i)
             total_ub += static_cast<std::size_t>(rows[i].end() - rows[i].begin());
 
-        // Single allocation for the output CSR at upper-bound size.
-        csr_storage<LayoutTag, I, V> out(n_rows, total_ub);
+        const bool reuse = (total_ub <= old_csr.capacity);
+        const std::size_t new_cap = reuse ? old_csr.capacity : total_ub + total_ub / 2; // 1.5× growth
 
-        // Upper-bound write start per row (one alloc, stays on the stack for small n_rows
-        // but heap for large matrices — still O(1) allocations total).
+        // ub_starts[i] = upper-bound write offset for row i in the output arrays.
         auto ub_starts = std::make_unique<std::size_t[]>(n_rows);
         {
             std::size_t pos = 0;
             for (std::size_t i = 0; i < n_rows; ++i)
             {
                 ub_starts[i] = pos;
-                pos += (old_csr.offsets[i + 1] - old_csr.offsets[i])
-                     + static_cast<std::size_t>(rows[i].end() - rows[i].begin());
+                pos += (old_csr.offsets[i + 1] - old_csr.offsets[i]) + static_cast<std::size_t>(rows[i].end() - rows[i].begin());
             }
         }
 
-        // ── Merge pass: write each row directly into out at ub_starts[i] ──────
+        // ─────────────────────────────────────────────────────────────────────
+        // Reuse path — in-place reverse merge
+        //
+        // Moving old_csr into `out` makes out.cols/vals == old data. We read
+        // and write into the same buffer, which is safe with reverse row order:
+        // row i writes to [ub_starts[i], ub_starts[i+1]) and reads from
+        // [old.offsets[i], old.offsets[i+1]).  Since ub_starts[j] >= old.offsets[j]
+        // for all j, processing i = n-1 first ensures writes for row i never
+        // reach old data for rows 0..i-1, which are processed later.
+        // ─────────────────────────────────────────────────────────────────────
+        if (reuse)
+        {
+            Csr out = std::move(old_csr); // buffers transferred; out.offsets = old boundaries
 
+            // Track actual nnz per row (computed during the reverse merge pass).
+            auto actual_nnz = std::make_unique<std::size_t[]>(n_rows);
+
+            for (std::size_t ri = 0; ri < n_rows; ++ri)
+            {
+                const std::size_t i = n_rows - 1 - ri; // reverse order
+
+                const std::size_t old_begin = out.offsets[i];
+                const std::size_t old_nnz = out.offsets[i + 1] - old_begin;
+
+                auto bit = rows[i].begin();
+                auto bend = rows[i].end();
+
+                auto old_col = [&](std::size_t k) -> I
+                {
+                    if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                        return out.cols.get()[old_begin + k];
+                    else
+                        return out.pairs.get()[old_begin + k].column;
+                };
+                auto old_val = [&](std::size_t k) -> V
+                {
+                    if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                        return out.vals.get()[old_begin + k];
+                    else
+                        return out.pairs.get()[old_begin + k].value;
+                };
+
+                std::size_t wp = ub_starts[i];
+                std::size_t oi = 0;
+
+                auto emit = [&](I col, V val)
+                {
+                    if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                    {
+                        out.cols.get()[wp] = col;
+                        out.vals.get()[wp] = val;
+                    }
+                    else
+                    {
+                        out.pairs.get()[wp] = {col, val};
+                    }
+                    ++wp;
+                };
+
+                while (oi < old_nnz && bit != bend)
+                {
+                    const I oc = old_col(oi);
+                    const I bc = (*bit).first_ref();
+                    if (oc < bc)
+                    {
+                        if (!traits::ValueTraits<V>::is_zero(old_val(oi)))
+                            emit(oc, old_val(oi));
+                        ++oi;
+                    }
+                    else if (bc < oc)
+                    {
+                        if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                            emit(bc, (*bit).second_ref());
+                        ++bit;
+                    }
+                    else
+                    {
+                        if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                            emit(bc, (*bit).second_ref());
+                        ++oi;
+                        ++bit;
+                    }
+                }
+                while (oi < old_nnz)
+                {
+                    if (!traits::ValueTraits<V>::is_zero(old_val(oi)))
+                        emit(old_col(oi), old_val(oi));
+                    ++oi;
+                }
+                while (bit != bend)
+                {
+                    if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                        emit((*bit).first_ref(), (*bit).second_ref());
+                    ++bit;
+                }
+
+                actual_nnz[i] = wp - ub_starts[i];
+            }
+
+            // Build actual offsets from per-row counts.
+            out.offsets[0] = 0;
+            for (std::size_t i = 0; i < n_rows; ++i)
+                out.offsets[i + 1] = out.offsets[i] + actual_nnz[i];
+            out.nnz = out.offsets[n_rows];
+
+            // Compact: shift each row's data from its ub_start to its actual offset.
+            // Front-to-back is safe: actual_offset[i] <= ub_starts[i] always.
+            if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+            {
+                I *cp = out.cols.get();
+                V *vp = out.vals.get();
+                for (std::size_t i = 0; i < n_rows; ++i)
+                {
+                    const std::size_t dst = out.offsets[i];
+                    const std::size_t src = ub_starts[i];
+                    const std::size_t cnt = actual_nnz[i];
+                    if (src != dst && cnt > 0)
+                    {
+                        std::memmove(cp + dst, cp + src, cnt * sizeof(I));
+                        std::memmove(vp + dst, vp + src, cnt * sizeof(V));
+                    }
+                }
+            }
+            else
+            {
+                using P = layout::elementPair<I, V>;
+                auto *pp = out.pairs.get();
+                for (std::size_t i = 0; i < n_rows; ++i)
+                {
+                    const std::size_t dst = out.offsets[i];
+                    const std::size_t src = ub_starts[i];
+                    const std::size_t cnt = actual_nnz[i];
+                    if (src != dst && cnt > 0)
+                        std::memmove(pp + dst, pp + src, cnt * sizeof(P));
+                }
+            }
+
+            return out;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Grow path — allocate new CSR at 1.5× capacity, forward merge
+        // ─────────────────────────────────────────────────────────────────────
+
+        Csr out(n_rows, 0, new_cap);
         out.offsets[0] = 0;
 
         for (std::size_t i = 0; i < n_rows; ++i)
         {
             const std::size_t old_begin = old_csr.offsets[i];
-            const std::size_t old_nnz   = old_csr.offsets[i + 1] - old_begin;
+            const std::size_t old_nnz = old_csr.offsets[i + 1] - old_begin;
 
-            auto bit  = rows[i].begin();
+            auto bit = rows[i].begin();
             auto bend = rows[i].end();
 
             auto old_col = [&](std::size_t k) -> I
@@ -155,7 +305,8 @@ namespace spira
                     return old_csr.pairs.get()[old_begin + k].value;
             };
 
-            std::size_t wp = ub_starts[i]; // write position in out
+            std::size_t wp = ub_starts[i];
+            std::size_t oi = 0;
 
             auto emit = [&](I col, V val)
             {
@@ -171,37 +322,40 @@ namespace spira
                 ++wp;
             };
 
-            std::size_t oi = 0;
             while (oi < old_nnz && bit != bend)
             {
                 const I oc = old_col(oi);
                 const I bc = (*bit).first_ref();
                 if (oc < bc)
                 {
-                    if (!traits::ValueTraits<V>::is_zero(old_val(oi))) emit(oc, old_val(oi));
+                    if (!traits::ValueTraits<V>::is_zero(old_val(oi)))
+                        emit(oc, old_val(oi));
                     ++oi;
                 }
                 else if (bc < oc)
                 {
-                    if (!traits::ValueTraits<V>::is_zero((*bit).second_ref())) emit(bc, (*bit).second_ref());
+                    if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                        emit(bc, (*bit).second_ref());
                     ++bit;
                 }
                 else
                 {
-                    // Same column: buffer wins (more recent write).
-                    if (!traits::ValueTraits<V>::is_zero((*bit).second_ref())) emit(bc, (*bit).second_ref());
+                    if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                        emit(bc, (*bit).second_ref());
                     ++oi;
                     ++bit;
                 }
             }
             while (oi < old_nnz)
             {
-                if (!traits::ValueTraits<V>::is_zero(old_val(oi))) emit(old_col(oi), old_val(oi));
+                if (!traits::ValueTraits<V>::is_zero(old_val(oi)))
+                    emit(old_col(oi), old_val(oi));
                 ++oi;
             }
             while (bit != bend)
             {
-                if (!traits::ValueTraits<V>::is_zero((*bit).second_ref())) emit((*bit).first_ref(), (*bit).second_ref());
+                if (!traits::ValueTraits<V>::is_zero((*bit).second_ref()))
+                    emit((*bit).first_ref(), (*bit).second_ref());
                 ++bit;
             }
 
@@ -210,16 +364,11 @@ namespace spira
 
         out.nnz = out.offsets[n_rows];
 
-        // ── Compact pass: close gaps left by zero-filtered entries ─────────────
-        //
-        // actual_start[i] = out.offsets[i]  ≤  ub_starts[i] = upper-bound start.
-        // Processing front-to-back is safe: each row's destination always ends
-        // before the next row's upper-bound source starts.
-
+        // Compact: close gaps from zero-filtered entries.
         if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
         {
-            I *cols_ptr = out.cols.get();
-            V *vals_ptr = out.vals.get();
+            I *cp = out.cols.get();
+            V *vp = out.vals.get();
             for (std::size_t i = 0; i < n_rows; ++i)
             {
                 const std::size_t dst = out.offsets[i];
@@ -227,22 +376,22 @@ namespace spira
                 const std::size_t cnt = out.offsets[i + 1] - dst;
                 if (src != dst && cnt > 0)
                 {
-                    std::memmove(cols_ptr + dst, cols_ptr + src, cnt * sizeof(I));
-                    std::memmove(vals_ptr + dst, vals_ptr + src, cnt * sizeof(V));
+                    std::memmove(cp + dst, cp + src, cnt * sizeof(I));
+                    std::memmove(vp + dst, vp + src, cnt * sizeof(V));
                 }
             }
         }
-        else // aos_tag
+        else
         {
             using P = layout::elementPair<I, V>;
-            auto *pairs_ptr = out.pairs.get();
+            auto *pp = out.pairs.get();
             for (std::size_t i = 0; i < n_rows; ++i)
             {
                 const std::size_t dst = out.offsets[i];
                 const std::size_t src = ub_starts[i];
                 const std::size_t cnt = out.offsets[i + 1] - dst;
                 if (src != dst && cnt > 0)
-                    std::memmove(pairs_ptr + dst, pairs_ptr + src, cnt * sizeof(P));
+                    std::memmove(pp + dst, pp + src, cnt * sizeof(P));
             }
         }
 
