@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-#include <spira/matrix/csr_build.hpp>
+#include <spira/matrix/storage/csr_build.hpp>
 #include <spira/matrix/row.hpp>
 
 using Layout = spira::layout::tags::aos_tag;

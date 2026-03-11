@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-#include <spira/matrix/csr_storage.hpp>
+#include <spira/matrix/storage/csr_storage.hpp>
 #include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/traits.hpp>
 

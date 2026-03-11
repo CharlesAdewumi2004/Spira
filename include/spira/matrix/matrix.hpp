@@ -11,8 +11,8 @@
 #include <spira/config.hpp>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
-#include <spira/matrix/csr_build.hpp>
-#include <spira/matrix/csr_storage.hpp>
+#include <spira/matrix/storage/csr_build.hpp>
+#include <spira/matrix/storage/csr_storage.hpp>
 #include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/matrix/row.hpp>
 #include <spira/traits.hpp>
