@@ -13,6 +13,7 @@ endif()
 option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
 option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  OFF)
 option(SPIRA_ENABLE_SIMD       "Build SIMD-accelerated kernels" ON)
+option(SPIRA_BUILD_PARALLEL    "Build parallel_matrix and its tests" ON)
 
 include(FetchContent)
 
@@ -192,6 +193,28 @@ endif()
 
   include(GoogleTest)
   gtest_discover_tests(unit_tests DISCOVERY_TIMEOUT 30)
+endif()
+
+# ---------- Parallel tests ----------
+if (SPIRA_BUILD_PARALLEL AND SPIRA_BUILD_TESTS)
+  add_executable(parallel_tests
+    tests/parallel/partition_tests.cpp
+  )
+
+  target_link_libraries(parallel_tests PRIVATE spira GTest::gtest_main)
+
+  if (UNIX AND NOT APPLE)
+    target_link_libraries(parallel_tests PRIVATE pthread)
+  endif()
+
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(parallel_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(parallel_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    target_link_options(parallel_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    target_compile_options(parallel_tests PRIVATE -fno-omit-frame-pointer)
+  endif()
+
+  gtest_discover_tests(parallel_tests DISCOVERY_TIMEOUT 30)
 endif()
 
 # ---------- Benchmarks ----------
