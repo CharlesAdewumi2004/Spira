@@ -5,7 +5,7 @@
 #include <utility>
 
 #include <spira/matrix/matrix.hpp>
-#include <spira/algorithms/transpose.hpp>
+#include <spira/serial/transpose.hpp>
 
 using Layout = spira::layout::tags::aos_tag;
 

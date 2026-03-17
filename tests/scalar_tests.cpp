@@ -6,7 +6,7 @@
 #include <tuple>
 
 #include <spira/matrix/matrix.hpp>
-#include <spira/algorithms/scalars.hpp>
+#include <spira/serial/scalars.hpp>
 
 using LayoutTag = spira::layout::tags::aos_tag;
 

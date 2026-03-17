@@ -7,7 +7,7 @@
 
 #include <spira/matrix/matrix.hpp>
 #include <spira/matrix/row.hpp>
-#include <spira/algorithms/matrix_addition.hpp>
+#include <spira/serial/matrix_addition.hpp>
 
 using LayoutTag = spira::layout::tags::soa_tag;
 

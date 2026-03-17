@@ -2,7 +2,7 @@
 #include <benchmark/benchmark.h>
 
 #include <spira/spira.hpp>
-#include <spira/algorithms/spmv.hpp> // adjust include if your spmv lives elsewhere
+#include <spira/serial/spmv.hpp> // adjust include if your spmv lives elsewhere
 
 #include <complex>
 #include <cstddef>

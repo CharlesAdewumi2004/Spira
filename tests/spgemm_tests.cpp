@@ -6,7 +6,7 @@
 #include <type_traits>
 
 #include <spira/spira.hpp>
-#include <spira/algorithms/spgemm.hpp>
+#include <spira/serial/spgemm.hpp>
 
 namespace
 {
