@@ -185,6 +185,15 @@ namespace spira::parallel
             return parts_[t];
         }
 
+        /// Run f(partition, thread_id) on every partition in parallel.
+        /// Blocks until all workers have returned from f.
+        /// Used by free-function algorithms that need parallel partition access.
+        template <class Func>
+        void execute(Func &&f)
+        {
+            pool_.execute([this, &f](std::size_t t) { f(parts_[t], t); });
+        }
+
     private:
         // Determine which partition owns global_row.
         [[nodiscard]] size_type owner(size_type global_row) const noexcept
