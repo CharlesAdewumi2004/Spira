@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <memory>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -92,7 +93,7 @@ namespace spira::parallel
 
         [[nodiscard]] size_type n_rows() const noexcept { return n_rows_; }
         [[nodiscard]] size_type n_cols() const noexcept { return n_cols_; }
-        [[nodiscard]] size_type n_threads() const noexcept { return pool_.size(); }
+        [[nodiscard]] size_type n_threads() const noexcept { return pool_->size(); }
         [[nodiscard]] shape_type shape() const noexcept { return {n_rows_, n_cols_}; }
 
         // ─────────────────────────────────────────
@@ -117,6 +118,15 @@ namespace spira::parallel
         /// Blocks until all partitions are open.  The per-partition CSR is kept
         /// (used as the base for merge_csr on the next lock cycle).
         void open();
+
+        /// Rebalance partitions by nnz.
+        ///
+        /// Must be called in locked mode.  Computes new partition boundaries so
+        /// each thread owns approximately total_nnz / n_threads non-zeros, then
+        /// rebuilds all partitions and leaves the matrix locked.
+        ///
+        /// No-op if boundaries are already optimal.  O(n_rows + n_nnz).
+        void rebalance();
 
         // ─────────────────────────────────────────
         // Queries (both modes)
@@ -153,6 +163,31 @@ namespace spira::parallel
 
         /// Clear all row buffers across every partition.
         void clear() noexcept;
+
+        /// Parallel bulk fill — for batch assembly when source data can be
+        /// partitioned by row range ahead of time.
+        ///
+        /// f is invoked once per worker thread as:
+        ///   f(rows, row_start, row_end, thread_id)
+        ///
+        /// where rows is the std::vector<row_type> for that partition and
+        /// [row_start, row_end) is the global row range it owns.  Insert via:
+        ///   rows[global_row - row_start].insert(col, val)
+        ///
+        /// Matrix must be open.  Stays open after parallel_fill — call lock()
+        /// when done.  No routing overhead; each thread writes only to its own
+        /// partition.
+        template <class Func>
+        void parallel_fill(Func &&f)
+        {
+            assert(mode_ == config::matrix_mode::open &&
+                   "parallel_fill: matrix must be open");
+            pool_->execute([this, &f](std::size_t t)
+            {
+                auto &p = parts_[t];
+                f(p.rows, p.row_start, p.row_end, t);
+            });
+        }
 
         // ─────────────────────────────────────────
         // Iteration
@@ -191,14 +226,18 @@ namespace spira::parallel
         template <class Func>
         void execute(Func &&f)
         {
-            pool_.execute([this, &f](std::size_t t) { f(parts_[t], t); });
+            pool_->execute([this, &f](std::size_t t) { f(parts_[t], t); });
         }
 
     private:
         // Determine which partition owns global_row.
+        // Linear scan over parts_ (n_threads is small; avoids formula/boundary mismatch).
         [[nodiscard]] size_type owner(size_type global_row) const noexcept
         {
-            return global_row * parts_.size() / n_rows_;
+            for (size_type t = 0; t + 1 < parts_.size(); ++t)
+                if (global_row < parts_[t + 1].row_start)
+                    return t;
+            return parts_.size() - 1;
         }
 
         void validate_row(size_type r) const
@@ -221,7 +260,7 @@ namespace spira::parallel
         size_type n_cols_;
         config::matrix_mode mode_{config::matrix_mode::open};
         std::vector<partition_type> parts_;
-        thread_pool pool_;
+        std::unique_ptr<thread_pool> pool_;
         // Zero-size for insert_policy::direct (empty specialisation).
         [[no_unique_address]] insert_staging<IP, I, V, StagingN> staging_;
     };
@@ -248,7 +287,7 @@ namespace spira::parallel
                  layout::ValidLayoutTag<L>
     parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::parallel_matrix(
         size_type n_rows, size_type n_cols, size_type n_threads, size_type reserve_per_row)
-        : n_rows_{n_rows}, n_cols_{n_cols}, pool_{n_threads}
+        : n_rows_{n_rows}, n_cols_{n_cols}, pool_{std::make_unique<thread_pool>(n_threads)}
     {
         assert(n_threads >= 1 && "parallel_matrix requires at least one thread");
 
@@ -339,7 +378,7 @@ namespace spira::parallel
         if constexpr (IP == config::insert_policy::staged)
             staging_.flush_all(parts_);
 
-        pool_.execute([this](std::size_t t) { lock_partition(parts_[t]); });
+        pool_->execute([this](std::size_t t) { lock_partition(parts_[t]); });
 
         mode_ = config::matrix_mode::locked;
     }
@@ -354,12 +393,85 @@ namespace spira::parallel
         if (mode_ == config::matrix_mode::open)
             return;
 
-        pool_.execute([this](std::size_t t)
+        pool_->execute([this](std::size_t t)
                       {
             for (auto &r : parts_[t].rows)
                 r.open(); });
 
         mode_ = config::matrix_mode::open;
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════════
+    // Rebalance
+    // ═════════════════════════════════════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V,
+              class BT, std::size_t BN, config::lock_policy LP,
+              config::insert_policy IP, std::size_t SN>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::rebalance()
+    {
+        assert(mode_ == config::matrix_mode::locked && "rebalance requires locked mode");
+
+        const size_type n_threads = pool_->size();
+
+        // 1. Collect per-row nnz from locked CSR.
+        std::vector<std::size_t> row_nnz(n_rows_);
+        for (const auto &p : parts_)
+            for (size_type i = 0; i < p.rows.size(); ++i)
+                row_nnz[p.row_start + i] = p.rows[i].size();
+
+        // 2. Compute optimal boundaries.
+        auto boundaries = compute_partition_boundaries(row_nnz, n_threads);
+
+        // 3. Skip if boundaries are unchanged.
+        bool same = true;
+        for (size_type t = 0; t < n_threads && same; ++t)
+            if (boundaries[t] != parts_[t].row_start || boundaries[t + 1] != parts_[t].row_end)
+                same = false;
+        if (same)
+            return;
+
+        // 4. Extract all committed entries into a flat per-row staging area.
+        //    for_each_element() is safe here: matrix is locked, CSR slices are live.
+        std::vector<std::vector<std::pair<I, V>>> row_data(n_rows_);
+        for (const auto &p : parts_)
+            for (size_type i = 0; i < p.rows.size(); ++i)
+                p.rows[i].for_each_element([&row_data, global = p.row_start + i](I col, V val)
+                { row_data[global].emplace_back(col, val); });
+
+        // 5. Rebuild partitions with new boundaries.
+        //    New row objects start in open mode — ready to accept inserts.
+        parts_.clear();
+        parts_.resize(n_threads);
+        for (size_type t = 0; t < n_threads; ++t)
+        {
+            auto &p = parts_[t];
+            p.row_start = boundaries[t];
+            p.row_end   = boundaries[t + 1];
+            const size_type local_n = p.row_end - p.row_start;
+            p.rows.reserve(local_n);
+            for (size_type r = 0; r < local_n; ++r)
+                p.rows.emplace_back(config::default_row_reserve_hint, n_cols_);
+        }
+
+        // 6. Re-insert all entries into the new row buffers (directly — bypass
+        //    parallel_matrix::insert() which checks matrix-level open mode).
+        for (size_type global_r = 0; global_r < n_rows_; ++global_r)
+        {
+            const size_type t   = owner(global_r);
+            const size_type loc = parts_[t].local_row(global_r);
+            for (auto &[col, val] : row_data[global_r])
+                parts_[t].rows[loc].insert(col, val);
+        }
+
+        // 7. Rebuild CSR for every partition in parallel; leaves matrix locked.
+        pool_->execute([this](std::size_t t) { lock_partition(parts_[t]); });
+
+        // 8. Reset staging buffers for the new partition layout.
+        if constexpr (IP == config::insert_policy::staged)
+            staging_.init(n_threads);
     }
 
     // ═════════════════════════════════════════════════════════════════════════════
