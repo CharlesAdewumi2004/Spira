@@ -199,6 +199,8 @@ endif()
 if (SPIRA_BUILD_PARALLEL AND SPIRA_BUILD_TESTS)
   add_executable(parallel_tests
     tests/parallel/partition_tests.cpp
+    tests/parallel/parallel_matrix_tests.cpp
+    tests/parallel/parallel_algorithm_tests.cpp
   )
 
   target_link_libraries(parallel_tests PRIVATE spira GTest::gtest_main)

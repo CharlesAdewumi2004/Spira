@@ -1,12 +1,20 @@
 // tests/parallel/parallel_algorithm_tests.cpp
 #include <gtest/gtest.h>
-#include <spira/spira.hpp>
 
 #include <cstddef>
 #include <vector>
 #include <numeric>
 #include <cmath>
 #include <tuple>
+
+#include <spira/spira.hpp>
+#include <spira/parallel/parallel_matrix.hpp>
+#include <spira/parallel/algorithms/accumulate.hpp>
+#include <spira/parallel/algorithms/spmv.hpp>
+#include <spira/parallel/algorithms/spgemm.hpp>
+#include <spira/parallel/algorithms/transpose.hpp>
+#include <spira/parallel/algorithms/matrix_addition.hpp>
+#include <spira/parallel/algorithms/scalars.hpp>
 
 using namespace spira;
 using namespace spira::parallel;
@@ -328,6 +336,111 @@ TEST(ParallelTranspose, MatchesAcrossThreadCounts)
         for (uint32_t c = 0; c < 8; ++c)
             EXPECT_DOUBLE_EQ(T1.get(r, c), T2.get(r, c))
                 << "mismatch at (" << r << "," << c << ")";
+}
+
+TEST(ParallelTranspose, DenseRows)
+{
+    // Every row has multiple nonzeros — stresses the column-range filter in each
+    // output worker when input entries are scattered across all output partitions.
+    std::vector<entry> entries;
+    for (std::size_t r = 0; r < 6; ++r)
+        for (uint32_t c = 0; c < 6; ++c)
+            entries.emplace_back(r, c, static_cast<double>(r * 6 + c + 1));
+
+    auto A = build_locked(6, 6, 3, entries);
+    auto T = palg::transpose(A);
+
+    EXPECT_EQ(T.n_rows(), 6u);
+    EXPECT_EQ(T.n_cols(), 6u);
+    EXPECT_EQ(T.nnz(), A.nnz());
+
+    for (std::size_t r = 0; r < 6; ++r)
+        for (uint32_t c = 0; c < 6; ++c)
+            EXPECT_DOUBLE_EQ(T.get(r, c), A.get(static_cast<std::size_t>(c), static_cast<uint32_t>(r)))
+                << "T(" << r << "," << c << ") vs A(" << c << "," << r << ")";
+}
+
+TEST(ParallelTranspose, FourThreadsCrossPartition)
+{
+    // With 4 threads on a 8×8 matrix each partition owns 2 rows.
+    // Entries are deliberately placed so each input row contains nonzeros
+    // that belong to multiple output partitions, forcing cross-partition scatter.
+    std::vector<entry> entries = {
+        {0, 0u, 1.0}, {0, 4u, 2.0},   // row 0  → output rows 0 and 4
+        {1, 7u, 3.0},                   // row 1  → output row 7
+        {3, 2u, 4.0}, {3, 5u, 5.0},   // row 3  → output rows 2 and 5
+        {6, 1u, 6.0}, {6, 6u, 7.0},   // row 6  → output rows 1 and 6
+        {7, 3u, 8.0},                   // row 7  → output row 3
+    };
+    auto A = build_locked(8, 8, 4, entries);
+    auto T = palg::transpose(A);
+
+    EXPECT_EQ(T.n_rows(), 8u);
+    EXPECT_EQ(T.n_cols(), 8u);
+    EXPECT_EQ(T.nnz(), static_cast<std::size_t>(entries.size()));
+
+    // Verify every transposed entry.
+    for (auto &[r, c, v] : entries)
+        EXPECT_DOUBLE_EQ(T.get(static_cast<std::size_t>(c), static_cast<uint32_t>(r)), v)
+            << "T(" << c << "," << r << ") expected " << v;
+}
+
+TEST(ParallelTranspose, OutputIsSorted)
+{
+    // Verify the output CSR has strictly sorted column indices in every row
+    // (relies on the naturally-sorted property of the parallel fill).
+    std::vector<entry> entries;
+    for (std::size_t r = 0; r < 8; ++r)
+        for (uint32_t c = 0; c < 8; ++c)
+            if ((r + c) % 3 == 0)
+                entries.emplace_back(r, c, static_cast<double>(r + c + 1));
+
+    auto A = build_locked(8, 8, 4, entries);
+    auto T = palg::transpose(A);
+
+    for (std::size_t r = 0; r < T.n_rows(); ++r)
+    {
+        uint32_t prev = 0;
+        bool first = true;
+        T.row_at(r).for_each_element([&](uint32_t col, double)
+        {
+            if (!first) {
+                EXPECT_GT(col, prev) << "unsorted col in T row " << r;
+            }
+            prev = col;
+            first = false;
+        });
+    }
+}
+
+TEST(ParallelTranspose, MatchesSerialTranspose)
+{
+    // Cross-validate the parallel transpose against the serial implementation.
+    using smat = spira::matrix<layout::tags::aos_tag, uint32_t, double>;
+
+    std::vector<entry> entries = {
+        {0, 2u, 1.0}, {1, 0u, 2.0}, {1, 3u, 3.0},
+        {2, 1u, 4.0}, {3, 0u, 5.0}, {3, 2u, 6.0},
+        {4, 3u, 7.0}, {5, 1u, 8.0},
+    };
+
+    auto A_par = build_locked(6, 4, 3, entries);
+    auto T_par = palg::transpose(A_par);
+
+    smat A_ser(6, 4);
+    for (auto &[r, c, v] : entries)
+        A_ser.insert(r, c, v);
+    A_ser.lock();
+    auto T_ser = spira::serial::algorithms::transpose(A_ser);
+
+    EXPECT_EQ(T_par.n_rows(), T_ser.n_rows());
+    EXPECT_EQ(T_par.n_cols(), T_ser.n_cols());
+    EXPECT_EQ(T_par.nnz(), T_ser.nnz());
+
+    for (std::size_t r = 0; r < T_ser.n_rows(); ++r)
+        for (uint32_t c = 0; c < static_cast<uint32_t>(T_ser.n_cols()); ++c)
+            EXPECT_DOUBLE_EQ(T_par.get(r, c), T_ser.get(static_cast<uint32_t>(r), c))
+                << "mismatch at T(" << r << "," << c << ")";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
