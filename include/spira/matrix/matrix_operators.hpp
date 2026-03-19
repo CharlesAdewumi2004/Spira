@@ -23,7 +23,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator+(const matrix &other) const
     {
-        return algorithms::MatrixAddition(*this, other);
+        return serial::algorithms::MatrixAddition(*this, other);
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
@@ -34,8 +34,8 @@ namespace spira
         if (this->shape() != other.shape())
             throw std::invalid_argument("operator-: matrix shapes must match");
         matrix<L, I, V, BT, BN, LP> out(other.shape().first, other.shape().second);
-        algorithms::multiplication_scaler(other, out, V{-1});
-        return algorithms::MatrixAddition(*this, out);
+        serial::algorithms::multiplication_scaler(other, out, V{-1});
+        return serial::algorithms::MatrixAddition(*this, out);
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
@@ -43,7 +43,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator+=(const matrix &other)
     {
-        *this = algorithms::MatrixAddition(*this, other);
+        *this = serial::algorithms::MatrixAddition(*this, other);
         return *this;
     }
 
@@ -55,8 +55,8 @@ namespace spira
         if (this->shape() != other.shape())
             throw std::invalid_argument("operator-=: matrix shapes must match");
         matrix<L, I, V, BT, BN, LP> out(other.shape().first, other.shape().second);
-        algorithms::multiplication_scaler(other, out, V{-1});
-        *this = algorithms::MatrixAddition(*this, out);
+        serial::algorithms::multiplication_scaler(other, out, V{-1});
+        *this = serial::algorithms::MatrixAddition(*this, out);
         return *this;
     }
 
@@ -69,7 +69,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator*(const matrix &other) const
     {
-        return algorithms::spgemm(*this, other);
+        return serial::algorithms::spgemm(*this, other);
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
@@ -77,7 +77,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator*=(const matrix &other)
     {
-        *this = algorithms::spgemm(*this, other);
+        *this = serial::algorithms::spgemm(*this, other);
         return *this;
     }
 
@@ -91,7 +91,7 @@ namespace spira
     matrix<L, I, V, BT, BN, LP>::operator*(const std::vector<V> &x) const
     {
         std::vector<V> y(this->n_rows());
-        algorithms::spmv(*this, x, y);
+        serial::algorithms::spmv(*this, x, y);
         return y;
     }
 
@@ -105,7 +105,7 @@ namespace spira
     matrix<L, I, V, BT, BN, LP>::operator*(V s) const
     {
         matrix out(*this);
-        algorithms::multiplication_scaler(*this, out, s);
+        serial::algorithms::multiplication_scaler(*this, out, s);
         return out;
     }
 
@@ -114,7 +114,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator*=(V s)
     {
-        algorithms::multiplication_scaler(*this, s);
+        serial::algorithms::multiplication_scaler(*this, s);
         return *this;
     }
 
@@ -124,7 +124,7 @@ namespace spira
     matrix<L, I, V, BT, BN, LP>::operator/(V s) const
     {
         matrix out(*this);
-        algorithms::division_scaler(*this, out, s);
+        serial::algorithms::division_scaler(*this, out, s);
         return out;
     }
 
@@ -133,7 +133,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP> &
     matrix<L, I, V, BT, BN, LP>::operator/=(V s)
     {
-        algorithms::division_scaler(*this, s);
+        serial::algorithms::division_scaler(*this, s);
         return *this;
     }
 
@@ -146,7 +146,7 @@ namespace spira
     inline matrix<L, I, V, BT, BN, LP>
     matrix<L, I, V, BT, BN, LP>::operator~() const
     {
-        return algorithms::transpose(*this);
+        return serial::algorithms::transpose(*this);
     }
 
 } // namespace spira

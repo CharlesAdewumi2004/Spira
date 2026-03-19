@@ -493,6 +493,44 @@ namespace spira
     }
 
     // ═════════════════════════════════════════════
+    // load_csr
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::load_csr(csr_storage<L, I, V> &&csr) noexcept
+    {
+        for (auto &r : rows_)
+        {
+            r.reset_csr_slice();
+            r.lock(); // marks each row locked (no-op sort on empty buffer)
+        }
+
+        csr_ = std::move(csr);
+        mode_ = config::matrix_mode::locked;
+
+        const std::size_t *off = csr_->offsets.get();
+        if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+        {
+            const I *cols_flat = csr_->cols.get();
+            const V *vals_flat = csr_->vals.get();
+            for (std::size_t i = 0; i < rows_.size(); ++i)
+                rows_[i].set_csr_slice(
+                    csr_slice<L, I, V>{cols_flat + off[i], vals_flat + off[i],
+                                       off[i + 1] - off[i]});
+        }
+        else
+        {
+            const auto *pairs_flat = csr_->pairs.get();
+            for (std::size_t i = 0; i < rows_.size(); ++i)
+                rows_[i].set_csr_slice(
+                    csr_slice<L, I, V>{pairs_flat + off[i], off[i + 1] - off[i]});
+        }
+    }
+
+    // ═════════════════════════════════════════════
     // Iteration helpers
     // ═════════════════════════════════════════════
 
