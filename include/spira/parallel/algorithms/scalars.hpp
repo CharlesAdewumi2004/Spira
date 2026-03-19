@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <stdexcept>
 
 #include <spira/traits.hpp>
@@ -19,7 +18,8 @@ namespace spira::parallel::algorithms
               config::insert_policy IP, std::size_t SN>
     void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat, V scaler)
     {
-        assert(mat.is_open() && "multiplication_scaler: matrix must be open");
+        if (!mat.is_open())
+            throw std::logic_error("multiplication_scaler: matrix must be open");
 
         mat.execute([scaler](auto &p, std::size_t)
         {
@@ -41,10 +41,14 @@ namespace spira::parallel::algorithms
                                parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &out,
                                V scaler)
     {
-        assert(mat.is_locked() && "multiplication_scaler: input matrix must be locked");
-        assert(out.is_open()   && "multiplication_scaler: output matrix must be open");
-        assert(mat.shape() == out.shape() && "multiplication_scaler: shape mismatch");
-        assert(mat.n_threads() == out.n_threads() && "multiplication_scaler: thread count mismatch");
+        if (!mat.is_locked())
+            throw std::logic_error("multiplication_scaler: input matrix must be locked");
+        if (!out.is_open())
+            throw std::logic_error("multiplication_scaler: output matrix must be open");
+        if (mat.shape() != out.shape())
+            throw std::invalid_argument("multiplication_scaler: shape mismatch");
+        if (mat.n_threads() != out.n_threads())
+            throw std::invalid_argument("multiplication_scaler: thread count mismatch");
 
         mat.execute([&out, scaler](const auto &p_in, std::size_t t)
         {
@@ -69,7 +73,8 @@ namespace spira::parallel::algorithms
     {
         if (traits::ValueTraits<V>::is_zero(scaler))
             throw std::domain_error("division by zero");
-        assert(mat.is_open() && "division_scaler: matrix must be open");
+        if (!mat.is_open())
+            throw std::logic_error("division_scaler: matrix must be open");
 
         mat.execute([scaler](auto &p, std::size_t)
         {
@@ -92,10 +97,14 @@ namespace spira::parallel::algorithms
     {
         if (traits::ValueTraits<V>::is_zero(scaler))
             throw std::domain_error("division by zero");
-        assert(mat.is_locked() && "division_scaler: input matrix must be locked");
-        assert(out.is_open()   && "division_scaler: output matrix must be open");
-        assert(mat.shape() == out.shape() && "division_scaler: shape mismatch");
-        assert(mat.n_threads() == out.n_threads() && "division_scaler: thread count mismatch");
+        if (!mat.is_locked())
+            throw std::logic_error("division_scaler: input matrix must be locked");
+        if (!out.is_open())
+            throw std::logic_error("division_scaler: output matrix must be open");
+        if (mat.shape() != out.shape())
+            throw std::invalid_argument("division_scaler: shape mismatch");
+        if (mat.n_threads() != out.n_threads())
+            throw std::invalid_argument("division_scaler: thread count mismatch");
 
         mat.execute([&out, scaler](const auto &p_in, std::size_t t)
         {

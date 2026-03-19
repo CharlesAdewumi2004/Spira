@@ -162,16 +162,16 @@ if (SPIRA_BUILD_TESTS)
     tests/matrix_tests.cpp
     tests/flush_behaviour_tests.cpp
     tests/mode_switch_tests.cpp
-    tests/spmv_tests.cpp
     tests/large_matrix_stress_tests.cpp
-    tests/spgemm_tests.cpp
-    tests/transpose_tests.cpp
-    tests/matrix_addition_tests.cpp
-    tests/scalar_tests.cpp
     tests/matrix_operator_overloads_tests.cpp
     tests/simd_dot_operator_tests.cpp
-    tests/accumulate_algo_tests.cpp
     tests/compaction_tests.cpp
+    tests/serial/spmv_tests.cpp
+    tests/serial/spgemm_tests.cpp
+    tests/serial/transpose_tests.cpp
+    tests/serial/matrix_addition_tests.cpp
+    tests/serial/scalar_tests.cpp
+    tests/serial/accumulate_algo_tests.cpp
   )
 
   target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)

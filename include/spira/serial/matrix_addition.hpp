@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -9,7 +8,7 @@
 #include <spira/matrix/matrix.hpp>
 #include <spira/traits.hpp>
 
-namespace spira::algorithms
+namespace spira::serial::algorithms
 {
 
     // Helper: extract key from iterator element regardless of AoS/SoA proxy type.
@@ -35,8 +34,10 @@ namespace spira::algorithms
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {
-        assert(A.is_locked() && "addRows: row A must be locked");
-        assert(B.is_locked() && "addRows: row B must be locked");
+        if (!A.is_locked())
+            throw std::logic_error("addRows: row A must be locked");
+        if (!B.is_locked())
+            throw std::logic_error("addRows: row B must be locked");
 
         out.clear();
 
@@ -87,8 +88,10 @@ namespace spira::algorithms
             throw std::invalid_argument("Matrices aren't the same size");
         }
 
-        assert(A.is_locked() && "MatrixAddition: A must be locked");
-        assert(B.is_locked() && "MatrixAddition: B must be locked");
+        if (!A.is_locked())
+            throw std::logic_error("MatrixAddition: A must be locked");
+        if (!B.is_locked())
+            throw std::logic_error("MatrixAddition: B must be locked");
 
         const auto [r, c] = A.shape();
         spira::matrix<Layout, I, V> out(r, c);

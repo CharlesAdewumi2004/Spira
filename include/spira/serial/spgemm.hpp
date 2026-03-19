@@ -1,12 +1,11 @@
 #pragma once
 
-#include <cassert>
 #include <stdexcept>
 
 #include <ankerl/unordered_dense.h>
 #include <spira/matrix/matrix.hpp>
 
-namespace spira::algorithms
+namespace spira::serial::algorithms
 {
 
     template <class Layout, concepts::Indexable I, concepts::Valueable V>
@@ -17,8 +16,10 @@ namespace spira::algorithms
             throw std::invalid_argument("A.cols must equal B.rows");
         }
 
-        assert(A.is_locked() && "spgemm: A must be locked");
-        assert(B.is_locked() && "spgemm: B must be locked");
+        if (!A.is_locked())
+            throw std::logic_error("spgemm: A must be locked");
+        if (!B.is_locked())
+            throw std::logic_error("spgemm: B must be locked");
 
         spira::matrix<Layout, I, V> C(A.n_rows(), B.n_cols());
 

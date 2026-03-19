@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -34,8 +33,10 @@ namespace spira::parallel::algorithms
         if (A.n_threads() != B.n_threads())
             throw std::invalid_argument("MatrixAddition: matrices must have the same thread count");
 
-        assert(A.is_locked() && "MatrixAddition: A must be locked");
-        assert(B.is_locked() && "MatrixAddition: B must be locked");
+        if (!A.is_locked())
+            throw std::logic_error("MatrixAddition: A must be locked");
+        if (!B.is_locked())
+            throw std::logic_error("MatrixAddition: B must be locked");
 
         parallel_matrix<L, I, V, BT, BN, LP, IP, SN> C(
             A.n_rows(), A.n_cols(), A.n_threads());

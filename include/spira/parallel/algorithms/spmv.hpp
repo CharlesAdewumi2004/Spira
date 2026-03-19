@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -37,7 +36,8 @@ namespace spira::parallel::algorithms
         if (y.size() != mat.n_rows())
             throw std::invalid_argument("spmv: y size does not match matrix row count");
 
-        assert(mat.is_locked() && "parallel spmv: matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         mat.execute([&x, &y](const auto &p, std::size_t)
                     {
@@ -92,7 +92,8 @@ namespace spira::parallel::algorithms
         if (y.size() != mat.n_rows())
             throw std::invalid_argument("spmv: y size does not match matrix row count");
 
-        assert(mat.is_locked() && "parallel spmv: matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         mat.execute([&x, &y](const auto &p, std::size_t)
                     {
@@ -133,7 +134,8 @@ namespace spira::parallel::algorithms
         if (y.size() != mat.n_rows())
             throw std::invalid_argument("spmv: y size does not match matrix row count");
 
-        assert(mat.is_locked() && "parallel spmv: matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         mat.execute([&x, &y](const auto &p, std::size_t)
                     {

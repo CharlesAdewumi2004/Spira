@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -162,7 +161,7 @@ namespace spira::parallel
         void insert(size_type row_idx, I col, V val);
 
         /// Clear all row buffers across every partition.
-        void clear() noexcept;
+        void clear();
 
         /// Parallel bulk fill — for batch assembly when source data can be
         /// partitioned by row range ahead of time.
@@ -180,8 +179,8 @@ namespace spira::parallel
         template <class Func>
         void parallel_fill(Func &&f)
         {
-            assert(mode_ == config::matrix_mode::open &&
-                   "parallel_fill: matrix must be open");
+            if (mode_ != config::matrix_mode::open)
+                throw std::logic_error("parallel_fill: matrix must be open");
             pool_->execute([this, &f](std::size_t t)
             {
                 auto &p = parts_[t];
@@ -210,13 +209,15 @@ namespace spira::parallel
 
         [[nodiscard]] const partition_type &partition_at(size_type t) const
         {
-            assert(t < parts_.size());
+            if (t >= parts_.size())
+                throw std::out_of_range("parallel_matrix::partition_at: thread index out of range");
             return parts_[t];
         }
 
         [[nodiscard]] partition_type &partition_at(size_type t)
         {
-            assert(t < parts_.size());
+            if (t >= parts_.size())
+                throw std::out_of_range("parallel_matrix::partition_at: thread index out of range");
             return parts_[t];
         }
 
@@ -289,7 +290,8 @@ namespace spira::parallel
         size_type n_rows, size_type n_cols, size_type n_threads, size_type reserve_per_row)
         : n_rows_{n_rows}, n_cols_{n_cols}, pool_{std::make_unique<thread_pool>(n_threads)}
     {
-        assert(n_threads >= 1 && "parallel_matrix requires at least one thread");
+        if (n_threads < 1)
+            throw std::invalid_argument("parallel_matrix requires at least one thread");
 
         parts_.resize(n_threads);
         for (size_type t = 0; t < n_threads; ++t)
@@ -412,7 +414,8 @@ namespace spira::parallel
                  layout::ValidLayoutTag<L>
     void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::rebalance()
     {
-        assert(mode_ == config::matrix_mode::locked && "rebalance requires locked mode");
+        if (mode_ != config::matrix_mode::locked)
+            throw std::logic_error("rebalance: matrix must be locked");
 
         const size_type n_threads = pool_->size();
 
@@ -558,8 +561,8 @@ namespace spira::parallel
     SPIRA_PM_TMPL
     void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::insert(size_type row_idx, I col, V val)
     {
-        assert(mode_ == config::matrix_mode::open &&
-               "parallel_matrix::insert() requires open mode");
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("parallel_matrix::insert() requires open mode");
         validate_row(row_idx);
         validate_col(static_cast<size_type>(col));
 
@@ -580,10 +583,10 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::clear() noexcept
+    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::clear()
     {
-        assert(mode_ == config::matrix_mode::open &&
-               "parallel_matrix::clear() requires open mode");
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("parallel_matrix::clear() requires open mode");
         for (auto &p : parts_)
             for (auto &r : p.rows)
                 r.clear();

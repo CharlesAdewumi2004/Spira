@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstdint>
 #include <vector>
 
@@ -9,7 +8,7 @@
 #include <spira/matrix/matrix.hpp>
 #include <spira/traits.hpp>
 
-namespace spira::algorithms
+namespace spira::serial::algorithms
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +31,8 @@ namespace spira::algorithms
             throw std::invalid_argument(
                 "The size of the output vector y does not match the number of rows of the matrix");
 
-        assert(mat.is_locked() && "spmv: input matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         if (const auto *csr = mat.csr(); csr != nullptr)
         {
@@ -103,7 +103,8 @@ namespace spira::algorithms
             throw std::invalid_argument(
                 "The size of the output vector y does not match the number of rows of the matrix");
 
-        assert(mat.is_locked() && "spmv: input matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         if (const auto *csr = mat.csr(); csr != nullptr)
         {
@@ -153,7 +154,8 @@ namespace spira::algorithms
             throw std::invalid_argument(
                 "The size of the output vector y does not match the number of rows of the matrix");
 
-        assert(mat.is_locked() && "spmv: input matrix must be locked");
+        if (!mat.is_locked())
+            throw std::logic_error("spmv: matrix must be locked");
 
         if (const auto *csr = mat.csr(); csr != nullptr)
         {

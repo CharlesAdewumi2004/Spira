@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <stdexcept>
 
@@ -32,8 +31,10 @@ namespace spira::parallel::algorithms
         if (A.n_cols() != B.n_rows())
             throw std::invalid_argument("spgemm: A.n_cols() must equal B.n_rows()");
 
-        assert(A.is_locked() && "spgemm: A must be locked");
-        assert(B.is_locked() && "spgemm: B must be locked");
+        if (!A.is_locked())
+            throw std::logic_error("spgemm: A must be locked");
+        if (!B.is_locked())
+            throw std::logic_error("spgemm: B must be locked");
 
         parallel_matrix<L, I, V, BT, BN, LP, IP, SN> C(
             A.n_rows(), B.n_cols(), A.n_threads());

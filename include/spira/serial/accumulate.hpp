@@ -6,7 +6,7 @@
 
 #include <spira/matrix/matrix.hpp>
 
-namespace spira::algorithms
+namespace spira::serial::algorithms
 {
     /// Accumulate (sum) a single row. Works in both open and locked mode.
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>

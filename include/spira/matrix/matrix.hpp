@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -102,7 +101,7 @@ namespace spira
 
         void insert(index_type row_index, index_type col_index,
                     const value_type &val);
-        void clear() noexcept;
+        void clear();
 
         [[nodiscard]] storage_type &row_at_mut(index_type row_index);
 
@@ -113,11 +112,11 @@ namespace spira
         void swap(matrix &other) noexcept;
 
         /// Directly install a pre-built, sorted CSR into the matrix and transition
-        /// to locked mode. No sorting is performed — the caller must guarantee that
-        /// entries within every row are sorted by column and deduplicated.
-        /// Intended for algorithms (e.g. transpose) that can produce a sorted CSR
-        /// analytically without going through the buffer → sort → lock() path.
-        void load_csr(csr_storage<LayoutTag, I, V> &&csr) noexcept;
+        /// to locked mode. Validates that the CSR is well-formed: row count matches,
+        /// offsets are consistent, every row's column indices are strictly sorted
+        /// (ascending, no duplicates), and all column indices are in bounds.
+        /// Throws std::invalid_argument if any check fails.
+        void load_csr(csr_storage<LayoutTag, I, V> &&csr);
 
         // ─────────────────────────────────────────
         // Iteration helpers
@@ -440,8 +439,8 @@ namespace spira
     void matrix<L, I, V, BT, BN, LP>::insert(index_type row_index, index_type col_index,
                                              const value_type &val)
     {
-        assert(mode_ == config::matrix_mode::open &&
-               "matrix::insert() requires open mode");
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::insert() requires open mode");
         validate_row_index(row_index);
         validate_col_index(col_index);
         rows_[to_size(row_index)].insert(col_index, val);
@@ -451,10 +450,10 @@ namespace spira
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void matrix<L, I, V, BT, BN, LP>::clear() noexcept
+    void matrix<L, I, V, BT, BN, LP>::clear()
     {
-        assert(mode_ == config::matrix_mode::open &&
-               "matrix::clear() requires open mode");
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::clear() requires open mode");
         for (auto &r : rows_)
         {
             r.clear();
@@ -468,8 +467,8 @@ namespace spira
     auto matrix<L, I, V, BT, BN, LP>::row_at_mut(index_type row_index)
         -> storage_type &
     {
-        assert(mode_ == config::matrix_mode::open &&
-               "matrix::row_at_mut() requires open mode");
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::row_at_mut() requires open mode");
         validate_row_index(row_index);
         return rows_[to_size(row_index)];
     }
@@ -500,8 +499,65 @@ namespace spira
               std::size_t BN, config::lock_policy LP>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void matrix<L, I, V, BT, BN, LP>::load_csr(csr_storage<L, I, V> &&csr) noexcept
+    void matrix<L, I, V, BT, BN, LP>::load_csr(csr_storage<L, I, V> &&csr)
     {
+        // ── Validation ──────────────────────────────────────────────────────────
+
+        if (csr.n_rows != rows_.size())
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR row count does not match matrix dimensions");
+
+        if (!csr.offsets)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets array is null");
+
+        if (csr.offsets[0] != 0)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets[0] must be zero");
+
+        if (csr.offsets[csr.n_rows] != csr.nnz)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets[n_rows] does not equal nnz");
+
+        for (std::size_t i = 0; i < csr.n_rows; ++i)
+        {
+            const std::size_t beg = csr.offsets[i];
+            const std::size_t end = csr.offsets[i + 1];
+
+            if (beg > end)
+                throw std::invalid_argument(
+                    "spira::matrix::load_csr: CSR offsets are not non-decreasing");
+
+            if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+            {
+                const I *cols = csr.cols.get();
+                for (std::size_t k = beg; k < end; ++k)
+                {
+                    if (static_cast<size_type>(cols[k]) >= column_limit_)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: column index out of bounds");
+                    if (k > beg && cols[k] <= cols[k - 1])
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: CSR row entries are not strictly sorted by column");
+                }
+            }
+            else // aos_tag
+            {
+                const auto *pairs = csr.pairs.get();
+                for (std::size_t k = beg; k < end; ++k)
+                {
+                    if (static_cast<size_type>(pairs[k].column) >= column_limit_)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: column index out of bounds");
+                    if (k > beg && pairs[k].column <= pairs[k - 1].column)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: CSR row entries are not strictly sorted by column");
+                }
+            }
+        }
+
+        // ── Install ─────────────────────────────────────────────────────────────
+
         for (auto &r : rows_)
         {
             r.reset_csr_slice();

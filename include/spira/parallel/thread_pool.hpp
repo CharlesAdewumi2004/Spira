@@ -1,8 +1,8 @@
 #pragma once
 
 #include <atomic>
-#include <cassert>
 #include <condition_variable>
+#include <stdexcept>
 #include <cstddef>
 #include <functional>
 #include <mutex>
@@ -81,7 +81,8 @@ namespace spira::parallel
     inline thread_pool::thread_pool(std::size_t n_threads)
         : n_{n_threads}, done_{0}
     {
-        assert(n_threads >= 1 && "thread_pool requires at least one thread");
+        if (n_threads < 1)
+            throw std::invalid_argument("thread_pool requires at least one thread");
         threads_.reserve(n_threads);
         for (std::size_t i = 0; i < n_threads; ++i)
             threads_.emplace_back([this, i]

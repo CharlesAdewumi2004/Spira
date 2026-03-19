@@ -74,7 +74,7 @@ void bulk_insert_lock_spmv_correctness()
 
     // ----- Spira spmv -----
     std::vector<V> y(N, 0.0);
-    spira::algorithms::spmv(mat, x, y);
+    spira::serial::algorithms::spmv(mat, x, y);
 
     // ----- Compare -----
     constexpr double ABS_EPS = 1e-10;
