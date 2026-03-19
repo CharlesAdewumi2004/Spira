@@ -112,6 +112,13 @@ namespace spira
 
         void swap(matrix &other) noexcept;
 
+        /// Directly install a pre-built, sorted CSR into the matrix and transition
+        /// to locked mode. No sorting is performed — the caller must guarantee that
+        /// entries within every row are sorted by column and deduplicated.
+        /// Intended for algorithms (e.g. transpose) that can produce a sorted CSR
+        /// analytically without going through the buffer → sort → lock() path.
+        void load_csr(csr_storage<LayoutTag, I, V> &&csr) noexcept;
+
         // ─────────────────────────────────────────
         // Iteration helpers
         // ─────────────────────────────────────────
