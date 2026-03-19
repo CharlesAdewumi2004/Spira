@@ -49,7 +49,7 @@ TEST(AddRows, DisjointColumns_MergesBoth)
 
     A.lock();
     B.lock();
-    spira::algorithms::addRows(A, B, out);
+    spira::serial::algorithms::addRows(A, B, out);
     out.lock();
 
     auto it = out.begin();
@@ -83,7 +83,7 @@ TEST(AddRows, OverlappingColumns_SumsValues)
 
     A.lock();
     B.lock();
-    spira::algorithms::addRows(A, B, out);
+    spira::serial::algorithms::addRows(A, B, out);
     out.lock();
 
     auto it = out.begin();
@@ -113,7 +113,7 @@ TEST(AddRows, OverlappingColumns_ZeroSumIsDropped)
 
     A.lock();
     B.lock();
-    spira::algorithms::addRows(A, B, out);
+    spira::serial::algorithms::addRows(A, B, out);
     out.lock();
 
     EXPECT_EQ(out.begin(), out.end())
@@ -130,7 +130,7 @@ TEST(AddRows, OneSideEmpty_CopiesOther)
 
     A.lock();
     B.lock();
-    spira::algorithms::addRows(A, B, out);
+    spira::serial::algorithms::addRows(A, B, out);
     out.lock();
 
     auto it = out.begin();
@@ -155,7 +155,7 @@ TEST(MatrixAddition, ThrowsOnShapeMismatch)
     Mat B(3, 2);
 
     // Shape check fires before locked assert — no lock needed
-    EXPECT_THROW(spira::algorithms::MatrixAddition(A, B), std::invalid_argument);
+    EXPECT_THROW(spira::serial::algorithms::MatrixAddition(A, B), std::invalid_argument);
 }
 
 TEST(MatrixAddition, AddsMatricesElementwise_Sparse)
@@ -177,7 +177,7 @@ TEST(MatrixAddition, AddsMatricesElementwise_Sparse)
 
     A.lock();
     B.lock();
-    auto C = spira::algorithms::MatrixAddition(A, B);
+    auto C = spira::serial::algorithms::MatrixAddition(A, B);
 
     auto [r, c] = C.shape();
     EXPECT_EQ(r, 3u);
@@ -208,7 +208,7 @@ TEST(MatrixAddition, ZeroMatrix_AdditionKeepsOriginal)
 
     A.lock();
     Z.lock();
-    auto C = spira::algorithms::MatrixAddition(A, Z);
+    auto C = spira::serial::algorithms::MatrixAddition(A, Z);
 
     EXPECT_EQ(C.get(0, 1), 7.0);
     EXPECT_EQ(C.get(1, 0), 9.0);

@@ -95,7 +95,7 @@ TEST(SpGEMM, ThrowsOnIncompatibleShapes)
     Mat<LayoutTag, I, V> A(2ull, 3);
     Mat<LayoutTag, I, V> B(2ull, 2);
 
-    EXPECT_THROW((spira::algorithms::spgemm(A, B)), std::invalid_argument);
+    EXPECT_THROW((spira::serial::algorithms::spgemm(A, B)), std::invalid_argument);
 }
 
 // 2) Multiply by zero matrix gives zero matrix
@@ -106,7 +106,7 @@ TEST(SpGEMM, ZeroMatrixGivesZero)
 
     Mat<LayoutTag, I, V> Z(4, 2); // all zeros
     Z.lock();
-    auto C = spira::algorithms::spgemm(A, Z);
+    auto C = spira::serial::algorithms::spgemm(A, Z);
 
     auto ref = dense_ref_mul(A, Z);
     expect_equal_to_dense(C, ref);
@@ -120,7 +120,7 @@ TEST(SpGEMM, RightIdentity)
 
     auto Iden = make_mat<LayoutTag, I, V>(3, 3, {{0, 0, 1}, {1, 1, 1}, {2, 2, 1}});
 
-    auto C = spira::algorithms::spgemm(A, Iden);
+    auto C = spira::serial::algorithms::spgemm(A, Iden);
 
     auto ref = dense_ref_mul(A, Iden);
     expect_equal_to_dense(C, ref);
@@ -137,7 +137,7 @@ TEST(SpGEMM, SmallExampleMatchesReference)
     // B (3x2):  [0 4] / [5 0] / [0 6]
     auto B = make_mat<LayoutTag, I, V>(3, 2, {{0, 1, 4}, {1, 0, 5}, {2, 1, 6}});
 
-    auto C = spira::algorithms::spgemm(A, B);
+    auto C = spira::serial::algorithms::spgemm(A, B);
 
     EXPECT_EQ(C.n_rows(), 2u);
     EXPECT_EQ(C.n_cols(), 2u);
@@ -158,7 +158,7 @@ TEST(SpGEMM, RectangularWorks)
 
     auto B = make_mat<LayoutTag, I, V>(3, 5, {{0, 1, 7}, {0, 4, 1}, {1, 2, 2}, {2, 1, 3}, {2, 3, 5}});
 
-    auto C = spira::algorithms::spgemm(A, B);
+    auto C = spira::serial::algorithms::spgemm(A, B);
     auto ref = dense_ref_mul(A, B);
     expect_equal_to_dense(C, ref);
 }
@@ -170,8 +170,8 @@ TEST(SpGEMM, NonCommutativeSanity)
     auto A = make_mat<LayoutTag, I, V>(2, 2, {{0, 0, 1}, {1, 0, 2}});
     auto B = make_mat<LayoutTag, I, V>(2, 2, {{0, 1, 3}, {1, 1, 4}});
 
-    auto AB = spira::algorithms::spgemm(A, B);
-    auto BA = spira::algorithms::spgemm(B, A);
+    auto AB = spira::serial::algorithms::spgemm(A, B);
+    auto BA = spira::serial::algorithms::spgemm(B, A);
 
     bool any_diff = false;
     for (int i = 0; i < 2; ++i)
@@ -194,7 +194,7 @@ TEST(SpGEMM, AccumulatesContributionsCorrectly)
 
     auto B = make_mat<LayoutTag, I, V>(3, 1, {{0, 0, 2}, {1, 0, 3}, {2, 0, 4}});
 
-    auto C = spira::algorithms::spgemm(A, B);
+    auto C = spira::serial::algorithms::spgemm(A, B);
     EXPECT_EQ(C.get(0, 0), 9);
 
     auto ref = dense_ref_mul(A, B);
@@ -209,7 +209,7 @@ TEST(SpGEMM, DoubleWorks)
     auto A = make_mat<LayoutTag, I, V>(2, 2, {{0, 0, 0.5}, {1, 1, 2.0}});
     auto B = make_mat<LayoutTag, I, V>(2, 2, {{0, 1, 4.0}, {1, 0, -1.5}});
 
-    auto C = spira::algorithms::spgemm(A, B);
+    auto C = spira::serial::algorithms::spgemm(A, B);
     auto ref = dense_ref_mul(A, B);
     expect_equal_to_dense(C, ref);
 }

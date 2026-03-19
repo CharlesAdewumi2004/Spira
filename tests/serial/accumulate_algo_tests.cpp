@@ -8,7 +8,7 @@
 namespace {
 
 using namespace spira;
-using namespace spira::algorithms;
+using namespace spira::serial::algorithms;
 
 // ─────────────────────────────────────────────────────
 // Aliases

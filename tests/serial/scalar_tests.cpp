@@ -36,7 +36,7 @@ TEST(Scalers, MultiplicationScaler_ScalesExistingEntries)
         {2, 1, 4.0},
     });
 
-    spira::algorithms::multiplication_scaler(m, 3.0);
+    spira::serial::algorithms::multiplication_scaler(m, 3.0);
 
     expect_near(m.get(0, 0),  4.5);
     expect_near(m.get(0, 3), -6.0);
@@ -55,7 +55,7 @@ TEST(Scalers, DivisionScaler_ScalesExistingEntries)
         {1, 0, -6.0},
     });
 
-    spira::algorithms::division_scaler(m, 2.0);
+    spira::serial::algorithms::division_scaler(m, 2.0);
 
     expect_near(m.get(0, 2),  5.0);
     expect_near(m.get(1, 0), -3.0);
@@ -80,8 +80,8 @@ TEST(Scalers, MultiplyThenDivide_ReturnsOriginal_ForNonZeroScaler)
 
     const Value s = 7.0;
 
-    spira::algorithms::multiplication_scaler(m, s);
-    spira::algorithms::division_scaler(m, s);
+    spira::serial::algorithms::multiplication_scaler(m, s);
+    spira::serial::algorithms::division_scaler(m, s);
 
     expect_near(m.get(0, 1), a01);
     expect_near(m.get(2, 2), a22);
@@ -100,7 +100,7 @@ TEST(Scalers, MultiplyByZero_MakesEntriesZero)
         {1, 1, -4.0},
     });
 
-    spira::algorithms::multiplication_scaler(m, 0.0);
+    spira::serial::algorithms::multiplication_scaler(m, 0.0);
 
     expect_near(m.get(0, 0), 0.0);
     expect_near(m.get(1, 1), 0.0);
@@ -113,5 +113,5 @@ TEST(Scalers, DivisionByZero_Behavior)
         {0, 1, 2.0},
     });
     // Zero divisor check fires before open assert — matrix is open by default
-    EXPECT_THROW(spira::algorithms::division_scaler(m, 0.0), std::domain_error);
+    EXPECT_THROW(spira::serial::algorithms::division_scaler(m, 0.0), std::domain_error);
 }

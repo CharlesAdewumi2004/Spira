@@ -75,7 +75,7 @@ namespace
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0};
         std::vector<V> y(4, 0.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         expect_vec_eq_double(y, x);
     }
@@ -93,7 +93,7 @@ namespace
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0};
         std::vector<V> y(4, 0.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         expect_vec_eq_double(y, x);
     }
@@ -112,7 +112,7 @@ namespace
         std::vector<V> x = {1.0f, 2.0f, 3.0f, 4.0f};
         std::vector<V> y(4, 0.0f);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<V> expected = {d[0] * x[0], d[1] * x[1], d[2] * x[2], d[3] * x[3]};
         expect_vec_eq_float(y, expected);
@@ -132,7 +132,7 @@ namespace
         std::vector<V> x = {1.0f, 2.0f, 3.0f, 4.0f};
         std::vector<V> y(4, 0.0f);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<V> expected = {d[0] * x[0], d[1] * x[1], d[2] * x[2], d[3] * x[3]};
         expect_vec_eq_float(y, expected);
@@ -156,7 +156,7 @@ namespace
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0, 5.0};
         std::vector<V> y(3, 0.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<V> expected = {9.0, 9.0, 33.0};
         expect_vec_eq_double(y, expected);
@@ -180,7 +180,7 @@ namespace
         std::vector<V> x = {1.0, 2.0, 3.0, 4.0, 5.0};
         std::vector<V> y(3, 0.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<V> expected = {9.0, 9.0, 33.0};
         expect_vec_eq_double(y, expected);
@@ -207,7 +207,7 @@ namespace
         std::vector<V> y(A.n_rows(), 0.0);
 
         auto ref = dense_reference_spmv(A, x);
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
         expect_vec_eq_double(y, ref);
     }
 
@@ -232,7 +232,7 @@ namespace
         std::vector<V> y(A.n_rows(), 0.0);
 
         auto ref = dense_reference_spmv(A, x);
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
         expect_vec_eq_double(y, ref);
     }
 
@@ -246,7 +246,7 @@ namespace
         std::vector<V> x(5, 3.14);
         std::vector<V> y(4, 123.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         for (auto v : y)
             EXPECT_DOUBLE_EQ(v, 0.0);
@@ -262,7 +262,7 @@ namespace
         std::vector<V> x(5, 3.14);
         std::vector<V> y(4, 123.0);
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         for (auto v : y)
             EXPECT_DOUBLE_EQ(v, 0.0);
@@ -276,11 +276,11 @@ namespace
 
         std::vector<V> x_bad(3, 1.0); // should be 4
         std::vector<V> y(3, 0.0);
-        EXPECT_THROW(spira::algorithms::spmv(A, x_bad, y), std::invalid_argument);
+        EXPECT_THROW(spira::serial::algorithms::spmv(A, x_bad, y), std::invalid_argument);
 
         std::vector<V> x(4, 1.0);
         std::vector<V> y_bad(2, 0.0); // should be 3
-        EXPECT_THROW(spira::algorithms::spmv(A, x, y_bad), std::invalid_argument);
+        EXPECT_THROW(spira::serial::algorithms::spmv(A, x, y_bad), std::invalid_argument);
     }
 
     TEST(SpmvAccuracyTest, DimensionMismatchThrows_SOA)
@@ -291,11 +291,11 @@ namespace
 
         std::vector<V> x_bad(3, 1.0);
         std::vector<V> y(3, 0.0);
-        EXPECT_THROW(spira::algorithms::spmv(A, x_bad, y), std::invalid_argument);
+        EXPECT_THROW(spira::serial::algorithms::spmv(A, x_bad, y), std::invalid_argument);
 
         std::vector<V> x(4, 1.0);
         std::vector<V> y_bad(2, 0.0);
-        EXPECT_THROW(spira::algorithms::spmv(A, x, y_bad), std::invalid_argument);
+        EXPECT_THROW(spira::serial::algorithms::spmv(A, x, y_bad), std::invalid_argument);
     }
 
     TEST(SpmvAccuracyTest, ComplexMatrixMultiply_AOS)
@@ -314,7 +314,7 @@ namespace
         std::vector<cd> x = {cd(1.0, -1.0), cd(2.0, 2.0)};
         std::vector<cd> y(2, cd(0.0, 0.0));
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<cd> expected = {cd(9.0, 7.0), cd(7.0, 3.0)};
         expect_vec_eq(y, expected);
@@ -336,7 +336,7 @@ namespace
         std::vector<cd> x = {cd(1.0, -1.0), cd(2.0, 2.0)};
         std::vector<cd> y(2, cd(0.0, 0.0));
 
-        spira::algorithms::spmv(A, x, y);
+        spira::serial::algorithms::spmv(A, x, y);
 
         std::vector<cd> expected = {cd(9.0, 7.0), cd(7.0, 3.0)};
         expect_vec_eq(y, expected);

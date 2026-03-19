@@ -43,7 +43,7 @@ TEST(Transpose, EmptyMatrix_ShapeSwapsAndStaysEmpty)
 {
     Matrix m(3, 5);
     m.lock();
-    auto out = spira::algorithms::transpose(m);
+    auto out = spira::serial::algorithms::transpose(m);
 
     auto [r, c] = out.shape();
     EXPECT_EQ(r, 5u);
@@ -64,7 +64,7 @@ TEST(Transpose, SingleElement_GoesToCorrectPlace)
     m.insert(2, 5, 7.5);
     m.lock();
 
-    auto out = spira::algorithms::transpose(m);
+    auto out = spira::serial::algorithms::transpose(m);
 
     EXPECT_EQ(out.get(5, 2), 7.5);
     EXPECT_EQ(m.get(2, 5), 7.5);
@@ -81,7 +81,7 @@ TEST(Transpose, MultipleEntries_AllMoveCorrectly)
                   });
     m.lock();
 
-    auto out = spira::algorithms::transpose(m);
+    auto out = spira::serial::algorithms::transpose(m);
 
     EXPECT_EQ(out.get(0, 0), 1.0);
     EXPECT_EQ(out.get(3, 0), 2.0);
@@ -103,8 +103,8 @@ TEST(Transpose, DoubleTranspose_ReturnsOriginalValuesAndShape)
                   });
     m.lock();
 
-    auto t1 = spira::algorithms::transpose(m);
-    auto t2 = spira::algorithms::transpose(t1);
+    auto t1 = spira::serial::algorithms::transpose(m);
+    auto t2 = spira::serial::algorithms::transpose(t1);
 
     expect_same_shape(m, t2);
 
@@ -122,7 +122,7 @@ TEST(TransposeItself, ThrowsOnNonSquare)
 {
     Matrix m(2, 3);
     // Matrix is open by default; shape check fires after open assert
-    EXPECT_THROW(spira::algorithms::transpose_itself(m), std::logic_error);
+    EXPECT_THROW(spira::serial::algorithms::transpose_itself(m), std::logic_error);
 }
 
 TEST(TransposeItself, WorksOnSquare_SingleElement)
@@ -130,7 +130,7 @@ TEST(TransposeItself, WorksOnSquare_SingleElement)
     Matrix m(4, 4);
     m.insert(1, 3, 9.0);
 
-    spira::algorithms::transpose_itself(m);
+    spira::serial::algorithms::transpose_itself(m);
 
     EXPECT_EQ(m.get(3, 1), 9.0);
     EXPECT_EQ(m.get(1, 3), 0.0);
@@ -145,7 +145,7 @@ TEST(TransposeItself, WorksOnSquare_ManyEntries)
                       {2, 1, 7.0},
                   });
 
-    spira::algorithms::transpose_itself(m);
+    spira::serial::algorithms::transpose_itself(m);
 
     EXPECT_EQ(m.get(2, 0), 5.0);
     EXPECT_EQ(m.get(0, 1), 6.0);
@@ -169,8 +169,8 @@ TEST(TransposeItself, DoubleTransposeItself_ReturnsOriginal)
     const auto a22 = m.get(2, 2);
     const auto a10 = m.get(1, 0);
 
-    spira::algorithms::transpose_itself(m);
-    spira::algorithms::transpose_itself(m);
+    spira::serial::algorithms::transpose_itself(m);
+    spira::serial::algorithms::transpose_itself(m);
 
     EXPECT_EQ(m.get(0, 1), a01);
     EXPECT_EQ(m.get(2, 2), a22);
