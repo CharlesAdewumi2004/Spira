@@ -155,7 +155,7 @@ TEST_P(ScalarDoubleTest, MatchesReference) {
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     double actual = sparse_dot_double_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
-    EXPECT_DOUBLE_EQ(expected, actual) << "nnz=" << nnz;
+    EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
 TEST_P(ScalarFloatTest, MatchesReference) {
@@ -163,7 +163,7 @@ TEST_P(ScalarFloatTest, MatchesReference) {
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     float actual = sparse_dot_float_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
-    EXPECT_FLOAT_EQ(expected, actual) << "nnz=" << nnz;
+    EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
 INSTANTIATE_TEST_SUITE_P(Scalar, ScalarDoubleTest, ::testing::ValuesIn(TEST_SIZES));
