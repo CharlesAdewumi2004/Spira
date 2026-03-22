@@ -125,7 +125,10 @@ namespace spira
         const std::size_t new_cap = reuse ? old_csr.capacity : total_ub + total_ub / 2; // 1.5× growth
 
         // ub_starts[i] = upper-bound write offset for row i in the output arrays.
-        auto ub_starts = std::make_unique<std::size_t[]>(n_rows);
+        // Thread-local vector eliminates a heap allocation on every merge call.
+        thread_local std::vector<std::size_t> ub_starts_tl;
+        ub_starts_tl.resize(n_rows);
+        auto *ub_starts = ub_starts_tl.data();
         {
             std::size_t pos = 0;
             for (std::size_t i = 0; i < n_rows; ++i)
@@ -150,7 +153,10 @@ namespace spira
             Csr out = std::move(old_csr); // buffers transferred; out.offsets = old boundaries
 
             // Track actual nnz per row (computed during the reverse merge pass).
-            auto actual_nnz = std::make_unique<std::size_t[]>(n_rows);
+            // Thread-local vector eliminates a heap allocation on every merge call.
+            thread_local std::vector<std::size_t> actual_nnz_tl;
+            actual_nnz_tl.resize(n_rows);
+            auto *actual_nnz = actual_nnz_tl.data();
 
             // Scratch buffers for the aliasing case (see below).
             thread_local std::vector<I> tl_old_c;
