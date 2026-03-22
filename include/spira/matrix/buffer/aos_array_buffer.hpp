@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/layout/element_pair.hpp>
 #include <spira/traits.hpp>
@@ -66,20 +67,36 @@ namespace spira::buffer::impls
             return nullptr;
         }
 
-        V accumulate_impl() const noexcept
+        V accumulate_impl() const
         {
-            // Do not call sort_and_dedup() here: that mutates mutable state under
-            // a const call, which is a data race once multiple threads read the
-            // same row concurrently. Instead use a backward scan for last-write-wins
-            // deduplication without touching the buffer.
+            // Does not mutate the buffer — safe for concurrent readers.
+            // Two paths: small buffers use a brute-force scan (no allocation,
+            // cache-friendly); large buffers use a hash set for O(n).
+            static constexpr std::size_t kSmallThreshold = 32;
             V acc = traits::ValueTraits<V>::zero();
-            for (auto i = buf_.size(); i-- > 0;)
+            const auto sz = buf_.size();
+
+            if (sz <= kSmallThreshold)
             {
-                bool is_latest = true;
-                for (auto j = i + 1; j < buf_.size(); ++j)
-                    if (buf_[j].column == buf_[i].column) { is_latest = false; break; }
-                if (is_latest)
+                for (auto i = sz; i-- > 0;)
+                {
+                    bool is_latest = true;
+                    for (auto j = i + 1; j < sz; ++j)
+                        if (buf_[j].column == buf_[i].column) { is_latest = false; break; }
+                    if (is_latest)
+                        acc += buf_[i].value;
+                }
+            }
+            else
+            {
+                ankerl::unordered_dense::set<I> seen;
+                seen.reserve(sz);
+                for (auto i = sz; i-- > 0;)
+                {
+                    if (!seen.insert(buf_[i].column).second)
+                        continue;
                     acc += buf_[i].value;
+                }
             }
             return acc;
         }

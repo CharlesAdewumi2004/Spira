@@ -36,7 +36,7 @@ namespace spira::buffer
             return self().get_ptr_impl(col);
         }
 
-        [[nodiscard]] V accumulate() const noexcept
+        [[nodiscard]] V accumulate() const
         {
             return self().accumulate_impl();
         }
