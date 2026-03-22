@@ -42,7 +42,10 @@ namespace spira::serial::algorithms
         out.clear();
 
         // Collect A and B entries into flat arrays for two-pointer merge.
-        std::vector<std::pair<I, V>> a_entries, b_entries;
+        // Thread-local vectors avoid a heap allocation per row after the first call.
+        thread_local std::vector<std::pair<I, V>> a_entries, b_entries;
+        a_entries.clear();
+        b_entries.clear();
         a_entries.reserve(A.size());
         b_entries.reserve(B.size());
 
