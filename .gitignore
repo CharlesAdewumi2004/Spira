@@ -1,4 +1,5 @@
 build/
+build_bench/
 build_release/
 cmake-build-*/
 .vscode
@@ -10,3 +11,4 @@ cmake-build-*/
 *.dylib
 *.json
 perf*
+.clangd-format
