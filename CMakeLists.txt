@@ -115,21 +115,16 @@ if (SPIRA_BUILD_BENCHMARKS)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
-  add_executable(GB_spira
-    bench/google-benchmark/spira_benchmark.cpp
-  )
-
-  target_link_libraries(GB_spira PRIVATE spira benchmark::benchmark)
+  add_executable(spira_bench bench/spira_bench.cpp)
+  target_link_libraries(spira_bench PRIVATE spira benchmark::benchmark)
 
   if (UNIX AND NOT APPLE)
-    target_link_libraries(GB_spira PRIVATE pthread)
+    target_link_libraries(spira_bench PRIVATE pthread)
   endif()
 
-  target_compile_features(GB_spira PRIVATE cxx_std_23)
+  target_compile_features(spira_bench PRIVATE cxx_std_23)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(GB_spira PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(GB_spira PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-    target_link_options(GB_spira PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    target_compile_options(spira_bench PRIVATE -O2 -march=native)
   endif()
 endif()
