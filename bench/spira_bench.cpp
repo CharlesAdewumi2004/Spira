@@ -10,7 +10,7 @@
 // Matrix sizes (N×N):  1000, 10000, 50000, 100000
 // Non-zeros per row:   4, 16, 64, 256
 // Column patterns:     strided (evenly spaced), band (near diagonal), random
-// Value type:          double
+// Value types:         double, float
 // RNG seed:            42 (deterministic values only — column placement is
 //                          deterministic by construction, not random)
 // ---------------------------------------------------------------------------
@@ -55,9 +55,9 @@ static std::vector<uint32_t> random_cols(size_t row, size_t N, int nnz) {
 
 // ---- fill helpers ---------------------------------------------------------
 
-template <class Mat>
+template <class V, class Mat>
 static void fill_strided(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+    std::uniform_real_distribution<V> val_dist(V(0), V(1));
     auto cols = strided_cols(N, nnz);
     for (size_t r = 0; r < N; ++r) {
         for (int k = 0; k < nnz; ++k) {
@@ -66,9 +66,9 @@ static void fill_strided(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
     }
 }
 
-template <class Mat>
+template <class V, class Mat>
 static void fill_band(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+    std::uniform_real_distribution<V> val_dist(V(0), V(1));
     for (size_t r = 0; r < N; ++r) {
         auto cols = band_cols(r, N, nnz);
         for (int k = 0; k < nnz; ++k) {
@@ -77,9 +77,9 @@ static void fill_band(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
     }
 }
 
-template <class Mat>
+template <class V, class Mat>
 static void fill_random(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+    std::uniform_real_distribution<V> val_dist(V(0), V(1));
     for (size_t r = 0; r < N; ++r) {
         auto cols = random_cols(r, N, nnz);
         for (int k = 0; k < nnz; ++k) {
@@ -88,9 +88,10 @@ static void fill_random(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
     }
 }
 
-static std::vector<double> random_vector(size_t n, std::mt19937 &rng) {
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-    std::vector<double> v(n);
+template <class V>
+static std::vector<V> random_vector(size_t n, std::mt19937 &rng) {
+    std::uniform_real_distribution<V> dist(V(0), V(1));
+    std::vector<V> v(n);
     for (auto &x : v) x = dist(rng);
     return v;
 }
@@ -121,7 +122,7 @@ static void BM_Insertion_Strided(benchmark::State &state) {
 
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_strided(mat, N, nnz, rng);
+        fill_strided<double>(mat, N, nnz, rng);
 
         benchmark::DoNotOptimize(&mat);
     }
@@ -156,7 +157,7 @@ static void BM_Insertion_Band(benchmark::State &state) {
 
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_band(mat, N, nnz, rng);
+        fill_band<double>(mat, N, nnz, rng);
 
         benchmark::DoNotOptimize(&mat);
     }
@@ -191,7 +192,7 @@ static void BM_Insertion_Random(benchmark::State &state) {
 
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_random(mat, N, nnz, rng);
+        fill_random<double>(mat, N, nnz, rng);
 
         benchmark::DoNotOptimize(&mat);
     }
@@ -211,22 +212,22 @@ BENCHMARK(BM_Insertion_Random<SoA>)
     ->Unit(benchmark::kNanosecond);
 
 // ===========================================================================
-//  SpMV benchmarks — strided columns
+//  SpMV benchmarks — strided columns (double)
 // ===========================================================================
 
 template <class LayoutTag>
-static void BM_SpMV_Strided(benchmark::State &state) {
+static void BM_SpMV_Strided_Double(benchmark::State &state) {
     const auto N = static_cast<size_t>(state.range(0));
     const auto nnz = static_cast<int>(state.range(1));
 
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-    fill_strided(mat, N, nnz, rng);
+    fill_strided<double>(mat, N, nnz, rng);
     mat.set_mode(spira::mode::matrix_mode::spmv);
     mat.flush();
 
-    auto x = random_vector(N, rng);
+    auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
 
     for (auto _ : state) {
@@ -239,33 +240,33 @@ static void BM_SpMV_Strided(benchmark::State &state) {
         static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
 }
 
-BENCHMARK(BM_SpMV_Strided<AoS>)
-    ->Name("SpMV_Strided/AoS")
+BENCHMARK(BM_SpMV_Strided_Double<AoS>)
+    ->Name("SpMV_Strided/AoS/double")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
-BENCHMARK(BM_SpMV_Strided<SoA>)
-    ->Name("SpMV_Strided/SoA")
+BENCHMARK(BM_SpMV_Strided_Double<SoA>)
+    ->Name("SpMV_Strided/SoA/double")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
 // ===========================================================================
-//  SpMV benchmarks — band columns
+//  SpMV benchmarks — band columns (double)
 // ===========================================================================
 
 template <class LayoutTag>
-static void BM_SpMV_Band(benchmark::State &state) {
+static void BM_SpMV_Band_Double(benchmark::State &state) {
     const auto N = static_cast<size_t>(state.range(0));
     const auto nnz = static_cast<int>(state.range(1));
 
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-    fill_band(mat, N, nnz, rng);
+    fill_band<double>(mat, N, nnz, rng);
     mat.set_mode(spira::mode::matrix_mode::spmv);
     mat.flush();
 
-    auto x = random_vector(N, rng);
+    auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
 
     for (auto _ : state) {
@@ -278,33 +279,33 @@ static void BM_SpMV_Band(benchmark::State &state) {
         static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
 }
 
-BENCHMARK(BM_SpMV_Band<AoS>)
-    ->Name("SpMV_Band/AoS")
+BENCHMARK(BM_SpMV_Band_Double<AoS>)
+    ->Name("SpMV_Band/AoS/double")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
-BENCHMARK(BM_SpMV_Band<SoA>)
-    ->Name("SpMV_Band/SoA")
+BENCHMARK(BM_SpMV_Band_Double<SoA>)
+    ->Name("SpMV_Band/SoA/double")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
 // ===========================================================================
-//  SpMV benchmarks — random columns
+//  SpMV benchmarks — random columns (double)
 // ===========================================================================
 
 template <class LayoutTag>
-static void BM_SpMV_Random(benchmark::State &state) {
+static void BM_SpMV_Random_Double(benchmark::State &state) {
     const auto N = static_cast<size_t>(state.range(0));
     const auto nnz = static_cast<int>(state.range(1));
 
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-    fill_random(mat, N, nnz, rng);
+    fill_random<double>(mat, N, nnz, rng);
     mat.set_mode(spira::mode::matrix_mode::spmv);
     mat.flush();
 
-    auto x = random_vector(N, rng);
+    auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
 
     for (auto _ : state) {
@@ -317,13 +318,130 @@ static void BM_SpMV_Random(benchmark::State &state) {
         static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
 }
 
-BENCHMARK(BM_SpMV_Random<AoS>)
-    ->Name("SpMV_Random/AoS")
+BENCHMARK(BM_SpMV_Random_Double<AoS>)
+    ->Name("SpMV_Random/AoS/double")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
-BENCHMARK(BM_SpMV_Random<SoA>)
-    ->Name("SpMV_Random/SoA")
+BENCHMARK(BM_SpMV_Random_Double<SoA>)
+    ->Name("SpMV_Random/SoA/double")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  SpMV benchmarks — strided columns (float)
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_SpMV_Strided_Float(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
+    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+    fill_strided<float>(mat, N, nnz, rng);
+    mat.set_mode(spira::mode::matrix_mode::spmv);
+    mat.flush();
+
+    auto x = random_vector<float>(N, rng);
+    std::vector<float> y(N);
+
+    for (auto _ : state) {
+        spira::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_SpMV_Strided_Float<AoS>)
+    ->Name("SpMV_Strided/AoS/float")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_SpMV_Strided_Float<SoA>)
+    ->Name("SpMV_Strided/SoA/float")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  SpMV benchmarks — band columns (float)
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_SpMV_Band_Float(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
+    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+    fill_band<float>(mat, N, nnz, rng);
+    mat.set_mode(spira::mode::matrix_mode::spmv);
+    mat.flush();
+
+    auto x = random_vector<float>(N, rng);
+    std::vector<float> y(N);
+
+    for (auto _ : state) {
+        spira::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_SpMV_Band_Float<AoS>)
+    ->Name("SpMV_Band/AoS/float")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_SpMV_Band_Float<SoA>)
+    ->Name("SpMV_Band/SoA/float")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  SpMV benchmarks — random columns (float)
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_SpMV_Random_Float(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
+    mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+    fill_random<float>(mat, N, nnz, rng);
+    mat.set_mode(spira::mode::matrix_mode::spmv);
+    mat.flush();
+
+    auto x = random_vector<float>(N, rng);
+    std::vector<float> y(N);
+
+    for (auto _ : state) {
+        spira::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_SpMV_Random_Float<AoS>)
+    ->Name("SpMV_Random/AoS/float")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_SpMV_Random_Float<SoA>)
+    ->Name("SpMV_Random/SoA/float")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
@@ -341,7 +459,7 @@ static void BM_Transition_Strided(benchmark::State &state) {
         std::mt19937 rng(SEED);
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_strided(mat, N, nnz, rng);
+        fill_strided<double>(mat, N, nnz, rng);
         state.ResumeTiming();
 
         mat.set_mode(spira::mode::matrix_mode::spmv);
@@ -371,7 +489,7 @@ static void BM_Transition_Band(benchmark::State &state) {
         std::mt19937 rng(SEED);
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_band(mat, N, nnz, rng);
+        fill_band<double>(mat, N, nnz, rng);
         state.ResumeTiming();
 
         mat.set_mode(spira::mode::matrix_mode::spmv);
@@ -401,7 +519,7 @@ static void BM_Transition_Random(benchmark::State &state) {
         std::mt19937 rng(SEED);
         spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
         mat.set_mode(spira::mode::matrix_mode::insert_heavy);
-        fill_random(mat, N, nnz, rng);
+        fill_random<double>(mat, N, nnz, rng);
         state.ResumeTiming();
 
         mat.set_mode(spira::mode::matrix_mode::spmv);
