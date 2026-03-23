@@ -1,6 +1,7 @@
 # Build
 build/
 build_release/
+build_bench/
 
 # IDE
 .idea/
