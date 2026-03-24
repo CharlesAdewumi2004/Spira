@@ -704,5 +704,231 @@ BENCHMARK(BM_Lock_Random<SoA>)
     ->Unit(benchmark::kNanosecond);
 
 // ===========================================================================
+//  Re-lock benchmark — open() → insert more → lock() on an existing matrix
+//  Measures whether CSR reuse / incremental merge is faster than cold lock
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_Relock_Strided(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const int extra_nnz = std::max(1, nnz / 4);  // 25% extra inserts per re-lock
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+    fill_strided<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+    auto extra_cols = strided_cols(N, extra_nnz);
+
+    for (auto _ : state) {
+        mat.open();
+        for (size_t r = 0; r < N; ++r)
+            for (int k = 0; k < extra_nnz; ++k)
+                mat.insert(static_cast<uint32_t>(r), extra_cols[k], val_dist(rng));
+        mat.lock();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Relock_Strided<AoS>)
+    ->Name("Relock_Strided/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Relock_Strided<SoA>)
+    ->Name("Relock_Strided/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Relock_Band(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const int extra_nnz = std::max(1, nnz / 4);
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+    fill_band<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+
+    for (auto _ : state) {
+        mat.open();
+        for (size_t r = 0; r < N; ++r) {
+            auto cols = band_cols(r, N, extra_nnz);
+            for (int k = 0; k < extra_nnz; ++k)
+                mat.insert(static_cast<uint32_t>(r), cols[k], val_dist(rng));
+        }
+        mat.lock();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Relock_Band<AoS>)
+    ->Name("Relock_Band/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Relock_Band<SoA>)
+    ->Name("Relock_Band/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Relock_Random(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const int extra_nnz = std::max(1, nnz / 4);
+
+    std::mt19937 rng(SEED);
+    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+    fill_random<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+
+    for (auto _ : state) {
+        mat.open();
+        for (size_t r = 0; r < N; ++r) {
+            auto cols = random_cols(r, N, extra_nnz);
+            for (int k = 0; k < extra_nnz; ++k)
+                mat.insert(static_cast<uint32_t>(r), cols[k], val_dist(rng));
+        }
+        mat.lock();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Relock_Random<AoS>)
+    ->Name("Relock_Random/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Relock_Random<SoA>)
+    ->Name("Relock_Random/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  Parallel thread scaling — SpMV with 1, 2, 4, 8 threads
+//  Shows how well the parallel implementation scales with thread count
+// ===========================================================================
+
+static void ThreadScalingArgs(benchmark::internal::Benchmark *b) {
+    for (int N : {10000, 100000})
+        for (int nnz : {16, 256})
+            for (int threads : {1, 2, 4, 8})
+                b->Args({N, nnz, threads});
+}
+
+template <class LayoutTag>
+static void BM_Parallel_Scaling_Strided(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const auto threads = static_cast<size_t>(state.range(2));
+
+    std::mt19937 rng(SEED);
+    spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, threads);
+    fill_strided<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    auto x = random_vector<double>(N, rng);
+    std::vector<double> y(N);
+
+    for (auto _ : state) {
+        spira::parallel::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_Parallel_Scaling_Strided<AoS>)
+    ->Name("Parallel_Scaling_Strided/AoS/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Scaling_Strided<SoA>)
+    ->Name("Parallel_Scaling_Strided/SoA/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Parallel_Scaling_Band(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const auto threads = static_cast<size_t>(state.range(2));
+
+    std::mt19937 rng(SEED);
+    spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, threads);
+    fill_band<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    auto x = random_vector<double>(N, rng);
+    std::vector<double> y(N);
+
+    for (auto _ : state) {
+        spira::parallel::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_Parallel_Scaling_Band<AoS>)
+    ->Name("Parallel_Scaling_Band/AoS/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Scaling_Band<SoA>)
+    ->Name("Parallel_Scaling_Band/SoA/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Parallel_Scaling_Random(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+    const auto threads = static_cast<size_t>(state.range(2));
+
+    std::mt19937 rng(SEED);
+    spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, threads);
+    fill_random<double>(mat, N, nnz, rng);
+    mat.lock();
+
+    auto x = random_vector<double>(N, rng);
+    std::vector<double> y(N);
+
+    for (auto _ : state) {
+        spira::parallel::algorithms::spmv(mat, x, y);
+        benchmark::DoNotOptimize(y.data());
+        benchmark::ClobberMemory();
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+}
+
+BENCHMARK(BM_Parallel_Scaling_Random<AoS>)
+    ->Name("Parallel_Scaling_Random/AoS/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Scaling_Random<SoA>)
+    ->Name("Parallel_Scaling_Random/SoA/double")
+    ->Apply(ThreadScalingArgs)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
 
 BENCHMARK_MAIN();
