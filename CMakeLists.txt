@@ -238,7 +238,11 @@ if (SPIRA_BUILD_BENCHMARKS)
 
   target_compile_features(spira_bench PRIVATE cxx_std_23)
 
+
+  if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+  endif()
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(spira_bench PRIVATE -O2 -march=native)
+    target_compile_options(spira_bench PRIVATE -march=native)
   endif()
 endif()
