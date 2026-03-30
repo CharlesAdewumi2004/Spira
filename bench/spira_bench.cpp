@@ -99,6 +99,8 @@ static void AllSizesAndDensities(benchmark::internal::Benchmark *b) {
             b->Args({N, nnz});
 }
 
+static const size_t HW_THREADS = std::thread::hardware_concurrency();
+
 // ===========================================================================
 //  Insertion benchmarks — strided columns
 // ===========================================================================
@@ -198,6 +200,119 @@ BENCHMARK(BM_Insertion_Random<AoS>)
 
 BENCHMARK(BM_Insertion_Random<SoA>)
     ->Name("Insertion_Random/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  Parallel insertion benchmarks — strided columns
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_Parallel_Insertion_Strided(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, HW_THREADS);
+        mat.parallel_fill([N, nnz](auto &rows, size_t row_start, size_t row_end, size_t) {
+            std::mt19937 rng(SEED ^ static_cast<unsigned>(row_start));
+            std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+            auto cols = strided_cols(N, nnz);
+            for (size_t r = row_start; r < row_end; ++r)
+                for (int k = 0; k < nnz; ++k)
+                    rows[r - row_start].insert(cols[k], val_dist(rng));
+        });
+
+        benchmark::DoNotOptimize(&mat);
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
+}
+
+BENCHMARK(BM_Parallel_Insertion_Strided<AoS>)
+    ->Name("Parallel_Insertion_Strided/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Insertion_Strided<SoA>)
+    ->Name("Parallel_Insertion_Strided/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  Parallel insertion benchmarks — band columns
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_Parallel_Insertion_Band(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, HW_THREADS);
+        mat.parallel_fill([N, nnz](auto &rows, size_t row_start, size_t row_end, size_t) {
+            std::mt19937 rng(SEED ^ static_cast<unsigned>(row_start));
+            std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+            for (size_t r = row_start; r < row_end; ++r) {
+                auto cols = band_cols(r, N, nnz);
+                for (int k = 0; k < nnz; ++k)
+                    rows[r - row_start].insert(cols[k], val_dist(rng));
+            }
+        });
+
+        benchmark::DoNotOptimize(&mat);
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
+}
+
+BENCHMARK(BM_Parallel_Insertion_Band<AoS>)
+    ->Name("Parallel_Insertion_Band/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Insertion_Band<SoA>)
+    ->Name("Parallel_Insertion_Band/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
+//  Parallel insertion benchmarks — random columns
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_Parallel_Insertion_Random(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        spira::parallel::parallel_matrix<LayoutTag, uint32_t, double> mat(N, N, HW_THREADS);
+        mat.parallel_fill([N, nnz](auto &rows, size_t row_start, size_t row_end, size_t) {
+            std::mt19937 rng(SEED ^ static_cast<unsigned>(row_start));
+            std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+            for (size_t r = row_start; r < row_end; ++r) {
+                auto cols = random_cols(r, N, nnz);
+                for (int k = 0; k < nnz; ++k)
+                    rows[r - row_start].insert(cols[k], val_dist(rng));
+            }
+        });
+
+        benchmark::DoNotOptimize(&mat);
+    }
+
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
+}
+
+BENCHMARK(BM_Parallel_Insertion_Random<AoS>)
+    ->Name("Parallel_Insertion_Random/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Parallel_Insertion_Random<SoA>)
+    ->Name("Parallel_Insertion_Random/SoA")
     ->Apply(AllSizesAndDensities)
     ->Unit(benchmark::kNanosecond);
 
@@ -411,7 +526,6 @@ BENCHMARK(BM_Serial_SpMV_Random_Float<SoA>)
 //  Parallel SpMV benchmarks — double
 // ===========================================================================
 
-static const size_t HW_THREADS = std::thread::hardware_concurrency();
 
 template <class LayoutTag>
 static void BM_Parallel_SpMV_Strided_Double(benchmark::State &state) {
