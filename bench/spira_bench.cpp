@@ -540,7 +540,7 @@ static void BM_Parallel_SpMV_Strided_Double(benchmark::State &state) {
     auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
 
-    for (auto _ : state) {
+    for (auto _ : state) {rm    
         spira::parallel::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();

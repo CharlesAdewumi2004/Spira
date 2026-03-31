@@ -49,10 +49,10 @@ namespace spira::serial::algorithms
         a_entries.reserve(A.size());
         b_entries.reserve(B.size());
 
-        A.for_each_element([&a_entries](const I &col, const V &val) {
+        A.for_each_element([](const I &col, const V &val) {
             a_entries.push_back({col, val});
         });
-        B.for_each_element([&b_entries](const I &col, const V &val) {
+        B.for_each_element([](const I &col, const V &val) {
             b_entries.push_back({col, val});
         });
 

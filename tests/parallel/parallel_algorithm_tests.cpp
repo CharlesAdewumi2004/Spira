@@ -462,18 +462,6 @@ dense_matmul(const std::vector<std::vector<double>> &A,
     return C;
 }
 
-// Extract parallel_matrix into dense 2D array
-static std::vector<std::vector<double>>
-to_dense(pmat &m)
-{
-    std::vector<std::vector<double>> d(m.n_rows(), std::vector<double>(m.n_cols(), 0.0));
-    m.for_each_nnz_row([&d](const auto &row, auto global_r) {
-        row.for_each_element([&d, global_r](uint32_t c, double v) {
-            d[static_cast<std::size_t>(global_r)][static_cast<std::size_t>(c)] = v;
-        });
-    });
-    return d;
-}
 
 TEST(ParallelSpgemm, IdentityTimesMatrix)
 {
