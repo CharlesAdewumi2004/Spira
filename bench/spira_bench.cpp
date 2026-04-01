@@ -16,9 +16,10 @@ static void flush_cache() {
     static const size_t flush_size = [] {
         long s = sysconf(_SC_LEVEL3_CACHE_SIZE);
         size_t llc = static_cast<size_t>(s > 0 ? s : 32L * 1024 * 1024);
-        // Cap at 256 MB: enough to evict any matrix we benchmark, but limits
-        // flush time to ~5 ms even on Sapphire Rapids (480 MB LLC = 960 MB raw).
-        return std::min(llc * 2, size_t{256} * 1024 * 1024);
+        // Read exactly 1×LLC: by pigeonhole every set gets filled to capacity,
+        // guaranteeing full eviction of any matrix that fits in the LLC.
+        // 256 MB was insufficient for N=100000/nnz=256 (~300 MB matrix on 480 MB LLC).
+        return llc;
     }();
     static std::vector<char> buf(flush_size, 1);
     volatile char sink = 0;
