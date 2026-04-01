@@ -87,7 +87,7 @@ static void fill_strided(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
     for (size_t r = 0; r < N; ++r) {
         for (int k = 0; k < nnz; ++k) {
             V v = val_dist(rng);
-            mat.add(static_cast<uint32_t>(r), cols[k], std::move(v));
+            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
         }
     }
 }
@@ -99,7 +99,7 @@ static void fill_band(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
         auto cols = band_cols(r, N, nnz);
         for (int k = 0; k < nnz; ++k) {
             V v = val_dist(rng);
-            mat.add(static_cast<uint32_t>(r), cols[k], std::move(v));
+            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
         }
     }
 }
@@ -111,7 +111,7 @@ static void fill_random(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
         auto cols = random_cols(r, N, nnz);
         for (int k = 0; k < nnz; ++k) {
             V v = val_dist(rng);
-            mat.add(static_cast<uint32_t>(r), cols[k], std::move(v));
+            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
         }
     }
 }
