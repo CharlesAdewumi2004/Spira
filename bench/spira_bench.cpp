@@ -474,5 +474,99 @@ BENCHMARK(BM_SpMV_Random_Float<SoA>)
     ->Unit(benchmark::kNanosecond);
 
 // ===========================================================================
+//  Transition benchmark — cost of set_mode(spmv) + flush()
+// ===========================================================================
+
+template <class LayoutTag>
+static void BM_Transition_Strided(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        std::mt19937 rng(SEED);
+        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+        mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+        fill_strided<double>(mat, N, nnz, rng);
+        state.ResumeTiming();
+
+        mat.set_mode(spira::mode::matrix_mode::spmv);
+        mat.flush();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Transition_Strided<AoS>)
+    ->Name("Transition_Strided/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Transition_Strided<SoA>)
+    ->Name("Transition_Strided/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Transition_Band(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        std::mt19937 rng(SEED);
+        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+        mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+        fill_band<double>(mat, N, nnz, rng);
+        state.ResumeTiming();
+
+        mat.set_mode(spira::mode::matrix_mode::spmv);
+        mat.flush();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Transition_Band<AoS>)
+    ->Name("Transition_Band/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Transition_Band<SoA>)
+    ->Name("Transition_Band/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+template <class LayoutTag>
+static void BM_Transition_Random(benchmark::State &state) {
+    const auto N = static_cast<size_t>(state.range(0));
+    const auto nnz = static_cast<int>(state.range(1));
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        std::mt19937 rng(SEED);
+        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
+        mat.set_mode(spira::mode::matrix_mode::insert_heavy);
+        fill_random<double>(mat, N, nnz, rng);
+        state.ResumeTiming();
+
+        mat.set_mode(spira::mode::matrix_mode::spmv);
+        mat.flush();
+
+        benchmark::DoNotOptimize(&mat);
+    }
+}
+
+BENCHMARK(BM_Transition_Random<AoS>)
+    ->Name("Transition_Random/AoS")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+BENCHMARK(BM_Transition_Random<SoA>)
+    ->Name("Transition_Random/SoA")
+    ->Apply(AllSizesAndDensities)
+    ->Unit(benchmark::kNanosecond);
+
+// ===========================================================================
 
 BENCHMARK_MAIN();
