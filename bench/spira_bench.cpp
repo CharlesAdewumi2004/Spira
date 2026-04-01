@@ -3,6 +3,28 @@
 
 #include <random>
 #include <vector>
+#include <unistd.h>
+
+// ---------------------------------------------------------------------------
+// Cache flush helper — evicts the LLC by reading 2× its size with cache-line
+// stride.  The flush size is queried once at startup via sysconf so the binary
+// works correctly on any machine (including server Xeons with large LLCs).
+// Called inside PauseTiming before each SpMV/Insertion iteration so
+// measurements reflect cold-cache access patterns rather than warmth left by
+// matrix construction or a previous iteration reusing the same heap pages.
+// ---------------------------------------------------------------------------
+static void flush_cache() {
+    static const size_t flush_size = [] {
+        long s = sysconf(_SC_LEVEL3_CACHE_SIZE);
+        // sysconf returns -1/0 when unavailable; 256 MB covers any current LLC.
+        return static_cast<size_t>(s > 0 ? s : 256L * 1024 * 1024) * 2;
+    }();
+    static std::vector<char> buf(flush_size, 1);
+    volatile char sink = 0;
+    for (size_t i = 0; i < flush_size; i += 64)
+        sink ^= buf[i];
+    (void)sink;
+}
 
 // ---------------------------------------------------------------------------
 // Common workload parameters — kept identical across all stages
@@ -117,6 +139,7 @@ static void BM_Insertion_Strided(benchmark::State &state) {
 
     for (auto _ : state) {
         state.PauseTiming();
+        flush_cache();
         std::mt19937 rng(SEED);
         state.ResumeTiming();
 
@@ -152,6 +175,7 @@ static void BM_Insertion_Band(benchmark::State &state) {
 
     for (auto _ : state) {
         state.PauseTiming();
+        flush_cache();
         std::mt19937 rng(SEED);
         state.ResumeTiming();
 
@@ -187,6 +211,7 @@ static void BM_Insertion_Random(benchmark::State &state) {
 
     for (auto _ : state) {
         state.PauseTiming();
+        flush_cache();
         std::mt19937 rng(SEED);
         state.ResumeTiming();
 
@@ -231,6 +256,9 @@ static void BM_SpMV_Strided_Double(benchmark::State &state) {
     std::vector<double> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
@@ -270,6 +298,9 @@ static void BM_SpMV_Band_Double(benchmark::State &state) {
     std::vector<double> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
@@ -309,6 +340,9 @@ static void BM_SpMV_Random_Double(benchmark::State &state) {
     std::vector<double> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
@@ -348,6 +382,9 @@ static void BM_SpMV_Strided_Float(benchmark::State &state) {
     std::vector<float> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
@@ -387,6 +424,9 @@ static void BM_SpMV_Band_Float(benchmark::State &state) {
     std::vector<float> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
@@ -426,6 +466,9 @@ static void BM_SpMV_Random_Float(benchmark::State &state) {
     std::vector<float> y(N);
 
     for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
         spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
