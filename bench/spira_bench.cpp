@@ -216,6 +216,7 @@ static void BM_SpMV_Strided(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     fill_strided<double>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
@@ -255,6 +256,7 @@ static void BM_SpMV_Band(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     fill_band<double>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
@@ -329,6 +331,7 @@ static void BM_SpMV_Random(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
     fill_random<double>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<double>(N, rng);
     std::vector<double> y(N);
@@ -368,6 +371,7 @@ static void BM_SpMV_Strided_Float(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
     fill_strided<float>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<float>(N, rng);
     std::vector<float> y(N);
@@ -407,6 +411,7 @@ static void BM_SpMV_Band_Float(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
     fill_band<float>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<float>(N, rng);
     std::vector<float> y(N);
@@ -446,6 +451,7 @@ static void BM_SpMV_Random_Float(benchmark::State &state) {
     std::mt19937 rng(SEED);
     spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
     fill_random<float>(mat, N, nnz, rng);
+    mat.lock();
 
     auto x = random_vector<float>(N, rng);
     std::vector<float> y(N);
