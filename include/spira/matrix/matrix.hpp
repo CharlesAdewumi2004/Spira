@@ -170,6 +170,7 @@ namespace spira
         size_type row_limit_{0};
         size_type column_limit_{0};
         std::optional<csr_storage<LayoutTag, I, V>> csr_{};
+        std::vector<bool> dirty_{};
     };
 
     // ═════════════════════════════════════════════
@@ -192,7 +193,7 @@ namespace spira
     matrix<L, I, V, BT, BN, LP>::matrix(size_type row_limit, size_type column_limit,
                                         size_type reserve_per_row)
         : mode_{config::matrix_mode::open}, rows_{}, row_limit_{row_limit},
-          column_limit_{column_limit}
+          column_limit_{column_limit}, dirty_(row_limit, false)
     {
         rows_.reserve(row_limit_);
         for (size_type r = 0; r < row_limit_; ++r)
@@ -287,7 +288,7 @@ namespace spira
         {
             // Build or merge the flat CSR (layout-appropriate).
             if (csr_)
-                csr_ = merge_csr<L>(rows_, std::move(*csr_));
+                csr_ = merge_csr<L>(rows_, std::move(*csr_), dirty_);
             else
                 csr_ = build_csr<L>(rows_);
 
@@ -319,6 +320,9 @@ namespace spira
                     r.release_buffer();
             }
         }
+
+        // All pending changes are now committed; reset dirty flags.
+        std::fill(dirty_.begin(), dirty_.end(), false);
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
@@ -438,6 +442,7 @@ namespace spira
         validate_row_index(row_index);
         validate_col_index(col_index);
         rows_[to_size(row_index)].insert(col_index, val);
+        dirty_[to_size(row_index)] = true;
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
@@ -452,6 +457,7 @@ namespace spira
         {
             r.clear();
         }
+        std::fill(dirty_.begin(), dirty_.end(), false);
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
@@ -464,6 +470,7 @@ namespace spira
         assert(mode_ == config::matrix_mode::open &&
                "matrix::row_at_mut() requires open mode");
         validate_row_index(row_index);
+        dirty_[to_size(row_index)] = true;
         return rows_[to_size(row_index)];
     }
 
@@ -483,6 +490,7 @@ namespace spira
         swap(row_limit_, other.row_limit_);
         swap(column_limit_, other.column_limit_);
         swap(csr_, other.csr_);
+        swap(dirty_, other.dirty_);
     }
 
     // ═════════════════════════════════════════════

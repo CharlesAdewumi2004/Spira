@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/layout/element_pair.hpp>
 #include <spira/traits.hpp>
@@ -30,7 +31,7 @@ namespace spira::buffer::impls
             return std::numeric_limits<size_type>::max();
         }
 
-        void clear_impl() noexcept { buf_.clear(); }
+        void clear_impl() noexcept { buf_.clear(); index_.clear(); }
 
         [[nodiscard]] const I &key_at(size_type idx) const noexcept { return buf_[idx].column; }
         [[nodiscard]] V &value_at(size_type idx) noexcept { return buf_[idx].value; }
@@ -44,43 +45,28 @@ namespace spira::buffer::impls
         void push_back_impl(const I &col, const V &v)
         {
             buf_.push_back(entry_type{col, v});
+            index_[col] = buf_.size() - 1;
         }
 
         bool contains_impl(I col) const noexcept
         {
-            for (auto i = buf_.size(); i-- > 0;)
-            {
-                if (buf_[i].column == col)
-                    return true;
-            }
-            return false;
+            return index_.count(col) != 0;
         }
 
         const V *get_ptr_impl(I col) const noexcept
         {
-            for (auto i = buf_.size(); i-- > 0;)
-            {
-                if (buf_[i].column == col)
-                    return &buf_[i].value;
-            }
-            return nullptr;
+            auto it = index_.find(col);
+            if (it == index_.end())
+                return nullptr;
+            return &buf_[it->second].value;
         }
 
+        // O(unique columns) — index_ always points to the last-written entry per column.
         V accumulate_impl() const noexcept
         {
-            // Do not call sort_and_dedup() here: that mutates mutable state under
-            // a const call, which is a data race once multiple threads read the
-            // same row concurrently. Instead use a backward scan for last-write-wins
-            // deduplication without touching the buffer.
             V acc = traits::ValueTraits<V>::zero();
-            for (auto i = buf_.size(); i-- > 0;)
-            {
-                bool is_latest = true;
-                for (auto j = i + 1; j < buf_.size(); ++j)
-                    if (buf_[j].column == buf_[i].column) { is_latest = false; break; }
-                if (is_latest)
-                    acc += buf_[i].value;
-            }
+            for (const auto &[col, idx] : index_)
+                acc += buf_[idx].value;
             return acc;
         }
 
@@ -114,10 +100,16 @@ namespace spira::buffer::impls
                 *write++ = e;
             }
             buf_.erase(write, buf_.end());
+
+            // Rebuild index map to match the compacted buffer.
+            index_.clear();
+            for (std::size_t i = 0; i < buf_.size(); ++i)
+                index_[buf_[i].column] = i;
         }
 
     private:
         mutable std::vector<entry_type> buf_;
+        mutable ankerl::unordered_dense::map<I, std::size_t> index_;
     };
 
 } // namespace spira::buffer::impls

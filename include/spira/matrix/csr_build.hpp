@@ -107,7 +107,8 @@ namespace spira
     template <class LayoutTag, class RowType>
     auto merge_csr(
         const std::vector<RowType> &rows,
-        csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type> &&old_csr)
+        csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type> &&old_csr,
+        const std::vector<bool> &dirty)
         -> csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type>
     {
         using I = typename RowType::index_type;
@@ -163,6 +164,27 @@ namespace spira
 
                 const std::size_t old_begin = out.offsets[i];
                 const std::size_t old_nnz = out.offsets[i + 1] - old_begin;
+
+                // Clean row: buffer is empty; bulk-move old data to its ub position.
+                // The compaction pass will then shift it to the final dense offset.
+                if (!dirty[i])
+                {
+                    if (old_nnz > 0 && ub_starts[i] != old_begin)
+                    {
+                        if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                        {
+                            std::memmove(out.cols.get() + ub_starts[i], out.cols.get() + old_begin, old_nnz * sizeof(I));
+                            std::memmove(out.vals.get() + ub_starts[i], out.vals.get() + old_begin, old_nnz * sizeof(V));
+                        }
+                        else
+                        {
+                            using P = layout::elementPair<I, V>;
+                            std::memmove(out.pairs.get() + ub_starts[i], out.pairs.get() + old_begin, old_nnz * sizeof(P));
+                        }
+                    }
+                    actual_nnz[i] = old_nnz;
+                    continue;
+                }
 
                 auto bit = rows[i].begin();
                 auto bend = rows[i].end();
@@ -310,6 +332,24 @@ namespace spira
         {
             const std::size_t old_begin = old_csr.offsets[i];
             const std::size_t old_nnz = old_csr.offsets[i + 1] - old_begin;
+
+            // Clean row: buffer is empty; bulk-copy old data to new allocation.
+            if (!dirty[i])
+            {
+                const std::size_t wp = ub_starts[i];
+                if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
+                {
+                    std::memcpy(out.cols.get() + wp, old_csr.cols.get() + old_begin, old_nnz * sizeof(I));
+                    std::memcpy(out.vals.get() + wp, old_csr.vals.get() + old_begin, old_nnz * sizeof(V));
+                }
+                else
+                {
+                    using P = layout::elementPair<I, V>;
+                    std::memcpy(out.pairs.get() + wp, old_csr.pairs.get() + old_begin, old_nnz * sizeof(P));
+                }
+                out.offsets[i + 1] = out.offsets[i] + old_nnz;
+                continue;
+            }
 
             auto bit = rows[i].begin();
             auto bend = rows[i].end();
