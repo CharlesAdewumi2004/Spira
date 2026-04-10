@@ -8,7 +8,7 @@
 #include <spira/algorithms/spmv.hpp>
 #include <spira/algorithms/transpose.hpp>
 #include <spira/algorithms/matrix_addition.hpp>
-#include <spira/algorithms/scalers.hpp>
+#include <spira/algorithms/scalars.hpp>
 
 namespace spira
 {
