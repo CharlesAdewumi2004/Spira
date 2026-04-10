@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/spira_bench.dir/bench/spira_bench.cpp.o -o spira_bench  _deps/googlebenchmark-build/src/libbenchmark.a -lrt 
