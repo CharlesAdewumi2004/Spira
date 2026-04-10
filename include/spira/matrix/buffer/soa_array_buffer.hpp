@@ -55,65 +55,35 @@ namespace spira::buffer::impls
         {
             col_.clear();
             val_.clear();
+            index_.clear();
         }
 
         void push_back_impl(const I &col, const V &val)
         {
             col_.push_back(col);
             val_.push_back(val);
+            index_[col] = col_.size() - 1;
         }
 
         bool contains_impl(I col) const noexcept
         {
-            for (auto i = col_.size(); i-- > 0;)
-            {
-                if (col_[i] == col)
-                    return true;
-            }
-            return false;
+            return index_.count(col) != 0;
         }
 
         const V *get_ptr_impl(I col) const noexcept
         {
-            for (auto i = col_.size(); i-- > 0;)
-            {
-                if (col_[i] == col)
-                    return &val_[i];
-            }
-            return nullptr;
+            auto it = index_.find(col);
+            if (it == index_.end())
+                return nullptr;
+            return &val_[it->second];
         }
 
-        V accumulate_impl() const
+        // O(unique columns) — index_ always points to the last-written entry per column.
+        V accumulate_impl() const noexcept
         {
-            // Does not mutate the buffer — safe for concurrent readers.
-            // Two paths: small buffers use a brute-force scan (no allocation,
-            // cache-friendly); large buffers use a hash set for O(n).
-            static constexpr std::size_t kSmallThreshold = 32;
             V acc = traits::ValueTraits<V>::zero();
-            const auto sz = col_.size();
-
-            if (sz <= kSmallThreshold)
-            {
-                for (auto i = sz; i-- > 0;)
-                {
-                    bool is_latest = true;
-                    for (auto j = i + 1; j < sz; ++j)
-                        if (col_[j] == col_[i]) { is_latest = false; break; }
-                    if (is_latest)
-                        acc += val_[i];
-                }
-            }
-            else
-            {
-                ankerl::unordered_dense::set<I> seen;
-                seen.reserve(sz);
-                for (auto i = sz; i-- > 0;)
-                {
-                    if (!seen.insert(col_[i]).second)
-                        continue;
-                    acc += val_[i];
-                }
-            }
+            for (const auto &[col, idx] : index_)
+                acc += val_[idx];
             return acc;
         }
 
@@ -181,6 +151,11 @@ namespace spira::buffer::impls
             }
             col_.resize(write);
             val_.resize(write);
+
+            // Rebuild index map to match the compacted buffer.
+            index_.clear();
+            for (std::size_t i = 0; i < col_.size(); ++i)
+                index_[col_[i]] = i;
         }
 
         class iterator
@@ -371,6 +346,7 @@ namespace spira::buffer::impls
     private:
         mutable std::vector<I> col_;
         mutable std::vector<V> val_;
+        mutable ankerl::unordered_dense::map<I, std::size_t> index_;
     };
 
 } // namespace spira::buffer::impls

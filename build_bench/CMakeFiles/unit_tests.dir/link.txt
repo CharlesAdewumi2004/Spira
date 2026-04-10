@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/unit_tests.dir/tests/test.cpp.o CMakeFiles/unit_tests.dir/tests/spmv_test.cpp.o CMakeFiles/unit_tests.dir/tests/aos_test.cpp.o CMakeFiles/unit_tests.dir/tests/soa_test.cpp.o -o unit_tests  lib/libgtest_main.a -lpthread lib/libgtest.a 

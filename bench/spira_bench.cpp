@@ -5,7 +5,11 @@
 #include <random>
 #include <thread>
 #include <vector>
-#include <unistd.h>
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Cache flush helper — evicts the LLC by reading 1× its size at cache-line
@@ -13,8 +17,19 @@
 // ---------------------------------------------------------------------------
 static void flush_cache() {
     static const size_t flush_size = [] {
+#if defined(_WIN32)
+        size_t llc = 32UL * 1024 * 1024;
+        DWORD buf_len = 0;
+        GetLogicalProcessorInformation(nullptr, &buf_len);
+        std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> info(buf_len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+        if (GetLogicalProcessorInformation(info.data(), &buf_len))
+            for (auto &e : info)
+                if (e.Relationship == RelationCache && e.Cache.Level == 3)
+                    llc = e.Cache.Size;
+#else
         long s = sysconf(_SC_LEVEL3_CACHE_SIZE);
         size_t llc = static_cast<size_t>(s > 0 ? s : 32L * 1024 * 1024);
+#endif
         return llc;
     }();
     static std::vector<char> buf(flush_size, 1);
