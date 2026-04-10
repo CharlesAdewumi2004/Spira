@@ -334,7 +334,16 @@ namespace spira::parallel
             // Build or merge the flat CSR for this partition.
             // offsets == nullptr signals "first lock cycle".
             if (p.csr.offsets != nullptr)
-                p.csr = merge_csr<L>(p.rows, std::move(p.csr));
+            {
+                // Derive dirty flags from buffer state: a row is dirty iff its
+                // buffer is non-empty after sort+dedup.  thread_local avoids a
+                // heap allocation on every merge call.
+                thread_local std::vector<bool> dirty_tl;
+                dirty_tl.assign(p.rows.size(), false);
+                for (std::size_t i = 0; i < p.rows.size(); ++i)
+                    dirty_tl[i] = (p.rows[i].begin() != p.rows[i].end());
+                p.csr = merge_csr<L>(p.rows, std::move(p.csr), dirty_tl);
+            }
             else
                 p.csr = build_csr<L>(p.rows);
 
