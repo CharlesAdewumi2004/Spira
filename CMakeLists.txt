@@ -201,6 +201,7 @@ if (SPIRA_BUILD_BENCHMARKS)
     GIT_TAG        v1.8.4
   )
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_WERROR  OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
   add_executable(spira_bench bench/spira_bench.cpp)
