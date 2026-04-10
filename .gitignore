@@ -4,6 +4,7 @@ build_release/
 cmake-build-*/
 .vscode/
 .idea
+.cache
 *.o
 *.obj
 *.a
