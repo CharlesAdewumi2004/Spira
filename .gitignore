@@ -2,7 +2,7 @@ build/
 build_bench/
 build_release/
 cmake-build-*/
-.vscode
+.vscode/
 .idea
 *.o
 *.obj
