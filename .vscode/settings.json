@@ -24,5 +24,6 @@
     "vim.cursorStylePerMode.insert": "line",
     "vim.cursorStylePerMode.visual": "block",
     "vim.showMarks": true,
+    "cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/",
 
 }
