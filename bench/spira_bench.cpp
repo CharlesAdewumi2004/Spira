@@ -1,656 +1,214 @@
+// ============================================================================
+// Spira Stage 3 (Layout-Aware CSR) — bench/spira_bench.cpp
+//
+// Benchmarks:
+//   Insert : open() → 256-entry batch into hash-map buffer → lock().
+//            The dirty bitset skips clean rows; only ~256 rows do a full
+//            two-pointer merge.  Cold LLC before each timed section.
+//   SpMV   : y = A*x on a locked flat-CSR matrix via SIMD double kernel.
+//            Cold LLC each iteration.
+//
+// Matrix   : 10 000 × 10 000, SoA layout, double, hash_map_buffer.
+// Densities: range(0) = nnz_per_row — 10 (0.1 %), 100 (1 %), 1000 (10 %).
+// Patterns : range(1) = 0 random | 1 strided.
+// ============================================================================
 #include <benchmark/benchmark.h>
 #include <spira/spira.hpp>
+#include <spira/matrix/buffer/buffer_tags.hpp>
 
+#include <algorithm>
 #include <random>
 #include <vector>
-#ifdef _WIN32
+#if defined(_WIN32)
 #  include <windows.h>
 #else
 #  include <unistd.h>
 #endif
 
 // ---------------------------------------------------------------------------
-// Cache flush helper — evicts the LLC by reading 2× its size with cache-line
-// stride.  The flush size is queried once at startup via sysconf so the binary
-// works correctly on any machine (including server Xeons with large LLCs).
-// Called inside PauseTiming before each SpMV iteration so measurements reflect
-// cold-cache access patterns rather than warmth left by matrix construction.
+static constexpr size_t   N     = 10'000;
+static constexpr size_t   BATCH = 256;
+static constexpr unsigned SEED  = 42;
 // ---------------------------------------------------------------------------
-static void flush_cache() {
+
+static void flush_cache()
+{
     static const size_t flush_size = [] {
 #if defined(_WIN32)
         size_t llc = 32UL * 1024 * 1024;
-        DWORD buf_len = 0;
-        GetLogicalProcessorInformation(nullptr, &buf_len);
-        std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> info(buf_len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-        if (GetLogicalProcessorInformation(info.data(), &buf_len))
-            for (auto &e : info)
+        DWORD len = 0;
+        GetLogicalProcessorInformation(nullptr, &len);
+        std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> buf(
+            len / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+        if (GetLogicalProcessorInformation(buf.data(), &len))
+            for (auto &e : buf)
                 if (e.Relationship == RelationCache && e.Cache.Level == 3)
                     llc = e.Cache.Size;
+        return llc;
 #else
         long s = sysconf(_SC_LEVEL3_CACHE_SIZE);
-        size_t llc = static_cast<size_t>(s > 0 ? s : 32L * 1024 * 1024);
+        return static_cast<size_t>(s > 0 ? s : 32L * 1024 * 1024);
 #endif
-        // Read exactly 1×LLC: by pigeonhole every set gets filled to capacity,
-        // guaranteeing full eviction of any matrix that fits in the LLC.
-        // 256 MB was insufficient for N=100000/nnz=256 (~300 MB matrix on 480 MB LLC).
-        return llc;
     }();
-    static std::vector<char> buf(flush_size, 1);
+    static std::vector<char> arena(flush_size, 1);
     volatile char sink = 0;
     for (size_t i = 0; i < flush_size; i += 64)
-        sink ^= buf[i];
+        sink ^= arena[i];
     (void)sink;
 }
 
-// ---------------------------------------------------------------------------
-// Common workload parameters — kept identical across all stages
-// ---------------------------------------------------------------------------
-// Matrix sizes (N×N):  10000, 50000, 100000
-// Non-zeros per row:   4, 16, 64, 256
-// Column patterns:     strided (evenly spaced), band (near diagonal), random
-// Value types:         double, float
-// RNG seed:            42 (deterministic values only — column placement is
-//                          deterministic by construction, not random)
-// ---------------------------------------------------------------------------
+// hash_map_buffer: O(1) insert in open mode; compact_preserve: buffers kept
+// after lock() so open() costs O(1).
+using L   = spira::layout::tags::soa_tag;
+using BT  = spira::buffer::tags::hash_map_buffer;
+using Mat = spira::matrix<L, uint32_t, double, BT>;
 
-static constexpr unsigned SEED = 42;
+struct Triple { uint32_t row, col; double val; };
 
-using AoS = spira::layout::tags::aos_tag;
-using SoA = spira::layout::tags::soa_tag;
-
-// ---- column placement strategies ------------------------------------------
-
-// Evenly spaced columns across the row width
-static std::vector<uint32_t> strided_cols(size_t N, int nnz) {
-    std::vector<uint32_t> cols(nnz);
-    size_t stride = N / static_cast<size_t>(nnz);
-    if (stride == 0) stride = 1;
-    for (int k = 0; k < nnz; ++k)
-        cols[k] = static_cast<uint32_t>((static_cast<size_t>(k) * stride) % N);
-    return cols;
-}
-
-// Columns clustered in a band around the diagonal
-static std::vector<uint32_t> band_cols(size_t row, size_t N, int nnz) {
-    std::vector<uint32_t> cols(nnz);
-    int half = nnz / 2;
-    for (int k = 0; k < nnz; ++k) {
-        auto c = static_cast<int64_t>(row) + (k - half);
-        // wrap into [0, N)
-        cols[k] = static_cast<uint32_t>(((c % static_cast<int64_t>(N)) + static_cast<int64_t>(N)) % static_cast<int64_t>(N));
+static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
+{
+    std::vector<Triple> v;
+    v.reserve(N * nnz_per_row);
+    std::mt19937 rng(SEED);
+    std::uniform_real_distribution<double> vd(0.0, 1.0);
+    if (rnd) {
+        std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
+        for (size_t r = 0; r < N; ++r)
+            for (size_t k = 0; k < nnz_per_row; ++k)
+                v.push_back({static_cast<uint32_t>(r), cd(rng), vd(rng)});
+    } else {
+        const size_t stride = std::max<size_t>(N / nnz_per_row, 1);
+        for (size_t r = 0; r < N; ++r)
+            for (size_t k = 0; k < nnz_per_row; ++k)
+                v.push_back({static_cast<uint32_t>(r),
+                             static_cast<uint32_t>((k * stride) % N), vd(rng)});
     }
-    return cols;
-}
-
-// Uniform random columns (seeded per-row for deterministic placement)
-static std::vector<uint32_t> random_cols(size_t row, size_t N, int nnz) {
-    std::mt19937 rng(SEED ^ static_cast<unsigned>(row));
-    std::uniform_int_distribution<uint32_t> col_dist(0, static_cast<uint32_t>(N - 1));
-    std::vector<uint32_t> cols(nnz);
-    for (int k = 0; k < nnz; ++k)
-        cols[k] = col_dist(rng);
-    return cols;
-}
-
-// ---- fill helpers ---------------------------------------------------------
-
-template <class V, class Mat>
-static void fill_strided(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<V> val_dist(V(0), V(1));
-    auto cols = strided_cols(N, nnz);
-    for (size_t r = 0; r < N; ++r) {
-        for (int k = 0; k < nnz; ++k) {
-            V v = val_dist(rng);
-            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
-        }
-    }
-}
-
-template <class V, class Mat>
-static void fill_band(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<V> val_dist(V(0), V(1));
-    for (size_t r = 0; r < N; ++r) {
-        auto cols = band_cols(r, N, nnz);
-        for (int k = 0; k < nnz; ++k) {
-            V v = val_dist(rng);
-            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
-        }
-    }
-}
-
-template <class V, class Mat>
-static void fill_random(Mat &mat, size_t N, int nnz, std::mt19937 &rng) {
-    std::uniform_real_distribution<V> val_dist(V(0), V(1));
-    for (size_t r = 0; r < N; ++r) {
-        auto cols = random_cols(r, N, nnz);
-        for (int k = 0; k < nnz; ++k) {
-            V v = val_dist(rng);
-            mat.insert(static_cast<uint32_t>(r), cols[k], std::move(v));
-        }
-    }
-}
-
-template <class V>
-static std::vector<V> random_vector(size_t n, std::mt19937 &rng) {
-    std::uniform_real_distribution<V> dist(V(0), V(1));
-    std::vector<V> v(n);
-    for (auto &x : v) x = dist(rng);
     return v;
 }
 
-// ---- benchmark argument encoding ------------------------------------------
-// range(0) = N  (matrix dimension)
-// range(1) = nnz per row
-
-static void AllSizesAndDensities(benchmark::internal::Benchmark *b) {
-    for (int N : {10000, 50000, 100000})
-        for (int nnz : {4, 16, 64, 256})
-            b->Args({N, nnz});
-}
-
-// ===========================================================================
-//  Insertion benchmarks — strided columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_Insertion_Strided(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        std::mt19937 rng(SEED);
-        state.ResumeTiming();
-
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_strided<double>(mat, N, nnz, rng);
-
-        benchmark::DoNotOptimize(&mat);
+static std::vector<Triple> make_batch(size_t nnz_per_row, bool rnd)
+{
+    std::vector<Triple> v;
+    v.reserve(BATCH);
+    std::mt19937 rng(SEED ^ 0xDEADBEEFu);
+    std::uniform_real_distribution<double> vd(0.0, 1.0);
+    if (rnd) {
+        std::uniform_int_distribution<uint32_t> rd(0, static_cast<uint32_t>(N - 1));
+        std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
+        for (size_t k = 0; k < BATCH; ++k)
+            v.push_back({rd(rng), cd(rng), vd(rng)});
+    } else {
+        const size_t rs = std::max<size_t>(N / BATCH, 1);
+        const size_t cs = std::max<size_t>(N / nnz_per_row, 1);
+        for (size_t k = 0; k < BATCH; ++k)
+            v.push_back({static_cast<uint32_t>((k * rs) % N),
+                         static_cast<uint32_t>((k * cs) % N), vd(rng)});
     }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
+    return v;
 }
 
-BENCHMARK(BM_Insertion_Strided<AoS>)
-    ->Name("Insertion_Strided/AoS")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_Insertion_Strided<SoA>)
-    ->Name("Insertion_Strided/SoA")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  Insertion benchmarks — band columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_Insertion_Band(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        std::mt19937 rng(SEED);
-        state.ResumeTiming();
-
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_band<double>(mat, N, nnz, rng);
-
-        benchmark::DoNotOptimize(&mat);
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
-}
-
-BENCHMARK(BM_Insertion_Band<AoS>)
-    ->Name("Insertion_Band/AoS")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_Insertion_Band<SoA>)
-    ->Name("Insertion_Band/SoA")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — strided columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Strided(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_strided<double>(mat, N, nnz, rng);
+// Fill in open mode (hash buffer) then lock() to build flat CSR
+static void fill_and_lock(Mat &mat, const std::vector<Triple> &triples)
+{
+    for (const auto &t : triples)
+        mat.insert(t.row, t.col, t.val);
     mat.lock();
+}
 
-    auto x = random_vector<double>(N, rng);
-    std::vector<double> y(N);
+// ============================================================================
+// Insertion — open() + 256-entry batch + lock()
+// Dirty bitset ensures only the touched rows redo the merge; clean rows use
+// bulk memmove/memcpy inside merge_csr.
+// ============================================================================
+class InsertFixture : public benchmark::Fixture
+{
+public:
+    std::unique_ptr<Mat> mat;
+    std::vector<Triple>  batch;
 
+    void SetUp(const benchmark::State &state) override
+    {
+        const size_t nnz = static_cast<size_t>(state.range(0));
+        const bool   rnd = (state.range(1) == 0);
+        auto full = make_full_triples(nnz, rnd);
+        batch     = make_batch(nnz, rnd);
+        mat       = std::make_unique<Mat>(N, N);
+        fill_and_lock(*mat, full);   // starts locked
+    }
+
+    void TearDown(const benchmark::State &) override { mat.reset(); }
+};
+
+BENCHMARK_DEFINE_F(InsertFixture, Insert)(benchmark::State &state)
+{
     for (auto _ : state) {
         state.PauseTiming();
         flush_cache();
         state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
+
+        mat->open();
+        for (const auto &t : batch)
+            mat->insert(t.row, t.col, t.val);
+        mat->lock();
+    }
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(BATCH));
+}
+
+BENCHMARK_REGISTER_F(InsertFixture, Insert)
+    ->Args({10,   0})->Args({100,  0})->Args({1000, 0})
+    ->Args({10,   1})->Args({100,  1})->Args({1000, 1})
+    ->ArgNames({"nnz_per_row", "pattern"})
+    ->Unit(benchmark::kNanosecond);
+
+// ============================================================================
+// SpMV — flat CSR + SIMD double kernel; cold LLC each iteration
+// ============================================================================
+class SpMVFixture : public benchmark::Fixture
+{
+public:
+    std::unique_ptr<Mat> mat;
+    std::vector<double>  x, y;
+
+    void SetUp(const benchmark::State &state) override
+    {
+        const size_t nnz = static_cast<size_t>(state.range(0));
+        const bool   rnd = (state.range(1) == 0);
+        auto full = make_full_triples(nnz, rnd);
+        mat       = std::make_unique<Mat>(N, N);
+        fill_and_lock(*mat, full);   // locked: CSR ready
+
+        std::mt19937 rng(SEED ^ 0xC0FFEEu);
+        std::uniform_real_distribution<double> vd(0.0, 1.0);
+        x.resize(N);
+        y.assign(N, 0.0);
+        for (auto &v : x) v = vd(rng);
+    }
+
+    void TearDown(const benchmark::State &) override { mat.reset(); }
+};
+
+BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
+{
+    for (auto _ : state) {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
+
+        spira::algorithms::spmv(*mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
     }
-
+    const size_t nnz = static_cast<size_t>(state.range(0));
     state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(N) * static_cast<int64_t>(nnz) * 2);
 }
 
-BENCHMARK(BM_SpMV_Strided<AoS>)
-    ->Name("SpMV_Strided/AoS/double")
-    ->Apply(AllSizesAndDensities)
+BENCHMARK_REGISTER_F(SpMVFixture, SpMV)
+    ->Args({10,   0})->Args({100,  0})->Args({1000, 0})
+    ->Args({10,   1})->Args({100,  1})->Args({1000, 1})
+    ->ArgNames({"nnz_per_row", "pattern"})
     ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Strided<SoA>)
-    ->Name("SpMV_Strided/SoA/double")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — band columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Band(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_band<double>(mat, N, nnz, rng);
-    mat.lock();
-
-    auto x = random_vector<double>(N, rng);
-    std::vector<double> y(N);
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
-}
-
-BENCHMARK(BM_SpMV_Band<AoS>)
-    ->Name("SpMV_Band/AoS/double")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Band<SoA>)
-    ->Name("SpMV_Band/SoA/double")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  Insertion benchmarks — random columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_Insertion_Random(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        std::mt19937 rng(SEED);
-        state.ResumeTiming();
-
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_random<double>(mat, N, nnz, rng);
-
-        benchmark::DoNotOptimize(&mat);
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz);
-}
-
-BENCHMARK(BM_Insertion_Random<AoS>)
-    ->Name("Insertion_Random/AoS")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_Insertion_Random<SoA>)
-    ->Name("Insertion_Random/SoA")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — random columns
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Random(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_random<double>(mat, N, nnz, rng);
-    mat.lock();
-
-    auto x = random_vector<double>(N, rng);
-    std::vector<double> y(N);
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
-}
-
-BENCHMARK(BM_SpMV_Random<AoS>)
-    ->Name("SpMV_Random/AoS/double")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Random<SoA>)
-    ->Name("SpMV_Random/SoA/double")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — strided columns (float)
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Strided_Float(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
-    fill_strided<float>(mat, N, nnz, rng);
-    mat.lock();
-
-    auto x = random_vector<float>(N, rng);
-    std::vector<float> y(N);
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
-}
-
-BENCHMARK(BM_SpMV_Strided_Float<AoS>)
-    ->Name("SpMV_Strided/AoS/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Strided_Float<SoA>)
-    ->Name("SpMV_Strided/SoA/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — band columns (float)
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Band_Float(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
-    fill_band<float>(mat, N, nnz, rng);
-    mat.lock();
-
-    auto x = random_vector<float>(N, rng);
-    std::vector<float> y(N);
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
-}
-
-BENCHMARK(BM_SpMV_Band_Float<AoS>)
-    ->Name("SpMV_Band/AoS/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Band_Float<SoA>)
-    ->Name("SpMV_Band/SoA/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  SpMV benchmarks — random columns (float)
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_SpMV_Random_Float(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, float> mat(N, N);
-    fill_random<float>(mat, N, nnz, rng);
-    mat.lock();
-
-    auto x = random_vector<float>(N, rng);
-    std::vector<float> y(N);
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-        spira::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(N) * nnz * 2);
-}
-
-BENCHMARK(BM_SpMV_Random_Float<AoS>)
-    ->Name("SpMV_Random/AoS/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-BENCHMARK(BM_SpMV_Random_Float<SoA>)
-    ->Name("SpMV_Random/SoA/float")
-    ->Apply(AllSizesAndDensities)
-    ->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  Lock benchmark — cost of lock() (insert -> spmv transition)
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_Lock_Strided(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        std::mt19937 rng(SEED);
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_strided<double>(mat, N, nnz, rng);
-        state.ResumeTiming();
-
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Lock_Strided<AoS>)->Name("Lock_Strided/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Lock_Strided<SoA>)->Name("Lock_Strided/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-template <class LayoutTag>
-static void BM_Lock_Band(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        std::mt19937 rng(SEED);
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_band<double>(mat, N, nnz, rng);
-        state.ResumeTiming();
-
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Lock_Band<AoS>)->Name("Lock_Band/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Lock_Band<SoA>)->Name("Lock_Band/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-template <class LayoutTag>
-static void BM_Lock_Random(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        std::mt19937 rng(SEED);
-        spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-        fill_random<double>(mat, N, nnz, rng);
-        state.ResumeTiming();
-
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Lock_Random<AoS>)->Name("Lock_Random/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Lock_Random<SoA>)->Name("Lock_Random/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
-//  Re-lock benchmark — open() -> insert more -> lock() on an existing matrix
-// ===========================================================================
-
-template <class LayoutTag>
-static void BM_Relock_Strided(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-    const int extra_nnz = std::max(1, nnz / 4);
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_strided<double>(mat, N, nnz, rng);
-    mat.lock();
-
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
-    auto extra_cols = strided_cols(N, extra_nnz);
-
-    for (auto _ : state) {
-        mat.open();
-        for (size_t r = 0; r < N; ++r)
-            for (int k = 0; k < extra_nnz; ++k)
-                mat.insert(static_cast<uint32_t>(r), extra_cols[k], val_dist(rng));
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Relock_Strided<AoS>)->Name("Relock_Strided/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Relock_Strided<SoA>)->Name("Relock_Strided/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-template <class LayoutTag>
-static void BM_Relock_Band(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-    const int extra_nnz = std::max(1, nnz / 4);
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_band<double>(mat, N, nnz, rng);
-    mat.lock();
-
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
-
-    for (auto _ : state) {
-        mat.open();
-        for (size_t r = 0; r < N; ++r) {
-            auto cols = band_cols(r, N, extra_nnz);
-            for (int k = 0; k < extra_nnz; ++k)
-                mat.insert(static_cast<uint32_t>(r), cols[k], val_dist(rng));
-        }
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Relock_Band<AoS>)->Name("Relock_Band/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Relock_Band<SoA>)->Name("Relock_Band/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-template <class LayoutTag>
-static void BM_Relock_Random(benchmark::State &state) {
-    const auto N = static_cast<size_t>(state.range(0));
-    const auto nnz = static_cast<int>(state.range(1));
-    const int extra_nnz = std::max(1, nnz / 4);
-
-    std::mt19937 rng(SEED);
-    spira::matrix<LayoutTag, uint32_t, double> mat(N, N);
-    fill_random<double>(mat, N, nnz, rng);
-    mat.lock();
-
-    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
-
-    for (auto _ : state) {
-        mat.open();
-        for (size_t r = 0; r < N; ++r) {
-            auto cols = random_cols(r, N, extra_nnz);
-            for (int k = 0; k < extra_nnz; ++k)
-                mat.insert(static_cast<uint32_t>(r), cols[k], val_dist(rng));
-        }
-        mat.lock();
-
-        benchmark::DoNotOptimize(&mat);
-    }
-}
-
-BENCHMARK(BM_Relock_Random<AoS>)->Name("Relock_Random/AoS")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-BENCHMARK(BM_Relock_Random<SoA>)->Name("Relock_Random/SoA")->Apply(AllSizesAndDensities)->Unit(benchmark::kNanosecond);
-
-// ===========================================================================
 
 BENCHMARK_MAIN();
