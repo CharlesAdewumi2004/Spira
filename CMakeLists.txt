@@ -180,8 +180,10 @@ endif()
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-    target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    if (NOT WIN32)
+      target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+      target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    endif()
     target_compile_options(unit_tests PRIVATE -fno-omit-frame-pointer)
   endif()
 
