@@ -93,8 +93,10 @@ if (SPIRA_BUILD_TESTS)
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-    target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    if (NOT WIN32)
+      target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+      target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    endif()
   endif()
 
   if (UNIX AND NOT APPLE)
@@ -113,6 +115,7 @@ if (SPIRA_BUILD_BENCHMARKS)
     GIT_TAG        v1.8.4
   )
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_WERROR  OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
   add_executable(spira_bench bench/spira_bench.cpp)
