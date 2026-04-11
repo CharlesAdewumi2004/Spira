@@ -17,15 +17,15 @@
 #include <random>
 #include <vector>
 #if defined(_WIN32)
-#  include <windows.h>
+#include <windows.h>
 #else
-#  include <unistd.h>
+#include <unistd.h>
 #endif
 
 // ---------------------------------------------------------------------------
-static constexpr size_t   N     = 10'000;
-static constexpr size_t   BATCH = 256;
-static constexpr unsigned SEED  = 42;
+static constexpr size_t N = 10'000;
+static constexpr size_t BATCH = 256;
+static constexpr unsigned SEED = 42;
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -34,7 +34,8 @@ static constexpr unsigned SEED  = 42;
 // ---------------------------------------------------------------------------
 static void flush_cache()
 {
-    static const size_t flush_size = [] {
+    static const size_t flush_size = []
+    {
 #if defined(_WIN32)
         size_t llc = 32UL * 1024 * 1024;
         DWORD len = 0;
@@ -61,13 +62,17 @@ static void flush_cache()
 // ---------------------------------------------------------------------------
 // Matrix type: SoA layout, double — SIMD double kernel inactive in stage 1.
 // ---------------------------------------------------------------------------
-using L   = spira::layout::tags::soa_tag;
+using L = spira::layout::tags::soa_tag;
 using Mat = spira::matrix<L, uint32_t, double>;
 
 // ---------------------------------------------------------------------------
 // Triple generation
 // ---------------------------------------------------------------------------
-struct Triple { uint32_t row, col; double val; };
+struct Triple
+{
+    uint32_t row, col;
+    double val;
+};
 
 static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
 {
@@ -75,12 +80,15 @@ static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
     v.reserve(N * nnz_per_row);
     std::mt19937 rng(SEED);
     std::uniform_real_distribution<double> vd(0.0, 1.0);
-    if (rnd) {
+    if (rnd)
+    {
         std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
         for (size_t r = 0; r < N; ++r)
             for (size_t k = 0; k < nnz_per_row; ++k)
                 v.push_back({static_cast<uint32_t>(r), cd(rng), vd(rng)});
-    } else {
+    }
+    else
+    {
         const size_t stride = std::max<size_t>(N / nnz_per_row, 1);
         for (size_t r = 0; r < N; ++r)
             for (size_t k = 0; k < nnz_per_row; ++k)
@@ -97,12 +105,15 @@ static std::vector<Triple> make_batch(size_t nnz_per_row, bool rnd)
     v.reserve(BATCH);
     std::mt19937 rng(SEED ^ 0xDEADBEEFu);
     std::uniform_real_distribution<double> vd(0.0, 1.0);
-    if (rnd) {
+    if (rnd)
+    {
         std::uniform_int_distribution<uint32_t> rd(0, static_cast<uint32_t>(N - 1));
         std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
         for (size_t k = 0; k < BATCH; ++k)
             v.push_back({rd(rng), cd(rng), vd(rng)});
-    } else {
+    }
+    else
+    {
         const size_t rs = std::max<size_t>(N / BATCH, 1);
         const size_t cs = std::max<size_t>(N / nnz_per_row, 1);
         for (size_t k = 0; k < BATCH; ++k)
@@ -129,15 +140,15 @@ class InsertFixture : public benchmark::Fixture
 {
 public:
     std::unique_ptr<Mat> mat;
-    std::vector<Triple>  batch;
+    std::vector<Triple> batch;
 
     void SetUp(const benchmark::State &state) override
     {
         const size_t nnz = static_cast<size_t>(state.range(0));
-        const bool   rnd = (state.range(1) == 0);
+        const bool rnd = (state.range(1) == 0);
         auto full = make_full_triples(nnz, rnd);
-        batch     = make_batch(nnz, rnd);
-        mat       = std::make_unique<Mat>(N, N);
+        batch = make_batch(nnz, rnd);
+        mat = std::make_unique<Mat>(N, N);
         fill_and_flush(*mat, full);
         mat->set_mode(spira::mode::matrix_mode::insert_heavy);
     }
@@ -147,7 +158,8 @@ public:
 
 BENCHMARK_DEFINE_F(InsertFixture, Insert)(benchmark::State &state)
 {
-    for (auto _ : state) {
+    for (auto _ : state)
+    {
         state.PauseTiming();
         flush_cache();
         state.ResumeTiming();
@@ -156,13 +168,23 @@ BENCHMARK_DEFINE_F(InsertFixture, Insert)(benchmark::State &state)
             mat->insert(t.row, t.col, t.val);
         mat->flush();
     }
+    // Items: inserts processed per second
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(BATCH));
+    // Bytes: each insert writes a (col, val) pair to the buffer (4 + 8 = 12 B)
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(BATCH) *
+        static_cast<int64_t>(sizeof(uint32_t) + sizeof(double)));
 }
 
 BENCHMARK_REGISTER_F(InsertFixture, Insert)
-    ->Args({10,   0})->Args({100,  0})->Args({1000, 0})
-    ->Args({10,   1})->Args({100,  1})->Args({1000, 1})
+    ->Args({10, 0})
+    ->Args({100, 0})
+    ->Args({1000, 0})
+    ->Args({10, 1})
+    ->Args({100, 1})
+    ->Args({1000, 1})
     ->ArgNames({"nnz_per_row", "pattern"})
     ->Unit(benchmark::kNanosecond);
 
@@ -173,14 +195,14 @@ class SpMVFixture : public benchmark::Fixture
 {
 public:
     std::unique_ptr<Mat> mat;
-    std::vector<double>  x, y;
+    std::vector<double> x, y;
 
     void SetUp(const benchmark::State &state) override
     {
         const size_t nnz = static_cast<size_t>(state.range(0));
-        const bool   rnd = (state.range(1) == 0);
+        const bool rnd = (state.range(1) == 0);
         auto full = make_full_triples(nnz, rnd);
-        mat       = std::make_unique<Mat>(N, N);
+        mat = std::make_unique<Mat>(N, N);
         fill_and_flush(*mat, full);
         mat->set_mode(spira::mode::matrix_mode::spmv);
 
@@ -188,7 +210,8 @@ public:
         std::uniform_real_distribution<double> vd(0.0, 1.0);
         x.resize(N);
         y.assign(N, 0.0);
-        for (auto &v : x) v = vd(rng);
+        for (auto &v : x)
+            v = vd(rng);
     }
 
     void TearDown(const benchmark::State &) override { mat.reset(); }
@@ -196,7 +219,8 @@ public:
 
 BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
 {
-    for (auto _ : state) {
+    for (auto _ : state)
+    {
         state.PauseTiming();
         flush_cache();
         state.ResumeTiming();
@@ -206,14 +230,28 @@ BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
         benchmark::ClobberMemory();
     }
     const size_t nnz = static_cast<size_t>(state.range(0));
+    const size_t nnz_tot = N * nnz;
+    // FLOPs: 2 per non-zero (multiply + accumulate)
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
-        static_cast<int64_t>(N) * static_cast<int64_t>(nnz) * 2);
+        static_cast<int64_t>(nnz_tot) * 2);
+    // Memory bandwidth: CSR values (8B) + col indices (4B) + row offsets (8B each)
+    //                   + input vector x (8B) + output vector y (8B)
+    const int64_t bytes_per_iter =
+        static_cast<int64_t>(nnz_tot) * (sizeof(double) + sizeof(uint32_t)) +
+        static_cast<int64_t>(N + 1) * sizeof(size_t) +
+        static_cast<int64_t>(N) * (sizeof(double) + sizeof(double));
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) * bytes_per_iter);
 }
 
 BENCHMARK_REGISTER_F(SpMVFixture, SpMV)
-    ->Args({10,   0})->Args({100,  0})->Args({1000, 0})
-    ->Args({10,   1})->Args({100,  1})->Args({1000, 1})
+    ->Args({10, 0})
+    ->Args({100, 0})
+    ->Args({1000, 0})
+    ->Args({10, 1})
+    ->Args({100, 1})
+    ->Args({1000, 1})
     ->ArgNames({"nnz_per_row", "pattern"})
     ->Unit(benchmark::kNanosecond);
 
