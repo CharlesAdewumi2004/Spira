@@ -127,10 +127,20 @@ BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
     }
-    const size_t nnz = static_cast<size_t>(state.range(0));
+    const size_t nnz     = static_cast<size_t>(state.range(0));
+    const size_t nnz_tot = N * nnz;
+    // FLOPs: 2 per non-zero (multiply + accumulate)
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
-        static_cast<int64_t>(N) * static_cast<int64_t>(nnz) * 2);
+        static_cast<int64_t>(nnz_tot) * 2);
+    // Memory bandwidth: CSR values (8B) + col indices (4B) + row offsets (8B)
+    //                   + input vector x (8B) + output vector y (8B)
+    const int64_t bytes_per_iter =
+        static_cast<int64_t>(nnz_tot) * (sizeof(double) + sizeof(uint32_t)) +
+        static_cast<int64_t>(N + 1)   *  sizeof(size_t) +
+        static_cast<int64_t>(N)       * (sizeof(double) + sizeof(double));
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) * bytes_per_iter);
 }
 
 BENCHMARK_REGISTER_F(SpMVFixture, SpMV)
