@@ -26,5 +26,6 @@
     "editor.tabSize": 4,
     "editor.defaultFormatter": "xaver.clang-format"
 },
-"C_Cpp.errorSquiggles": "enabled"
+"C_Cpp.errorSquiggles": "enabled",
+"cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/"
 }
