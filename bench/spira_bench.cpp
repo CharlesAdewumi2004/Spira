@@ -1,15 +1,13 @@
 // ============================================================================
-// Spira Stage 2 (SIMD Kernels & Hardware Detection) — bench/spira_bench.cpp
+// Spira Stage 1 (MVP) — bench/spira_bench.cpp
 //
-// SpMV only: insertion design is unchanged from Stage 1.
-// The runtime kernel dispatch (AVX-512 > AVX2+FMA > SSE4.2 > NEON > scalar)
-// is installed by dispatch() at program start.  SoA + uint32_t + double
-// selects the SIMD double overload of spira::algorithms::spmv.
+// Benchmarks:
+//   Insert : 256-entry batch → flush() in insert_heavy (hash-map) mode.
+//            Cold LLC before each timed section.
+//   SpMV   : y = A*x on a pre-built, flushed matrix.  Cold LLC each iter.
 //
-// Both AoS and SoA layouts are benchmarked so the SIMD gain is directly
-// visible: SoA picks the SIMD kernel, AoS falls back to scalar.
-//
-// Matrix   : 10 000 × 10 000, double precision.
+// Each benchmark runs for both AoS and SoA layouts so they can be compared
+// directly.  Matrix: 10 000 × 10 000, double precision.
 // Densities: range(0) = nnz_per_row — 10 (0.1 %), 100 (1 %), 1000 (10 %).
 // Patterns : range(1) = 0 random | 1 strided.
 // ============================================================================
@@ -20,19 +18,25 @@
 #include <random>
 #include <vector>
 #if defined(_WIN32)
-#  include <windows.h>
+#include <windows.h>
 #else
-#  include <unistd.h>
+#include <unistd.h>
 #endif
 
 // ---------------------------------------------------------------------------
-static constexpr size_t   N     = 10'000;
-static constexpr unsigned SEED  = 42;
+static constexpr size_t N = 10'000;
+static constexpr size_t BATCH = 256;
+static constexpr unsigned SEED = 42;
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// LLC flush — evict the entire cache before each timed section so every
+// iteration measures cold-cache access patterns.
+// ---------------------------------------------------------------------------
 static void flush_cache()
 {
-    static const size_t flush_size = [] {
+    static const size_t flush_size = []
+    {
 #if defined(_WIN32)
         size_t llc = 32UL * 1024 * 1024;
         DWORD len = 0;
@@ -57,9 +61,7 @@ static void flush_cache()
 }
 
 // ---------------------------------------------------------------------------
-// Layout aliases.
-// SoA + uint32_t + double → picks the sparse_dot_double SIMD overload.
-// AoS + uint32_t + double → scalar fallback path.
+// Layout aliases — SIMD double kernel inactive in stage 1.
 // ---------------------------------------------------------------------------
 using AoS = spira::layout::tags::aos_tag;
 using SoA = spira::layout::tags::soa_tag;
@@ -67,7 +69,14 @@ using SoA = spira::layout::tags::soa_tag;
 template <typename LayoutTag>
 using Mat = spira::matrix<LayoutTag, uint32_t, double>;
 
-struct Triple { uint32_t row, col; double val; };
+// ---------------------------------------------------------------------------
+// Triple generation
+// ---------------------------------------------------------------------------
+struct Triple
+{
+    uint32_t row, col;
+    double val;
+};
 
 static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
 {
@@ -75,12 +84,15 @@ static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
     v.reserve(N * nnz_per_row);
     std::mt19937 rng(SEED);
     std::uniform_real_distribution<double> vd(0.0, 1.0);
-    if (rnd) {
+    if (rnd)
+    {
         std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
         for (size_t r = 0; r < N; ++r)
             for (size_t k = 0; k < nnz_per_row; ++k)
                 v.push_back({static_cast<uint32_t>(r), cd(rng), vd(rng)});
-    } else {
+    }
+    else
+    {
         const size_t stride = std::max<size_t>(N / nnz_per_row, 1);
         for (size_t r = 0; r < N; ++r)
             for (size_t k = 0; k < nnz_per_row; ++k)
@@ -90,6 +102,32 @@ static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
     return v;
 }
 
+// 256-entry incremental batch — same row/col distribution as the full matrix
+static std::vector<Triple> make_batch(size_t nnz_per_row, bool rnd)
+{
+    std::vector<Triple> v;
+    v.reserve(BATCH);
+    std::mt19937 rng(SEED ^ 0xDEADBEEFu);
+    std::uniform_real_distribution<double> vd(0.0, 1.0);
+    if (rnd)
+    {
+        std::uniform_int_distribution<uint32_t> rd(0, static_cast<uint32_t>(N - 1));
+        std::uniform_int_distribution<uint32_t> cd(0, static_cast<uint32_t>(N - 1));
+        for (size_t k = 0; k < BATCH; ++k)
+            v.push_back({rd(rng), cd(rng), vd(rng)});
+    }
+    else
+    {
+        const size_t rs = std::max<size_t>(N / BATCH, 1);
+        const size_t cs = std::max<size_t>(N / nnz_per_row, 1);
+        for (size_t k = 0; k < BATCH; ++k)
+            v.push_back({static_cast<uint32_t>((k * rs) % N),
+                         static_cast<uint32_t>((k * cs) % N), vd(rng)});
+    }
+    return v;
+}
+
+// Build matrix using insert_heavy (hash-map) mode, then flush to slab
 template <typename LayoutTag>
 static void fill_and_flush(Mat<LayoutTag> &mat, const std::vector<Triple> &triples)
 {
@@ -100,8 +138,81 @@ static void fill_and_flush(Mat<LayoutTag> &mat, const std::vector<Triple> &tripl
 }
 
 // ============================================================================
+// Insertion — shared logic, templated on layout
+// ============================================================================
+template <typename LayoutTag>
+class InsertFixtureBase : public benchmark::Fixture
+{
+public:
+    std::unique_ptr<Mat<LayoutTag>> mat;
+    std::vector<Triple> batch;
+
+    void SetUp(const benchmark::State &state) override
+    {
+        const size_t nnz = static_cast<size_t>(state.range(0));
+        const bool rnd = (state.range(1) == 0);
+        auto full = make_full_triples(nnz, rnd);
+        batch = make_batch(nnz, rnd);
+        mat = std::make_unique<Mat<LayoutTag>>(N, N);
+        fill_and_flush(*mat, full);
+        mat->set_mode(spira::mode::matrix_mode::insert_heavy);
+    }
+
+    void TearDown(const benchmark::State &) override { mat.reset(); }
+};
+
+class InsertFixture_SoA : public InsertFixtureBase<SoA> {};
+class InsertFixture_AoS : public InsertFixtureBase<AoS> {};
+
+template <typename LayoutTag>
+static void run_insert(benchmark::State &state,
+                       Mat<LayoutTag> &mat,
+                       const std::vector<Triple> &batch)
+{
+    for (auto _ : state)
+    {
+        state.PauseTiming();
+        flush_cache();
+        state.ResumeTiming();
+
+        for (const auto &t : batch)
+            mat.insert(t.row, t.col, t.val);
+        mat.flush();
+    }
+    state.SetItemsProcessed(
+        static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(BATCH));
+    // Each insert writes a (col, val) pair to the buffer (4 + 8 = 12 B)
+    state.SetBytesProcessed(
+        static_cast<int64_t>(state.iterations()) *
+        static_cast<int64_t>(BATCH) *
+        static_cast<int64_t>(sizeof(uint32_t) + sizeof(double)));
+}
+
+BENCHMARK_DEFINE_F(InsertFixture_SoA, Insert)(benchmark::State &state)
+{
+    run_insert(state, *mat, batch);
+}
+BENCHMARK_DEFINE_F(InsertFixture_AoS, Insert)(benchmark::State &state)
+{
+    run_insert(state, *mat, batch);
+}
+
+#define REGISTER_INSERT(FIXTURE)               \
+    BENCHMARK_REGISTER_F(FIXTURE, Insert)      \
+        ->Args({10, 0})                        \
+        ->Args({100, 0})                       \
+        ->Args({1000, 0})                      \
+        ->Args({10, 1})                        \
+        ->Args({100, 1})                       \
+        ->Args({1000, 1})                      \
+        ->ArgNames({"nnz_per_row", "pattern"}) \
+        ->Unit(benchmark::kNanosecond)
+
+REGISTER_INSERT(InsertFixture_SoA);
+REGISTER_INSERT(InsertFixture_AoS);
+
+// ============================================================================
 // SpMV — shared logic, templated on layout
-// SoA: SIMD kernel active.  AoS: scalar fallback.
 // ============================================================================
 template <typename LayoutTag>
 class SpMVFixtureBase : public benchmark::Fixture
@@ -113,9 +224,9 @@ public:
     void SetUp(const benchmark::State &state) override
     {
         const size_t nnz = static_cast<size_t>(state.range(0));
-        const bool   rnd = (state.range(1) == 0);
+        const bool rnd = (state.range(1) == 0);
         auto full = make_full_triples(nnz, rnd);
-        mat       = std::make_unique<Mat<LayoutTag>>(N, N);
+        mat = std::make_unique<Mat<LayoutTag>>(N, N);
         fill_and_flush(*mat, full);
         mat->set_mode(spira::mode::matrix_mode::spmv);
 
@@ -123,7 +234,8 @@ public:
         std::uniform_real_distribution<double> vd(0.0, 1.0);
         x.resize(N);
         y.assign(N, 0.0);
-        for (auto &v : x) v = vd(rng);
+        for (auto &v : x)
+            v = vd(rng);
     }
 
     void TearDown(const benchmark::State &) override { mat.reset(); }
@@ -139,7 +251,8 @@ static void run_spmv(benchmark::State &state,
                      std::vector<double> &y,
                      size_t nnz_per_row)
 {
-    for (auto _ : state) {
+    for (auto _ : state)
+    {
         state.PauseTiming();
         flush_cache();
         state.ResumeTiming();
@@ -153,12 +266,12 @@ static void run_spmv(benchmark::State &state,
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
         static_cast<int64_t>(nnz_tot) * 2);
-    // Memory bandwidth: CSR values (8B) + col indices (4B) + row offsets (8B)
+    // Memory bandwidth: CSR values (8B) + col indices (4B) + row offsets (8B each)
     //                   + input vector x (8B) + output vector y (8B)
     const int64_t bytes_per_iter =
         static_cast<int64_t>(nnz_tot) * (sizeof(double) + sizeof(uint32_t)) +
-        static_cast<int64_t>(N + 1)   *  sizeof(size_t) +
-        static_cast<int64_t>(N)       * (sizeof(double) + sizeof(double));
+        static_cast<int64_t>(N + 1) * sizeof(size_t) +
+        static_cast<int64_t>(N) * (sizeof(double) + sizeof(double));
     state.SetBytesProcessed(
         static_cast<int64_t>(state.iterations()) * bytes_per_iter);
 }
@@ -174,11 +287,11 @@ BENCHMARK_DEFINE_F(SpMVFixture_AoS, SpMV)(benchmark::State &state)
 
 #define REGISTER_SPMV(FIXTURE)                 \
     BENCHMARK_REGISTER_F(FIXTURE, SpMV)        \
-        ->Args({10,   0})                      \
-        ->Args({100,  0})                      \
+        ->Args({10, 0})                        \
+        ->Args({100, 0})                       \
         ->Args({1000, 0})                      \
-        ->Args({10,   1})                      \
-        ->Args({100,  1})                      \
+        ->Args({10, 1})                        \
+        ->Args({100, 1})                       \
         ->Args({1000, 1})                      \
         ->ArgNames({"nnz_per_row", "pattern"}) \
         ->Unit(benchmark::kNanosecond)
