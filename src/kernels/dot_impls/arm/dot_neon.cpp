@@ -1,5 +1,3 @@
-#include "../src/kernels/runtime_config.hpp"
-
 #if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
 
 #include <arm_neon.h>
