@@ -6,7 +6,10 @@
 // is installed by dispatch() at program start.  SoA + uint32_t + double
 // selects the SIMD double overload of spira::algorithms::spmv.
 //
-// Matrix   : 10 000 × 10 000, SoA layout, double precision.
+// Both AoS and SoA layouts are benchmarked so the SIMD gain is directly
+// visible: SoA picks the SIMD kernel, AoS falls back to scalar.
+//
+// Matrix   : 10 000 × 10 000, double precision.
 // Densities: range(0) = nnz_per_row — 10 (0.1 %), 100 (1 %), 1000 (10 %).
 // Patterns : range(1) = 0 random | 1 strided.
 // ============================================================================
@@ -53,9 +56,16 @@ static void flush_cache()
     (void)sink;
 }
 
-// SoA + double → picks the sparse_dot_double SIMD overload at runtime
-using L   = spira::layout::tags::soa_tag;
-using Mat = spira::matrix<L, uint32_t, double>;
+// ---------------------------------------------------------------------------
+// Layout aliases.
+// SoA + uint32_t + double → picks the sparse_dot_double SIMD overload.
+// AoS + uint32_t + double → scalar fallback path.
+// ---------------------------------------------------------------------------
+using AoS = spira::layout::tags::aos_tag;
+using SoA = spira::layout::tags::soa_tag;
+
+template <typename LayoutTag>
+using Mat = spira::matrix<LayoutTag, uint32_t, double>;
 
 struct Triple { uint32_t row, col; double val; };
 
@@ -80,7 +90,8 @@ static std::vector<Triple> make_full_triples(size_t nnz_per_row, bool rnd)
     return v;
 }
 
-static void fill_and_flush(Mat &mat, const std::vector<Triple> &triples)
+template <typename LayoutTag>
+static void fill_and_flush(Mat<LayoutTag> &mat, const std::vector<Triple> &triples)
 {
     mat.set_mode(spira::mode::matrix_mode::insert_heavy);
     for (const auto &t : triples)
@@ -89,20 +100,22 @@ static void fill_and_flush(Mat &mat, const std::vector<Triple> &triples)
 }
 
 // ============================================================================
-// SpMV — SIMD kernel active for soa_tag + uint32_t + double
+// SpMV — shared logic, templated on layout
+// SoA: SIMD kernel active.  AoS: scalar fallback.
 // ============================================================================
-class SpMVFixture : public benchmark::Fixture
+template <typename LayoutTag>
+class SpMVFixtureBase : public benchmark::Fixture
 {
 public:
-    std::unique_ptr<Mat> mat;
-    std::vector<double>  x, y;
+    std::unique_ptr<Mat<LayoutTag>> mat;
+    std::vector<double> x, y;
 
     void SetUp(const benchmark::State &state) override
     {
         const size_t nnz = static_cast<size_t>(state.range(0));
         const bool   rnd = (state.range(1) == 0);
         auto full = make_full_triples(nnz, rnd);
-        mat       = std::make_unique<Mat>(N, N);
+        mat       = std::make_unique<Mat<LayoutTag>>(N, N);
         fill_and_flush(*mat, full);
         mat->set_mode(spira::mode::matrix_mode::spmv);
 
@@ -116,19 +129,26 @@ public:
     void TearDown(const benchmark::State &) override { mat.reset(); }
 };
 
-BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
+class SpMVFixture_SoA : public SpMVFixtureBase<SoA> {};
+class SpMVFixture_AoS : public SpMVFixtureBase<AoS> {};
+
+template <typename LayoutTag>
+static void run_spmv(benchmark::State &state,
+                     Mat<LayoutTag> &mat,
+                     std::vector<double> &x,
+                     std::vector<double> &y,
+                     size_t nnz_per_row)
 {
     for (auto _ : state) {
         state.PauseTiming();
         flush_cache();
         state.ResumeTiming();
 
-        spira::algorithms::spmv(*mat, x, y);
+        spira::algorithms::spmv(mat, x, y);
         benchmark::DoNotOptimize(y.data());
         benchmark::ClobberMemory();
     }
-    const size_t nnz     = static_cast<size_t>(state.range(0));
-    const size_t nnz_tot = N * nnz;
+    const size_t nnz_tot = N * nnz_per_row;
     // FLOPs: 2 per non-zero (multiply + accumulate)
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
@@ -143,10 +163,27 @@ BENCHMARK_DEFINE_F(SpMVFixture, SpMV)(benchmark::State &state)
         static_cast<int64_t>(state.iterations()) * bytes_per_iter);
 }
 
-BENCHMARK_REGISTER_F(SpMVFixture, SpMV)
-    ->Args({10,   0})->Args({100,  0})->Args({1000, 0})
-    ->Args({10,   1})->Args({100,  1})->Args({1000, 1})
-    ->ArgNames({"nnz_per_row", "pattern"})
-    ->Unit(benchmark::kNanosecond);
+BENCHMARK_DEFINE_F(SpMVFixture_SoA, SpMV)(benchmark::State &state)
+{
+    run_spmv(state, *mat, x, y, static_cast<size_t>(state.range(0)));
+}
+BENCHMARK_DEFINE_F(SpMVFixture_AoS, SpMV)(benchmark::State &state)
+{
+    run_spmv(state, *mat, x, y, static_cast<size_t>(state.range(0)));
+}
+
+#define REGISTER_SPMV(FIXTURE)                 \
+    BENCHMARK_REGISTER_F(FIXTURE, SpMV)        \
+        ->Args({10,   0})                      \
+        ->Args({100,  0})                      \
+        ->Args({1000, 0})                      \
+        ->Args({10,   1})                      \
+        ->Args({100,  1})                      \
+        ->Args({1000, 1})                      \
+        ->ArgNames({"nnz_per_row", "pattern"}) \
+        ->Unit(benchmark::kNanosecond)
+
+REGISTER_SPMV(SpMVFixture_SoA);
+REGISTER_SPMV(SpMVFixture_AoS);
 
 BENCHMARK_MAIN();
