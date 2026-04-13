@@ -66,6 +66,7 @@ namespace spira::buffer::impls
             std::stable_sort(chunk.begin(), chunk.end(), [&](auto const &a, auto const &b)
                              { return key_of(a) < key_of(b); });
 
+            buf_.clear();
             return chunk;
         }
 
