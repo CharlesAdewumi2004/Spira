@@ -16,14 +16,16 @@ namespace spira
     // build_csr<LayoutTag>
     //
     // First-lock construction: two-pass build from a vector of locked rows whose
-    // buffers have been sorted+deduped+filtered by row::lock().
+    // buffers have been sorted+deduped by row::lock_for_compact().
     //
-    //   Pass 1 — walk rows[i].size() to fill offsets[] and sum total nnz.
-    //   Pass 2 — iterate each row's sorted buffer and copy to the CSR arrays.
+    //   Pass 1 — count non-zero entries per row to compute offsets and total nnz.
+    //   Pass 2 — copy non-zero entries into the CSR arrays.
     //            For soa_tag: fills cols[] and vals[] separately.
     //            For aos_tag: fills pairs[] with interleaved {col, val} entries.
     //
-    // Zero values are already filtered by row::lock(); no extra filtering needed.
+    // Zero values are filtered here: lock_for_compact() keeps zeros in the buffer
+    // for merge_csr to consume, but on the first lock there is no old CSR, so
+    // zeros are simply omitted.
     // Precondition: every row in `rows` must be in locked mode.
     // ─────────────────────────────────────────────────────────────────────────────
 
@@ -36,16 +38,27 @@ namespace spira
 
         const std::size_t n_rows = rows.size();
 
+        // Pass 1: count non-zero entries per row and build offsets.
+        thread_local std::vector<std::size_t> row_nz_tl;
+        row_nz_tl.resize(n_rows);
         std::size_t total_nnz = 0;
         for (std::size_t i = 0; i < n_rows; ++i)
-            total_nnz += rows[i].size();
+        {
+            std::size_t cnt = 0;
+            for (const auto &entry : rows[i])
+                if (!traits::ValueTraits<V>::is_zero(entry.second_ref()))
+                    ++cnt;
+            row_nz_tl[i] = cnt;
+            total_nnz += cnt;
+        }
 
         csr_storage<LayoutTag, I, V> csr(n_rows, total_nnz);
 
         csr.offsets[0] = 0;
         for (std::size_t i = 0; i < n_rows; ++i)
-            csr.offsets[i + 1] = csr.offsets[i] + rows[i].size();
+            csr.offsets[i + 1] = csr.offsets[i] + row_nz_tl[i];
 
+        // Pass 2: fill data arrays, skipping zero values.
         if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
         {
             I *cols_ptr = csr.cols.get();
@@ -55,9 +68,12 @@ namespace spira
                 std::size_t k = csr.offsets[i];
                 for (const auto &entry : rows[i])
                 {
-                    cols_ptr[k] = entry.first_ref();
-                    vals_ptr[k] = entry.second_ref();
-                    ++k;
+                    if (!traits::ValueTraits<V>::is_zero(entry.second_ref()))
+                    {
+                        cols_ptr[k] = entry.first_ref();
+                        vals_ptr[k] = entry.second_ref();
+                        ++k;
+                    }
                 }
             }
         }
@@ -69,8 +85,11 @@ namespace spira
                 std::size_t k = csr.offsets[i];
                 for (const auto &entry : rows[i])
                 {
-                    pairs_ptr[k] = {entry.first_ref(), entry.second_ref()};
-                    ++k;
+                    if (!traits::ValueTraits<V>::is_zero(entry.second_ref()))
+                    {
+                        pairs_ptr[k] = {entry.first_ref(), entry.second_ref()};
+                        ++k;
+                    }
                 }
             }
         }
