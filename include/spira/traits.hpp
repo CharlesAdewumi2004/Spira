@@ -43,8 +43,7 @@ namespace spira::traits {
 
     // ---- arithmetic + complex fallback -------------
     template <class V>
-    struct ValueTraits<V, std::enable_if_t<
-        std::is_arithmetic_v<std::remove_cv_t<V>> || is_complex_like_v<V>>> {
+    struct ValueTraits<V, std::enable_if_t<std::is_arithmetic_v<std::remove_cv_t<V>> || is_complex_like_v<V>>> {
 
         using value_type = std::remove_cv_t<V>;
 

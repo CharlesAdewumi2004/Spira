@@ -1,11 +1,22 @@
 {
-    // Use the compile_commands from CMake
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.default.cppStandard": "c++23",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/include",
+    "${workspaceFolder}/build/_deps/boundcraft_repo-src/include",
+    "${workspaceFolder}/build/_deps/unordered_dense-src/include"
+  ],
+  "C_Cpp.codeAnalysis.clangTidy.enabled": false,
 
-    // Make clang-tidy respect the build flags and include paths
-    "C_Cpp.codeAnalysis.clangTidy.useBuildPath": false,
+  // Disable clangd so they don't fight
+  "clangd.enable": false,
 
-    "C_Cpp.codeAnalysis.clangTidy.enabled": false,
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.defaultFormatter": "xaver.clang-format",
+  "editor.formatOnSave": true,
 
     // Optional but nice to be explicit
     "C_Cpp.default.cppStandard": "c++23",

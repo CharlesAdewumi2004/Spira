@@ -1,224 +1,308 @@
 #pragma once
 
-#include <cstddef>
-#include <vector>
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cstddef>
+#include <stdexcept>
+#include <utility>
 
-#include "spira/concepts.hpp"
-#include "spira/traits.hpp"
-#include "layouts/layout_of.hpp"
+#include <spira/concepts.hpp>
+#include <spira/config.hpp>
+#include <spira/matrix/buffer/buffer_tag_traits.hpp>
+#include <spira/matrix/buffer/buffer_base.hpp>
+#include <spira/matrix/buffer/buffer_tag_traits.hpp>
+#include <spira/matrix/buffer/buffer_tags.hpp>
+#include <spira/matrix/storage/csr_storage.hpp>
+#include <spira/matrix/layout/layout_tags.hpp>
+#include <spira/traits.hpp>
 
-namespace spira{
+namespace spira
+{
 
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
+    // ─────────────────────────────────────────────────────────────────────────────
+    // row<LayoutTag, I, V, BufferTag, BufferN>
+    //
+    // Two-mode buffer+CSR design:
+    //
+    //   Open mode  — inserts stage in buffer_ (unsorted, growable).
+    //                Reads check buffer first (last-write wins), then the
+    //                committed CSR slice from the previous lock cycle.
+    //
+    //   Locked mode — buffer_ is sorted, deduplicated, and zero-filtered in-place.
+    //                 matrix::lock() then builds/merges a flat CSR and calls
+    //                 set_csr_slice() to install the slice, then calls
+    //                 clear_buffer_content() to free the staging area.
+    //                 Reads use the CSR slice.
+    //                 For no_compact the CSR slice is never set; reads fall back
+    //                 to the sorted buffer.
+    //
+    // lock()  — sort+dedup+filter buffer in-place; set locked.  O(k log k)
+    // open()  — set flag to open; CSR slice and buffer left as-is.  O(1)
+    //
+    // The CSR slice type depends on LayoutTag (soa_tag -> separate cols/vals
+    // pointers; aos_tag -> interleaved elementPair pointer).  Slice pointers are
+    // owned by the parent matrix::csr_ object and remain valid until the next
+    // lock() call on the matrix (which may reallocate csr_).
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V,
+              class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
+              std::size_t BufferN = 64>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> && layout::ValidLayoutTag<LayoutTag>
     class row
     {
     public:
-        using layout_policy = layout::of::storage_of_t<LayoutTag, I, V>;
+        using buffer_t = buffer::traits::traits_of_type<BufferTag, I, V, BufferN>;
+        using index_type = I;
+        using value_type = V;
+        using size_type = std::size_t;
 
-        row();
-        explicit row(std::size_t reserve_hint, size_t const column_limit);
+        // ─────────────────────────────────────────
+        // Construction
+        // ─────────────────────────────────────────
 
-        [[nodiscard]] bool empty() const noexcept;
-        [[nodiscard]] std::size_t size() const noexcept;
-        [[nodiscard]] std::size_t capacity() const noexcept;
+        row() = default;
 
-        void reserve(std::size_t n);
-        void clear() noexcept;
+        explicit row(size_type column_limit) : column_limit_{column_limit} {}
 
-        void add(I col, const V &val);
-        void remove(I col);
-
-        template <class PairRange>
-        void set_row(const PairRange &pairs);
-
-        [[nodiscard]] bool contains(I col) const;
-        [[nodiscard]] const V *get(I col) const;
-
-        auto begin() noexcept { return storage_.begin(); }
-        auto end() noexcept { return storage_.end();}
-        auto begin() const noexcept { return storage_.begin(); }
-        auto end() const noexcept { return storage_.end(); }
-        auto cbegin() const noexcept { return storage_.cbegin(); }
-        auto cend() const noexcept { return  storage_.cend();}
-
-    private:
-        layout_policy storage_;
-        size_t const column_limit_;
-    };
-
-    // -----------------------------------------------------------------------------
-    // Implementation
-    // -----------------------------------------------------------------------------
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    row<LayoutTag, I, V>::row()
-        : column_limit_(0)
-    {
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    row<LayoutTag, I, V>::row(std::size_t reserve_hint, size_t const column_limit)
-        : column_limit_(column_limit)
-    {
-        storage_.reserve(reserve_hint);
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    bool row<LayoutTag, I, V>::empty() const noexcept
-    {
-        return storage_.empty();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    std::size_t row<LayoutTag, I, V>::size() const noexcept
-    {
-        return storage_.size();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    std::size_t row<LayoutTag, I, V>::capacity() const noexcept
-    {
-        return storage_.capacity();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::reserve(std::size_t n)
-    {
-        storage_.reserve(n);
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::clear() noexcept
-    {
-        storage_.clear();
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::add(I col, const V &val)
-    {
-        if (col >= column_limit_)
-            return;
-
-        const bool is_zero = traits::ValueTraits<V>::is_zero(val);
-        std::size_t pos = storage_.lower_bound(col);
-
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
+        // reserve_hint is accepted for API compatibility; buffer capacity is
+        // controlled by BufferN (the initial vector reserve hint).
+        row(size_type /*reserve_hint*/, size_type column_limit)
+            : column_limit_{column_limit}
         {
-            if (is_zero)
+        }
+
+        // ─────────────────────────────────────────
+        // Mode
+        // ─────────────────────────────────────────
+
+        [[nodiscard]] config::matrix_mode mode() const noexcept { return mode_; }
+        [[nodiscard]] bool is_locked() const noexcept
+        {
+            return mode_ == config::matrix_mode::locked;
+        }
+
+        /// Sort + dedup + filter buffer in-place, then freeze.  O(k log k)
+        void lock()
+        {
+            if (mode_ == config::matrix_mode::locked)
+                return;
+            buffer_.sort_and_dedup();
+            mode_ = config::matrix_mode::locked;
+        }
+
+        /// Sort + dedup buffer in-place (keeping zeros), then freeze.  O(k log k)
+        /// For compact_* policies only: zeros survive to merge_csr, which uses them
+        /// to delete matching old CSR entries via its collision handler.
+        void lock_for_compact()
+        {
+            if (mode_ == config::matrix_mode::locked)
+                return;
+            buffer_.sort_and_dedup_keep_zeros();
+            mode_ = config::matrix_mode::locked;
+        }
+
+        /// Reopen for mutations.  O(1) — CSR slice and buffer left as-is.
+        void open() { mode_ = config::matrix_mode::open; }
+
+        // ─────────────────────────────────────────
+        // CSR slice management (called by matrix)
+        // ─────────────────────────────────────────
+
+        /// Install a layout-appropriate CSR slice from the parent matrix's flat CSR.
+        /// The slice remains valid until the next matrix::lock() call.
+        void set_csr_slice(csr_slice<LayoutTag, I, V> s) noexcept
+        {
+            csr_slice_ = s;
+        }
+
+        /// Detach CSR slice (called at start of matrix::lock() before rebuild).
+        void reset_csr_slice() noexcept { csr_slice_.reset(); }
+
+        /// Clear staging buffer content (but keep allocation).
+        /// Called by matrix::lock() after the CSR has been built.
+        void clear_buffer_content() noexcept { buffer_.clear(); }
+
+        /// Release staging buffer storage (compact_move policy).
+        void release_buffer() noexcept { buffer_t{}.swap(buffer_); }
+
+        // ─────────────────────────────────────────
+        // Size / capacity
+        // ─────────────────────────────────────────
+
+        /// Locked compact_*: csr_slice_.nnz (exact).
+        /// Locked no_compact: buffer_.size() (sorted+deduped, exact).
+        /// Open: csr_slice_.nnz + buffer_.size() (upper bound; buffer may have dups).
+        [[nodiscard]] size_type size() const noexcept
+        {
+            return csr_slice_.nnz + buffer_.size();
+        }
+
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return csr_slice_.nnz == 0 && buffer_.empty();
+        }
+
+        void clear() noexcept
+        {
+            assert(mode_ == config::matrix_mode::open &&
+                   "row::clear() requires open mode");
+            buffer_.clear();
+            // CSR slice not touched — committed history persists.
+        }
+
+        void reserve(size_type /*n*/) noexcept {} // no-op: buffer is growable
+
+        [[nodiscard]] size_type capacity() const noexcept { return 0; }
+
+        // ─────────────────────────────────────────
+        // Mutation (open mode only)
+        // ─────────────────────────────────────────
+
+        void insert(index_type col, const value_type &val)
+        {
+            assert(mode_ == config::matrix_mode::open &&
+                   "row::insert() requires open mode");
+            if (to_size(col) >= column_limit_)
+                throw std::out_of_range("Column index out of range");
+            buffer_.push_back(col, val);
+        }
+
+        // ─────────────────────────────────────────
+        // Queries (both modes)
+        //
+        // Open:   buffer first (reverse linear, last-write wins), then CSR.
+        // Locked: CSR slice if set; else sorted buffer (no_compact fallback).
+        // ─────────────────────────────────────────
+
+        [[nodiscard]] bool contains(index_type col) const
+        {
+            if (mode_ == config::matrix_mode::open)
             {
-                storage_.erase_at(pos);
+                if (buffer_.contains(col))
+                    return true;
+                return csr_slice_.binary_search(col) != nullptr;
+            }
+            // Locked
+            if (csr_slice_.is_set())
+                return csr_slice_.binary_search(col) != nullptr;
+            return buffer_.contains(col);
+        }
+
+        [[nodiscard]] const value_type *get(index_type col) const
+        {
+            if (to_size(col) >= column_limit_)
+                return nullptr;
+            if (mode_ == config::matrix_mode::open)
+            {
+                if (const value_type *p = buffer_.get_ptr(col); p != nullptr)
+                    return p;
+                return csr_slice_.binary_search(col);
+            }
+            // Locked
+            if (csr_slice_.is_set())
+                return csr_slice_.binary_search(col);
+            return buffer_.get_ptr(col);
+        }
+
+        [[nodiscard]] value_type accumulate() const noexcept
+        {
+            if (mode_ == config::matrix_mode::locked)
+            {
+                if (csr_slice_.is_set())
+                    return csr_slice_.accumulate();
+                // no_compact — sorted buffer
+                value_type acc = traits::ValueTraits<value_type>::zero();
+                for (const auto &entry : buffer_)
+                    acc += entry.second_ref();
+                return acc;
+            }
+            // Open mode — buffer (deduped, last-write wins) + CSR entries not
+            // shadowed by the buffer.
+            value_type acc = buffer_.accumulate();
+            if (csr_slice_.is_set())
+            {
+                csr_slice_.for_each([&](I col, V val)
+                                    {
+                    if (!buffer_.contains(col))
+                        acc += val; });
+            }
+            return acc;
+        }
+
+        // ─────────────────────────────────────────
+        // Iteration
+        //
+        // begin()/end() return buffer iterators.
+        //   — In locked mode (before set_csr_slice), buffer is sorted+deduped
+        //     and ready to be consumed by build_csr / merge_csr.
+        //   — In open mode, buffer is unsorted insertion-order.
+        //
+        // for_each_element() (const, locked) iterates the CSR slice if set,
+        // otherwise the sorted buffer (no_compact fallback).
+        // ─────────────────────────────────────────
+
+        auto begin() noexcept { return buffer_.begin(); }
+        auto end() noexcept { return buffer_.end(); }
+        auto begin() const noexcept { return buffer_.begin(); }
+        auto end() const noexcept { return buffer_.end(); }
+        auto cbegin() const noexcept { return buffer_.cbegin(); }
+        auto cend() const noexcept { return buffer_.cend(); }
+
+        template <class Fn>
+        void for_each_element(Fn &&f) const
+        {
+            assert(mode_ == config::matrix_mode::locked &&
+                   "row::for_each_element() requires locked mode");
+            if (csr_slice_.is_set())
+            {
+                csr_slice_.for_each(std::forward<Fn>(f));
             }
             else
             {
-                storage_.value_at(pos) = val;
-            }
-        }
-        else
-        {
-            if (!is_zero)
-            {
-                storage_.insert_at(pos, col, val);
-            }
-        }
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    void row<LayoutTag, I, V>::remove(I col)
-    {
-        if (col >= column_limit_)
-            return;
-
-        std::size_t pos = storage_.lower_bound(col);
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
-        {
-            storage_.erase_at(pos);
-        }
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    template <class PairRange>
-    void row<LayoutTag, I, V>::set_row(const PairRange &pairs)
-    {
-        std::vector<std::pair<I, V>> tmp;
-        tmp.reserve(std::distance(std::begin(pairs), std::end(pairs)));
-
-        for (auto &&p : pairs)
-        {
-            const I c = static_cast<I>(p.first);
-            const V &v = p.second;
-
-            if (c < column_limit_ && !traits::ValueTraits<V>::is_zero(v))
-            {
-                tmp.emplace_back(c, v);
+                for (const auto &entry : buffer_)
+                    std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }
         }
 
-        std::sort(
-            tmp.begin(), tmp.end(),
-            [](auto const &a, auto const &b)
-            {
-                return a.first < b.first;
-            });
-
-        std::vector<std::pair<I, V>> cleaned;
-        cleaned.reserve(tmp.size());
-
-        for (std::size_t i = 0; i < tmp.size();)
+        template <class Fn>
+        void for_each_element(Fn &&f)
         {
-            I c = tmp[i].first;
-            V v = tmp[i].second;
+            assert(mode_ == config::matrix_mode::open &&
+                   "mutable row::for_each_element() requires open mode");
+            for (auto &entry : buffer_)
+                std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
+        }
 
-            std::size_t j = i + 1;
-            while (j < tmp.size() && tmp[j].first == c)
+        /// Iterate committed (CSR slice or sorted buffer) entries, works in any mode.
+        /// Used by scalar multiplication and similar algorithms that need to read
+        /// committed data while in open mode.
+        template <class Fn>
+        void for_each_committed_element(Fn &&f) const
+        {
+            if (csr_slice_.is_set())
             {
-                v = tmp[j].second;
-                ++j;
+                csr_slice_.for_each(std::forward<Fn>(f));
             }
-
-            if (!traits::ValueTraits<V>::is_zero(v))
+            else
             {
-                cleaned.emplace_back(c, v);
+                // no_compact: committed data lives in the sorted buffer.
+                for (const auto &entry : buffer_)
+                    std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }
-
-            i = j;
         }
 
-        storage_.clear();
-        storage_.reserve(cleaned.size());
-
-        for (auto &[c, v] : cleaned)
+    private:
+        static constexpr size_type to_size(index_type i) noexcept
         {
-            storage_.insert_at(storage_.size(), c, v);
-        }
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    bool row<LayoutTag, I, V>::contains(I col) const
-    {
-        if (col >= column_limit_)
-            return false;
-
-        std::size_t pos = storage_.lower_bound(col);
-        return (pos < storage_.size() && storage_.key_at(pos) == col);
-    }
-
-    template <class LayoutTag, concepts::Indexable I, concepts::Valueable V>
-    const V *row<LayoutTag, I, V>::get(I col) const
-    {
-        if (col >= column_limit_)
-            return nullptr;
-
-        std::size_t pos = storage_.lower_bound(col);
-
-        if (pos < storage_.size() && storage_.key_at(pos) == col)
-        {
-            return &storage_.value_at(pos);
+            return static_cast<size_type>(i);
         }
 
-        return nullptr;
-    }
+    private:
+        buffer_t buffer_{};
+        csr_slice<LayoutTag, I, V> csr_slice_{};
+        config::matrix_mode mode_{config::matrix_mode::open};
+        size_type column_limit_{0};
+    };
 
-   
-};
+} // namespace spira

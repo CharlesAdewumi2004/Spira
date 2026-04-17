@@ -1,11 +1,8 @@
 #pragma once
+
+#include <spira/serial/accumulate.hpp>
 #include <spira/serial/matrix_addition.hpp>
 #include <spira/serial/scalars.hpp>
 #include <spira/serial/spgemm.hpp>
 #include <spira/serial/spmv.hpp>
 #include <spira/serial/transpose.hpp>
-#include <spira/config.hpp>
-#include <spira/matrix/matrix.hpp>
-#include <spira/matrix/matrix_operators.hpp>
-#include <spira/kernels/kernels.h>
-#include <spira/serial/accumulate.hpp>

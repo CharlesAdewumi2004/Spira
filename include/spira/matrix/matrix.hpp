@@ -1,207 +1,653 @@
 #pragma once
 
-#include "row.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include <spira/config.hpp>
+#include <spira/matrix/buffer/buffer_base.hpp>
+#include <spira/matrix/buffer/buffer_tag_traits.hpp>
+#include <spira/matrix/storage/csr_build.hpp>
+#include <spira/matrix/storage/csr_storage.hpp>
+#include <spira/matrix/layout/layout_tags.hpp>
+#include <spira/matrix/row.hpp>
+#include <spira/traits.hpp>
 
 namespace spira
 {
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    template <class LayoutTag, concepts::Indexable I = uint32_t,
+              concepts::Valueable V = double,
+              class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
+              std::size_t BufferN = 64,
+              config::lock_policy LP = config::lock_policy::compact_preserve>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
+                 layout::ValidLayoutTag<LayoutTag>
     class matrix
     {
     public:
-        using layout_policy = layout::of::storage_of_t<Layout, I, V>;
         using index_type = I;
         using value_type = V;
+        using storage_type = row<LayoutTag, I, V, BufferTag, BufferN>;
+        using size_type = std::size_t;
+        using shape_type = std::pair<size_type, size_type>;
 
-        explicit matrix(size_t const row_limit, size_t const column_limit);
+        // ─────────────────────────────────────────
+        // Construction / lifetime
+        // ─────────────────────────────────────────
 
-        std::pair<size_t, size_t> get_shape() const noexcept;
-        size_t n_rows() const noexcept;
-        size_t n_cols() const noexcept;
-        size_t row_nnz(I row_index) const;
-        bool empty() const noexcept;
-        size_t nnz() const noexcept;
+        explicit matrix(size_type row_limit, size_type column_limit);
+        matrix(size_type row_limit, size_type column_limit,
+               size_type reserve_per_row);
 
-        void add(I row_index, I col_index, const V &val);
+        ~matrix() = default;
+        matrix(const matrix &) = default;
+        matrix(matrix &&) noexcept = default;
+        matrix &operator=(const matrix &) = default;
+        matrix &operator=(matrix &&) noexcept = default;
 
-        V get(I row_index, I col_index) const;
+        // ─────────────────────────────────────────
+        // Shape
+        // ─────────────────────────────────────────
 
-        void clear() noexcept;
+        [[nodiscard]] shape_type shape() const noexcept;
+        [[nodiscard]] size_type n_rows() const noexcept;
+        [[nodiscard]] size_type n_cols() const noexcept;
 
-        template <class PairRange>
-        void set_row(I row_index, const PairRange &elems);
+        // ─────────────────────────────────────────
+        // Mode transitions
+        // ─────────────────────────────────────────
 
-        bool contains(I row_index, I col_index) const;
+        [[nodiscard]] config::matrix_mode mode() const noexcept;
+        [[nodiscard]] bool is_locked() const noexcept;
+        [[nodiscard]] bool is_open() const noexcept;
 
-        void remove(I row_index, I col_index);
+        /// Sort + deduplicate every row, freeze the matrix.
+        /// After this, no mutations allowed, zero-overhead reads.
+        void lock();
+
+        /// Transition back to mutable. Slab preserved; buffer ready for new inserts.
+        void open();
+
+        // ─────────────────────────────────────────
+        // Queries (both modes via row delegation)
+        // ─────────────────────────────────────────
+
+        /// Open mode: upper bound (slab + buffer). Locked mode: exact deduplicated
+        /// count.
+        [[nodiscard]] size_type row_nnz(index_type row_index) const;
+        [[nodiscard]] bool empty() const noexcept;
+        [[nodiscard]] size_type nnz() const noexcept;
+
+        [[nodiscard]] const storage_type &row_at(index_type row_index) const;
+
+        /// Returns a pointer to the built CSR storage, or nullptr if not yet built.
+        [[nodiscard]] const csr_storage<LayoutTag, I, V> *csr() const noexcept
+        {
+            return csr_ ? &*csr_ : nullptr;
+        }
+
+        [[nodiscard]] bool contains(index_type row_index, index_type col_index) const;
+        [[nodiscard]] value_type get(index_type row_index,
+                                     index_type col_index) const;
+        [[nodiscard]] value_type accumulate(index_type row_index) const;
+
+        // ─────────────────────────────────────────
+        // Mutation (open mode)
+        // ─────────────────────────────────────────
+
+        void insert(index_type row_index, index_type col_index,
+                    const value_type &val);
+        void clear();
+
+        [[nodiscard]] storage_type &row_at_mut(index_type row_index);
+
+        // ─────────────────────────────────────────
+        // Mode-independent
+        // ─────────────────────────────────────────
+
+        void swap(matrix &other) noexcept;
+
+        /// Directly install a pre-built, sorted CSR into the matrix and transition
+        /// to locked mode. Validates that the CSR is well-formed: row count matches,
+        /// offsets are consistent, every row's column indices are strictly sorted
+        /// (ascending, no duplicates), and all column indices are in bounds.
+        /// Throws std::invalid_argument if any check fails.
+        void load_csr(csr_storage<LayoutTag, I, V> &&csr);
+
+        // ─────────────────────────────────────────
+        // Iteration helpers
+        // ─────────────────────────────────────────
 
         template <class Func>
         void for_each_row(Func &&f) const;
 
+        template <class Func>
+        void for_each_row(Func &&f);
+
+        template <class Func>
+        void for_each_nnz_row(Func &&f) const;
+
+        // ─────────────────────────────────────────
+        // Arithmetic (locked mode — returns new matrices)
+        // ─────────────────────────────────────────
+
+        matrix operator+(const matrix &other) const;
+        matrix operator-(const matrix &other) const;
+        matrix &operator+=(const matrix &other);
+        matrix &operator-=(const matrix &other);
+
+        matrix operator*(const matrix &other) const;
+        matrix &operator*=(const matrix &other);
+
+        std::vector<value_type> operator*(const std::vector<value_type> &x) const;
+
+        matrix operator*(value_type s) const;
+        matrix &operator*=(value_type s);
+        matrix operator/(value_type s) const;
+        matrix &operator/=(value_type s);
+
+        matrix operator~() const;
+
     private:
-        std::vector<row<Layout, I, V>> _rows;
-        size_t const _row_limit;
-        size_t const _column_limit;
+        static constexpr size_type to_size(index_type i) noexcept
+        {
+            return static_cast<size_type>(i);
+        }
+
+        void validate_row_index(index_type row_index) const
+        {
+            if (to_size(row_index) >= row_limit_)
+                throw std::out_of_range("spira::matrix: row_index out of range");
+        }
+
+        void validate_col_index(index_type col_index) const
+        {
+            if (to_size(col_index) >= column_limit_)
+                throw std::out_of_range("spira::matrix: col_index out of range");
+        }
+
+    private:
+        config::matrix_mode mode_{config::matrix_mode::open};
+        std::vector<storage_type> rows_{};
+        size_type row_limit_{0};
+        size_type column_limit_{0};
+        std::optional<csr_storage<LayoutTag, I, V>> csr_{};
+        std::vector<bool> dirty_{};
     };
 
-    // -----------------------------------------------------------------------------
-    // Implementation
-    // -----------------------------------------------------------------------------
+    // ═════════════════════════════════════════════
+    // Construction
+    // ═════════════════════════════════════════════
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    matrix<Layout, I, V>::matrix(size_t const row_limit, size_t const column_limit)
-        : _row_limit(row_limit),
-          _column_limit(column_limit)
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    matrix<L, I, V, BT, BN, LP>::matrix(size_type row_limit, size_type column_limit)
+        : matrix(row_limit, column_limit, config::default_row_reserve_hint)
     {
-        _rows.reserve(_row_limit);
-        for (size_t i = 0; i < _row_limit; i++)
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                     layout::ValidLayoutTag<L>
+    matrix<L, I, V, BT, BN, LP>::matrix(size_type row_limit, size_type column_limit,
+                                        size_type reserve_per_row)
+        : mode_{config::matrix_mode::open}, rows_{}, row_limit_{row_limit},
+          column_limit_{column_limit}, dirty_(row_limit, false)
+    {
+        rows_.reserve(row_limit_);
+        for (size_type r = 0; r < row_limit_; ++r)
         {
-            _rows.emplace_back(column_limit, column_limit);
+            rows_.emplace_back(reserve_per_row, column_limit_);
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    std::pair<size_t, size_t> matrix<Layout, I, V>::get_shape() const noexcept
+    // ═════════════════════════════════════════════
+    // Shape
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::shape() const noexcept -> shape_type
     {
-        return std::make_pair(_row_limit, _column_limit);
+        return {row_limit_, column_limit_};
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::n_rows() const noexcept
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::n_rows() const noexcept -> size_type
     {
-        return _row_limit;
+        return row_limit_;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::n_cols() const noexcept
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::n_cols() const noexcept -> size_type
     {
-        return _column_limit;
+        return column_limit_;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::row_nnz(I row_index) const
+    // ═════════════════════════════════════════════
+    // Mode transitions
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::mode() const noexcept -> config::matrix_mode
     {
-        if (row_index >= _row_limit)
+        return mode_;
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    bool matrix<L, I, V, BT, BN, LP>::is_locked() const noexcept
+    {
+        return mode_ == config::matrix_mode::locked;
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    bool matrix<L, I, V, BT, BN, LP>::is_open() const noexcept
+    {
+        return mode_ == config::matrix_mode::open;
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::lock()
+    {
+        if (mode_ == config::matrix_mode::locked)
+            return;
+
+        // Detach stale CSR slice pointers before rebuilding.
+        for (auto &r : rows_)
+            r.reset_csr_slice();
+
+        // Sort + dedup each row's buffer in-place.
+        // compact_* keeps zeros so merge_csr can use them as deletion signals.
+        if constexpr (LP == config::lock_policy::compact_preserve ||
+                      LP == config::lock_policy::compact_move)
         {
-            throw std::out_of_range("Input is out of range of the matrix");
+            for (auto &r : rows_)
+                r.lock_for_compact();
         }
-        return _rows[row_index].size();
-    }
-
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    bool matrix<Layout, I, V>::empty() const noexcept
-    {
-        for (auto const &row : _rows)
+        else
         {
-            if (row.size() != 0)
+            for (auto &r : rows_)
+                r.lock();
+        }
+
+        mode_ = config::matrix_mode::locked;
+
+        if constexpr (LP == config::lock_policy::compact_preserve ||
+                      LP == config::lock_policy::compact_move)
+        {
+            // Build or merge the flat CSR (layout-appropriate).
+            if (csr_)
+                csr_ = merge_csr<L>(rows_, std::move(*csr_), dirty_);
+            else
+                csr_ = build_csr<L>(rows_);
+
+            // Install layout-appropriate CSR slices on every row.
+            const std::size_t *off = csr_->offsets.get();
+            if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
             {
-                return false;
+                const I *cols_flat = csr_->cols.get();
+                const V *vals_flat = csr_->vals.get();
+                for (std::size_t i = 0; i < rows_.size(); ++i)
+                    rows_[i].set_csr_slice(csr_slice<L, I, V>{
+                        cols_flat + off[i], vals_flat + off[i], off[i + 1] - off[i]});
             }
+            else // aos_tag
+            {
+                const auto *pairs_flat = csr_->pairs.get();
+                for (std::size_t i = 0; i < rows_.size(); ++i)
+                    rows_[i].set_csr_slice(csr_slice<L, I, V>{
+                        pairs_flat + off[i], off[i + 1] - off[i]});
+            }
+
+            // Clear staging buffers (data now lives in the flat CSR).
+            for (auto &r : rows_)
+                r.clear_buffer_content();
+
+            if constexpr (LP == config::lock_policy::compact_move)
+            {
+                for (auto &r : rows_)
+                    r.release_buffer();
+            }
+        }
+
+        // All pending changes are now committed; reset dirty flags.
+        std::fill(dirty_.begin(), dirty_.end(), false);
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::open()
+    {
+        if (mode_ == config::matrix_mode::open)
+            return;
+        for (auto &r : rows_)
+            r.open();
+        mode_ = config::matrix_mode::open;
+        // csr_ is intentionally NOT reset: it holds committed history and
+        // will be used as the base for merge_csr() on the next lock().
+    }
+
+    // ═════════════════════════════════════════════
+    // Queries
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::row_nnz(index_type row_index) const -> size_type
+    {
+        validate_row_index(row_index);
+        return rows_[to_size(row_index)].size();
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    bool matrix<L, I, V, BT, BN, LP>::empty() const noexcept
+    {
+        for (const auto &r : rows_)
+        {
+            if (!r.empty())
+                return false;
         }
         return true;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    size_t matrix<Layout, I, V>::nnz() const noexcept
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::nnz() const noexcept -> size_type
     {
-        size_t entries = 0;
-        for (auto const &row : _rows)
+        size_type total = 0;
+        for (const auto &r : rows_)
         {
-            entries += row.size();
+            total += r.size();
         }
-        return entries;
+        return total;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::add(I row_index, I col_index, const V &val)
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::row_at(index_type row_index) const
+        -> const storage_type &
     {
-        if (row_index >= _row_limit)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= _column_limit)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        _rows[row_index].add(col_index, val);
+        validate_row_index(row_index);
+        return rows_[to_size(row_index)];
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    V matrix<Layout, I, V>::get(I row_index, I col_index) const
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, config::lock_policy LP>
+    requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
+    bool matrix<L, I, V, BT, BN, LP>::contains(index_type row_index,index_type col_index) const
     {
-        if (row_index >= _row_limit)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= _column_limit)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-
-        V const *val = _rows[row_index].get(col_index);
-        if (val == nullptr)
-        {
-            return spira::traits::ValueTraits<V>::zero();
-        }
-        return *val;
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+        return rows_[to_size(row_index)].contains(col_index);
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::clear() noexcept
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::get(index_type row_index,
+                                          index_type col_index) const -> value_type
     {
-        for (auto &row : _rows)
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+        const auto *p = rows_[to_size(row_index)].get(col_index);
+        return p ? *p : traits::ValueTraits<value_type>::zero();
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::accumulate(index_type row_index) const
+        -> value_type
+    {
+        validate_row_index(row_index);
+        return rows_[to_size(row_index)].accumulate();
+    }
+
+    // ═════════════════════════════════════════════
+    // Mutation (open mode)
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::insert(index_type row_index, index_type col_index,
+                                             const value_type &val)
+    {
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::insert() requires open mode");
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+        rows_[to_size(row_index)].insert(col_index, val);
+        dirty_[to_size(row_index)] = true;
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::clear()
+    {
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::clear() requires open mode");
+        for (auto &r : rows_)
         {
-            row.clear();
+            r.clear();
+        }
+        std::fill(dirty_.begin(), dirty_.end(), false);
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    auto matrix<L, I, V, BT, BN, LP>::row_at_mut(index_type row_index)
+        -> storage_type &
+    {
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::row_at_mut() requires open mode");
+        validate_row_index(row_index);
+        dirty_[to_size(row_index)] = true;
+        return rows_[to_size(row_index)];
+    }
+
+    // ═════════════════════════════════════════════
+    // Mode-independent
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::swap(matrix &other) noexcept
+    {
+        using std::swap;
+        swap(mode_, other.mode_);
+        swap(rows_, other.rows_);
+        swap(row_limit_, other.row_limit_);
+        swap(column_limit_, other.column_limit_);
+        swap(csr_, other.csr_);
+        swap(dirty_, other.dirty_);
+    }
+
+    // ═════════════════════════════════════════════
+    // load_csr
+    // ═════════════════════════════════════════════
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN, LP>::load_csr(csr_storage<L, I, V> &&csr)
+    {
+        // ── Validation ──────────────────────────────────────────────────────────
+
+        if (csr.n_rows != rows_.size())
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR row count does not match matrix dimensions");
+
+        if (!csr.offsets)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets array is null");
+
+        if (csr.offsets[0] != 0)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets[0] must be zero");
+
+        if (csr.offsets[csr.n_rows] != csr.nnz)
+            throw std::invalid_argument(
+                "spira::matrix::load_csr: CSR offsets[n_rows] does not equal nnz");
+
+        for (std::size_t i = 0; i < csr.n_rows; ++i)
+        {
+            const std::size_t beg = csr.offsets[i];
+            const std::size_t end = csr.offsets[i + 1];
+
+            if (beg > end)
+                throw std::invalid_argument(
+                    "spira::matrix::load_csr: CSR offsets are not non-decreasing");
+
+            if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+            {
+                const I *cols = csr.cols.get();
+                for (std::size_t k = beg; k < end; ++k)
+                {
+                    if (static_cast<size_type>(cols[k]) >= column_limit_)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: column index out of bounds");
+                    if (k > beg && cols[k] <= cols[k - 1])
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: CSR row entries are not strictly sorted by column");
+                }
+            }
+            else // aos_tag
+            {
+                const auto *pairs = csr.pairs.get();
+                for (std::size_t k = beg; k < end; ++k)
+                {
+                    if (static_cast<size_type>(pairs[k].column) >= column_limit_)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: column index out of bounds");
+                    if (k > beg && pairs[k].column <= pairs[k - 1].column)
+                        throw std::invalid_argument(
+                            "spira::matrix::load_csr: CSR row entries are not strictly sorted by column");
+                }
+            }
+        }
+
+        // ── Install ─────────────────────────────────────────────────────────────
+
+        for (auto &r : rows_)
+        {
+            r.reset_csr_slice();
+            r.lock(); // marks each row locked (no-op sort on empty buffer)
+        }
+
+        csr_ = std::move(csr);
+        mode_ = config::matrix_mode::locked;
+
+        const std::size_t *off = csr_->offsets.get();
+        if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+        {
+            const I *cols_flat = csr_->cols.get();
+            const V *vals_flat = csr_->vals.get();
+            for (std::size_t i = 0; i < rows_.size(); ++i)
+                rows_[i].set_csr_slice(
+                    csr_slice<L, I, V>{cols_flat + off[i], vals_flat + off[i],
+                                       off[i + 1] - off[i]});
+        }
+        else
+        {
+            const auto *pairs_flat = csr_->pairs.get();
+            for (std::size_t i = 0; i < rows_.size(); ++i)
+                rows_[i].set_csr_slice(
+                    csr_slice<L, I, V>{pairs_flat + off[i], off[i + 1] - off[i]});
         }
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    template <class PairRange>
-    void matrix<Layout, I, V>::set_row(I row_index, const PairRange &elems)
-    {
-        if (row_index >= _row_limit)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        _rows[row_index].set_row(elems);
-    }
+    // ═════════════════════════════════════════════
+    // Iteration helpers
+    // ═════════════════════════════════════════════
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    bool matrix<Layout, I, V>::contains(I row_index, I col_index) const
-    {
-        if (row_index >= _row_limit)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= _column_limit)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        return _rows[row_index].contains(col_index);
-    }
-
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    void matrix<Layout, I, V>::remove(I row_index, I col_index)
-    {
-        if (row_index >= _row_limit)
-        {
-            throw std::out_of_range("Row index out of range");
-        }
-        if (col_index >= _column_limit)
-        {
-            throw std::out_of_range("Column index out of range");
-        }
-        _rows[row_index].remove(col_index);
-    }
-
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
     template <class Func>
-    void matrix<Layout, I, V>::for_each_row(Func &&f) const
+    void matrix<L, I, V, BT, BN, LP>::for_each_row(Func &&f) const
     {
-        for (size_t i = 0; i < _row_limit; i++)
+        for (size_type i = 0; i < row_limit_; ++i)
         {
-            f(_rows[i], i);
+            f(rows_[i], static_cast<index_type>(i));
         }
     }
 
-}
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    template <class Func>
+    void matrix<L, I, V, BT, BN, LP>::for_each_row(Func &&f)
+    {
+        for (size_type i = 0; i < row_limit_; ++i)
+        {
+            f(rows_[i], static_cast<index_type>(i));
+        }
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN, config::lock_policy LP>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    template <class Func>
+    void matrix<L, I, V, BT, BN, LP>::for_each_nnz_row(Func &&f) const
+    {
+        for (size_type i = 0; i < row_limit_; ++i)
+        {
+            if (!rows_[i].empty())
+            {
+                f(rows_[i], static_cast<index_type>(i));
+            }
+        }
+    }
+
+} // namespace spira
