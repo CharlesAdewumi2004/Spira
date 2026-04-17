@@ -70,6 +70,36 @@ namespace spira::buffer::impls
             return acc;
         }
 
+        /// Sort by column, deduplicate (last-write wins), keeping zero values.
+        /// Identical to sort_and_dedup() but zeros are not removed, so that
+        /// merge_csr can see them as deletion signals during compact_* lock cycles.
+        void sort_and_dedup_keep_zeros() const
+        {
+            if (buf_.empty())
+                return;
+
+            std::reverse(buf_.begin(), buf_.end());
+            std::stable_sort(buf_.begin(), buf_.end(), [](const auto &a, const auto &b)
+                             { return a.first_ref() < b.first_ref(); });
+
+            auto write = buf_.begin();
+            I last_col{};
+            bool first = true;
+            for (const auto &e : buf_)
+            {
+                if (!first && e.first_ref() == last_col)
+                    continue;
+                last_col = e.first_ref();
+                first = false;
+                *write++ = e;
+            }
+            buf_.erase(write, buf_.end());
+
+            index_.clear();
+            for (std::size_t i = 0; i < buf_.size(); ++i)
+                index_[buf_[i].column] = i;
+        }
+
         /// Sort by column, deduplicate (last-write wins), and filter zero values.
         /// No temporary allocations: after reverse+stable_sort the dedup and
         /// zero-filter step uses an in-place write pointer (write <= read always).

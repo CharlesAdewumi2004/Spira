@@ -204,6 +204,75 @@ TEST(LockBehaviorTest, ZeroValueFilteredDuringLock_SOA) {
     EXPECT_FALSE(mat.contains(0, 2));
 }
 
+// ── Zero-insert on second lock deletes a committed CSR entry ─────────────────
+// Regression for the bug where sort_and_dedup() stripped zeros before merge_csr
+// could see them, leaving old CSR entries alive after a zero-insert deletion.
+
+TEST(LockBehaviorTest, ZeroInsertDeletesCommittedEntry_AOS) {
+    using I = std::size_t;
+    using V = double;
+    spira::matrix<spira::layout::tags::aos_tag, I, V> mat(1, 10);
+
+    // Cycle 1: commit a non-zero entry.
+    mat.insert(0, 3, 7.0);
+    mat.lock();
+    ASSERT_EQ(mat.row_nnz(0), 1u);
+    ASSERT_DOUBLE_EQ(mat.get(0, 3), 7.0);
+
+    // Cycle 2: zero-insert the same column to delete it.
+    mat.open();
+    mat.insert(0, 3, 0.0);
+    mat.lock();
+
+    EXPECT_EQ(mat.row_nnz(0), 0u);
+    EXPECT_FALSE(mat.contains(0, 3));
+    EXPECT_DOUBLE_EQ(mat.get(0, 3), 0.0);
+    EXPECT_EQ(mat.nnz(), 0u);
+}
+
+TEST(LockBehaviorTest, ZeroInsertDeletesCommittedEntry_SOA) {
+    using I = std::size_t;
+    using V = double;
+    spira::matrix<spira::layout::tags::soa_tag, I, V> mat(1, 10);
+
+    mat.insert(0, 5, 3.0);
+    mat.insert(0, 6, 4.0);
+    mat.lock();
+    ASSERT_EQ(mat.row_nnz(0), 2u);
+
+    mat.open();
+    mat.insert(0, 5, 0.0); // delete col 5, keep col 6
+    mat.lock();
+
+    EXPECT_EQ(mat.row_nnz(0), 1u);
+    EXPECT_FALSE(mat.contains(0, 5));
+    EXPECT_DOUBLE_EQ(mat.get(0, 6), 4.0);
+    EXPECT_EQ(mat.nnz(), 1u);
+}
+
+TEST(LockBehaviorTest, ZeroInsertDeletesAllCommittedEntries_AOS) {
+    using I = std::size_t;
+    using V = double;
+    spira::matrix<spira::layout::tags::aos_tag, I, V> mat(2, 10);
+
+    mat.insert(0, 1, 1.0);
+    mat.insert(0, 2, 2.0);
+    mat.insert(1, 3, 3.0);
+    mat.lock();
+    ASSERT_EQ(mat.nnz(), 3u);
+
+    mat.open();
+    mat.insert(0, 1, 0.0);
+    mat.insert(0, 2, 0.0);
+    mat.insert(1, 3, 0.0);
+    mat.lock();
+
+    EXPECT_EQ(mat.nnz(), 0u);
+    EXPECT_FALSE(mat.contains(0, 1));
+    EXPECT_FALSE(mat.contains(0, 2));
+    EXPECT_FALSE(mat.contains(1, 3));
+}
+
 // ── Reads in open mode use buffer-first then slab ────────────────────────────
 
 TEST(LockBehaviorTest, OpenModeGet_BufferFirst_ThenSlab) {

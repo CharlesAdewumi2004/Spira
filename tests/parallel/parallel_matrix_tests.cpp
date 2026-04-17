@@ -188,6 +188,30 @@ TEST(ParallelMatrixLock, MultipleInsertLockOpenCycles)
     EXPECT_DOUBLE_EQ(m.get(0, 0u), 10.0); // buffer value replaces committed CSR value
 }
 
+TEST(ParallelMatrixLock, ZeroInsertDeletesCommittedEntry)
+{
+    // Regression: zero-value inserts used as deletions were silently ignored
+    // because sort_and_dedup() stripped them before merge_csr could see them.
+    pmat<> m(8, 8, 2);
+
+    // Cycle 1: commit entries.
+    m.insert(0, 1u, 5.0);
+    m.insert(0, 2u, 6.0);
+    m.insert(4, 4u, 9.0);
+    m.lock();
+    ASSERT_EQ(m.nnz(), 3u);
+
+    // Cycle 2: delete col 1 from row 0, leave col 2 and row 4 intact.
+    m.open();
+    m.insert(0, 1u, 0.0);
+    m.lock();
+
+    EXPECT_EQ(m.nnz(), 2u);
+    EXPECT_FALSE(m.contains(0, 1u));
+    EXPECT_DOUBLE_EQ(m.get(0, 2u), 6.0);
+    EXPECT_DOUBLE_EQ(m.get(4, 4u), 9.0);
+}
+
 TEST(ParallelMatrixLock, ClearRemovesPendingBufferInserts)
 {
     pmat<> m(8, 8, 2);

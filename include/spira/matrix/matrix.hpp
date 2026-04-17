@@ -283,9 +283,19 @@ namespace spira
         for (auto &r : rows_)
             r.reset_csr_slice();
 
-        // Sort + dedup + filter each row's buffer in-place.
-        for (auto &r : rows_)
-            r.lock();
+        // Sort + dedup each row's buffer in-place.
+        // compact_* keeps zeros so merge_csr can use them as deletion signals.
+        if constexpr (LP == config::lock_policy::compact_preserve ||
+                      LP == config::lock_policy::compact_move)
+        {
+            for (auto &r : rows_)
+                r.lock_for_compact();
+        }
+        else
+        {
+            for (auto &r : rows_)
+                r.lock();
+        }
 
         mode_ = config::matrix_mode::locked;
 
