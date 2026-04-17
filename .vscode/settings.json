@@ -18,14 +18,23 @@
   "editor.defaultFormatter": "xaver.clang-format",
   "editor.formatOnSave": true,
 
-  "[cpp]": {
-    "editor.tabSize": 4,
-    "editor.defaultFormatter": "ms-vscode.cpptools"
-  },
-  "[c]": {
-    "editor.tabSize": 4,
-    "editor.defaultFormatter": "xaver.clang-format"
-},
-"C_Cpp.errorSquiggles": "enabled",
-"cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/"
+    // Optional but nice to be explicit
+    "C_Cpp.default.cppStandard": "c++23",
+    "C_Cpp.default.compilerPath": "/usr/bin/g++",
+    "vim.statusBarColorControl": true,
+    "vim.statusBarModeText": true,
+    "vim.modeStatusColorMap": {
+        "normal": "#005f5f",
+        "insert": "#00875f",
+        "visual": "#af005f",
+        "visualLine": "#af0000",
+        "visualBlock": "#8700af",
+        "replace": "#ff0000"
+    },
+    "vim.cursorStylePerMode.normal": "block",
+    "vim.cursorStylePerMode.insert": "line",
+    "vim.cursorStylePerMode.visual": "block",
+    "vim.showMarks": true,
+    "cquery.cacheDirectory": "${workspaceFolder}/.vscode/cquery_cached_index/",
+
 }
