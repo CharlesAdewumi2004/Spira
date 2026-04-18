@@ -1,0 +1,172 @@
+@startuml class-diagram
+title Spira core class diagram
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam classFontStyle bold
+skinparam linetype ortho
+
+' ---- Concept / constraint layer ----
+package "concepts & traits" {
+    class "concepts::Indexable <<concept>>" as Indexable <<concept>> {
+        +unsigned integral
+        +sizeof >= 4
+    }
+    class "concepts::Valueable <<concept>>" as Valueable <<concept>> {
+        +arithmetic ops
+        +ValueTraits::zero()
+        +ValueTraits::is_zero(x)
+    }
+    class "traits::ValueTraits<V>" as ValueTraits {
+        +{static} zero() : V
+        +{static} is_zero(x) : bool
+    }
+    class "layout::ValidLayoutTag <<concept>>" as ValidLayoutTag <<concept>> {
+        +aos_tag or soa_tag
+    }
+}
+
+' ---- Layout and buffer tags ----
+package "layout & buffer tags" {
+    class "layout::tags::aos_tag" as aos_tag <<tag>> {}
+    class "layout::tags::soa_tag" as soa_tag <<tag>> {}
+    class "elementPair<I,V>" as elementPair {
+        +column : I
+        +value  : V
+    }
+    class "buffer::tags::array_buffer<LP>" as array_buffer_tag <<tag>> {}
+    class "buffer::tags::hash_map_buffer" as hash_map_buffer_tag <<tag>> {}
+}
+
+' ---- Buffer hierarchy (CRTP) ----
+package "buffers" {
+    abstract class "base_buffer<Derived,I,V>" as base_buffer {
+        +empty() : bool
+        +size() : size_t
+        +push_back(col, val)
+        +contains(col) : bool
+        +get_ptr(col) : V*
+        +accumulate() : V
+        +sort_and_dedup()
+    }
+    class "aos_array_buffer<I,V,N>" as aos_buffer {
+        -buf_   : vector<elementPair>
+        -index_ : unordered_dense::map
+    }
+    class "soa_array_buffer<I,V,N>" as soa_buffer {
+        -col_   : vector<I>
+        -val_   : vector<V>
+        -index_ : unordered_dense::map
+    }
+    class "hash_map_buffer<I,V>" as hash_buffer {
+        -map_ : unordered_dense::map
+    }
+}
+base_buffer <|-- aos_buffer
+base_buffer <|-- soa_buffer
+base_buffer <|-- hash_buffer
+
+' ---- CSR storage ----
+package "CSR storage" {
+    class "csr_storage<L,I,V>" as csr_storage {
+        +n_rows : size_t
+        +nnz    : size_t
+        +offsets : unique_ptr<size_t[]>
+        +..SoA..
+        +cols   : aligned buf<I>
+        +vals   : aligned buf<V>
+        +..AoS..
+        +pairs  : aligned buf<elementPair>
+    }
+    class "csr_slice<L,I,V>" as csr_slice {
+        +binary_search(col) : const V*
+        +for_each_element(f)
+        +accumulate() : V
+    }
+    csr_slice ..> csr_storage : non-owning view
+}
+
+' ---- Row ----
+class "row<L,I,V,BufferTag,BufferN>" as row {
+    -buffer_  : Buffer
+    -slice_   : csr_slice
+    -mode_    : matrix_mode
+    +insert(col, val)
+    +get(col) : V
+    +contains(col) : bool
+    +row_nnz() : size_t
+    +lock()
+    +open()
+    +set_csr_slice(slice)
+    +for_each_element(f)
+}
+row *-- "1" base_buffer : holds
+row o-- "1" csr_slice   : view
+
+' ---- Matrix ----
+class "matrix<L,I,V,BufferTag,BufferN,LP>" as matrix {
+    -rows_   : vector<row>
+    -csr_    : csr_storage
+    -dirty_  : vector<bool>
+    -mode_   : matrix_mode
+    +insert(r,c,v)
+    +get(r,c) : V
+    +contains(r,c) : bool
+    +row_nnz(r) : size_t
+    +lock()
+    +open()
+    +csr() : const csr_storage*
+    +load_csr(csr_storage&&)
+    +for_each_row(f)
+    +for_each_nnz_row(f)
+}
+matrix *-- "N" row
+matrix *-- "1" csr_storage
+
+' ---- Parallel ----
+class "partition<L,I,V,BufferTag,BufferN,LP>" as partition {
+    +row_start : size_t
+    +row_end   : size_t
+    -rows : vector<row>
+    -csr  : csr_storage
+    -dirty : vector<bool>
+    +lock()
+    +open()
+}
+partition *-- "N" row
+partition *-- "1" csr_storage
+
+class "thread_pool" as pool {
+    -n_threads : size_t
+    -generation_ : size_t
+    -finished_   : atomic<size_t>
+    -done_       : binary_semaphore
+    -threads_    : vector<jthread>
+    +execute(fn)
+    +size() : size_t
+}
+
+class "parallel_matrix<L,I,V,BufferTag,BufferN,LP,IP,StagingN>" as pmat {
+    -partitions_ : vector<partition>
+    -pool_       : unique_ptr<thread_pool>
+    -staging_    : vector<staging_array>
+    +insert(r,c,v)
+    +lock()
+    +open()
+    +parallel_fill(fn)
+    +rebalance()
+    +partition_at(tid)
+}
+pmat *-- "N" partition
+pmat *-- "1" pool
+
+' ---- Relationships ----
+Valueable ..> ValueTraits
+aos_tag   ..> ValidLayoutTag
+soa_tag   ..> ValidLayoutTag
+aos_buffer ..> aos_tag
+aos_buffer ..> elementPair
+soa_buffer ..> soa_tag
+
+@enduml

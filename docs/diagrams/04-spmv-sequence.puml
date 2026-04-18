@@ -1,0 +1,80 @@
+@startuml spmv-sequence
+title Sequence: parallel SpMV dispatching to SIMD kernel
+
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.2
+skinparam roundCorner 6
+
+actor User
+participant "parallel::algorithms::spmv" as PSpMV
+participant "parallel_matrix" as PM
+participant "thread_pool" as Pool
+participant "worker[tid]" as W
+participant "partition[tid]" as P
+participant "csr_slice[row i]" as Slice
+participant "kernel::sparse_dot_float\n(function pointer)" as FP
+participant "sparse_dot_float_avx\n(or other impl)" as KImpl
+
+User -> PSpMV : spmv(A, x, y)
+activate PSpMV
+PSpMV -> PM : partitions, pool
+PSpMV -> Pool : execute(lambda)
+activate Pool
+Pool -> Pool : move fn_ under start_mtx_\nbump generation\nnotify_all
+deactivate Pool
+
+== parallel region ==
+
+group each worker (thread_id = tid)
+    Pool -> W : wake on generation change
+    activate W
+    W -> P : partitions[tid]
+    activate P
+
+    loop for i in [0, partition.size)
+        W -> Slice : csr_slice for row i
+        activate Slice
+        Slice --> W : cols[], vals[], nnz
+        deactivate Slice
+
+        alt SoA + uint32_t + float|double
+            W -> FP : sparse_dot_float(vals, cols, x, nnz, N)
+            activate FP
+            FP -> KImpl : indirect call via function pointer
+            activate KImpl
+            KImpl -> KImpl : unrolled FMA loop\n4 accumulators, scalar gather\nscalar tail
+            KImpl --> FP : dot result
+            deactivate KImpl
+            FP --> W : result
+            deactivate FP
+        else any other type combo
+            W -> Slice : for_each_element(f)
+            activate Slice
+            Slice --> W : accumulated result (scalar)
+            deactivate Slice
+        end
+
+        W -> W : y[row_start + i] = result
+    end
+
+    W -> Pool : finished_.fetch_add(1)
+    alt last worker
+        W -> Pool : done_.release()
+    end
+    deactivate P
+    deactivate W
+end
+
+== rejoin ==
+
+Pool -> PSpMV : done_.acquire() returns
+PSpMV --> User : y populated
+deactivate PSpMV
+
+note right of FP
+    Function pointer assigned at
+    program load by dispatch.cpp.
+    No branch on hot path.
+end note
+
+@enduml
