@@ -45,6 +45,11 @@ namespace spira::buffer
         /// After this call the buffer is sorted, unique, and zero-free.
         void sort_and_dedup() { self().sort_and_dedup(); }
 
+        /// Sort by column and deduplicate (last-write wins), keeping zero values.
+        /// Used by compact_* lock policies so that zero-value inserts (deletions)
+        /// survive into merge_csr, which performs its own zero-filtering.
+        void sort_and_dedup_keep_zeros() { self().sort_and_dedup_keep_zeros(); }
+
         [[nodiscard]] auto begin() noexcept { return self().begin_impl(); }
         [[nodiscard]] auto end() noexcept { return self().end_impl(); }
         [[nodiscard]] auto begin() const noexcept { return self().begin_impl(); }

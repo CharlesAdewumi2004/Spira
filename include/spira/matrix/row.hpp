@@ -91,6 +91,17 @@ namespace spira
             mode_ = config::matrix_mode::locked;
         }
 
+        /// Sort + dedup buffer in-place (keeping zeros), then freeze.  O(k log k)
+        /// For compact_* policies only: zeros survive to merge_csr, which uses them
+        /// to delete matching old CSR entries via its collision handler.
+        void lock_for_compact()
+        {
+            if (mode_ == config::matrix_mode::locked)
+                return;
+            buffer_.sort_and_dedup_keep_zeros();
+            mode_ = config::matrix_mode::locked;
+        }
+
         /// Reopen for mutations.  O(1) — CSR slice and buffer left as-is.
         void open() { mode_ = config::matrix_mode::open; }
 

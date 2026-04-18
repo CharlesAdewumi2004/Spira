@@ -87,6 +87,69 @@ namespace spira::buffer::impls
             return acc;
         }
 
+        /// Sort by column, deduplicate (last-write wins), keeping zero values.
+        /// Identical to sort_and_dedup() but zeros are not removed, so that
+        /// merge_csr can see them as deletion signals during compact_* lock cycles.
+        void sort_and_dedup_keep_zeros() const
+        {
+            const std::size_t sz = col_.size();
+            if (sz == 0)
+                return;
+
+            thread_local std::vector<size_type> idx;
+            idx.resize(sz);
+            for (size_type i = 0; i < sz; ++i)
+                idx[i] = sz - 1 - i;
+
+            std::stable_sort(idx.begin(), idx.end(),
+                             [&](size_type a, size_type b)
+                             { return col_[a] < col_[b]; });
+
+            for (std::size_t i = 0; i < sz; ++i)
+            {
+                if (idx[i] == i)
+                    continue;
+                I tmp_col = col_[i];
+                V tmp_val = val_[i];
+                std::size_t j = i;
+                while (idx[j] != i)
+                {
+                    col_[j] = col_[idx[j]];
+                    val_[j] = val_[idx[j]];
+                    const std::size_t k = idx[j];
+                    idx[j] = j;
+                    j = k;
+                }
+                col_[j] = tmp_col;
+                val_[j] = tmp_val;
+                idx[j] = j;
+            }
+
+            // Compact in-place: dedup only, no zero-filter.
+            std::size_t write = 0;
+            I last_col{};
+            bool first = true;
+            for (std::size_t i = 0; i < sz; ++i)
+            {
+                if (!first && col_[i] == last_col)
+                    continue;
+                last_col = col_[i];
+                first = false;
+                if (write != i)
+                {
+                    col_[write] = col_[i];
+                    val_[write] = val_[i];
+                }
+                ++write;
+            }
+            col_.resize(write);
+            val_.resize(write);
+
+            index_.clear();
+            for (std::size_t i = 0; i < col_.size(); ++i)
+                index_[col_[i]] = i;
+        }
+
         /// Sort by column, deduplicate (last-write wins), and filter zero values.
         /// Only one allocation (idx). The sort permutation is applied to col_/val_
         /// in-place via cycle decomposition, then dedup+filter uses a write pointer.
