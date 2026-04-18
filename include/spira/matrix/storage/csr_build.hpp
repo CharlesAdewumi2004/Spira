@@ -219,7 +219,7 @@ namespace spira
                 // old-data read cursor), emitting buffer entries before old entries
                 // will overwrite unread old data in-place.  Copy old row data to a
                 // thread-local scratch buffer so reads are safe.
-                const bool aliased = (ub_starts[i] == old_begin) && (bit != bend) && (old_nnz > 0);
+                const bool aliased = (ub_starts[i] < old_begin + old_nnz) && (bit != bend) && (old_nnz > 0);
                 if (aliased)
                 {
                     if constexpr (std::is_same_v<LayoutTag, layout::tags::soa_tag>)
