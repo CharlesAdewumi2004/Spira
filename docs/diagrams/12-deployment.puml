@@ -1,0 +1,89 @@
+@startuml deployment
+title Build and link layout
+
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam nodesep 25
+skinparam ranksep 25
+
+node "Build directory" as Build {
+
+    artifact "spira\n(INTERFACE / header only)" as HeaderLib {
+    }
+
+    artifact "spira_kernels\n(static library)" as KernelLib {
+    }
+
+    artifact "unit_tests\n(executable)" as UnitTests {
+    }
+
+    artifact "parallel_tests\n(executable)" as ParallelTests {
+    }
+
+    artifact "spira_bench\n(executable)" as Bench {
+    }
+}
+
+node "Source tree" as Source {
+    folder "include/spira/" as Include {
+        component "core headers" as CoreHdr
+        component "serial headers" as SerialHdr
+        component "parallel headers" as ParallelHdr
+    }
+    folder "src/kernels/" as Kernels {
+        component "dispatch.cpp" as Dispatch
+        component "dot_impls/**" as DotImpls
+        component "hw_detect / runtime_config" as HwDetect
+    }
+    folder "tests/" as TestSrc {
+        component "unit test .cpp files"
+        component "parallel test .cpp files"
+    }
+    folder "bench/" as BenchSrc {
+        component "spira_bench.cpp"
+    }
+}
+
+node "Fetched dependencies (CMake FetchContent)" as Deps {
+    component "boundcraft"
+    component "ankerl::unordered_dense"
+    component "GoogleTest"
+    component "Google Benchmark"
+}
+
+Include      --> HeaderLib : interface include\n(no compile)
+Kernels      --> KernelLib : compiled .cpp\nper-file SIMD flags
+HeaderLib    ..> KernelLib : depends (for SpMV)
+HeaderLib    ..> "boundcraft"
+HeaderLib    ..> "ankerl::unordered_dense"
+
+TestSrc      --> UnitTests
+TestSrc      --> ParallelTests
+UnitTests    ..> HeaderLib
+UnitTests    ..> KernelLib
+UnitTests    ..> "GoogleTest"
+ParallelTests ..> HeaderLib
+ParallelTests ..> KernelLib
+ParallelTests ..> "GoogleTest"
+
+BenchSrc     --> Bench
+Bench        ..> HeaderLib
+Bench        ..> KernelLib
+Bench        ..> "Google Benchmark"
+
+note right of KernelLib
+    per-file compile flags:
+      dot_scalar.cpp   (no SIMD flag)
+      dot_sse.cpp      -msse4.2
+      dot_avx.cpp      -mavx2 -mfma
+      dot_avx512.cpp   -mavx512f -mavx512vl
+                       -mavx512bw -mavx512dq
+      dot_neon.cpp     (AArch64 default)
+end note
+
+note bottom of HeaderLib
+    spira itself contains no .cpp files.
+    All templates expand in consuming TU.
+end note
+
+@enduml

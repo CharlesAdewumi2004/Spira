@@ -1,0 +1,86 @@
+@startuml buffer-hierarchy
+title Buffer hierarchy (CRTP)
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam roundCorner 6
+
+interface "Buffer<T,I,V> <<concept>>" as BufferConcept {
+    +requires is_base_of<base_buffer<T,I,V>, T>
+}
+
+abstract class "base_buffer<Derived,I,V>" as Base {
+    +{abstract} empty()         : bool
+    +{abstract} size()          : size_t
+    +{abstract} push_back(I col, V val)
+    +{abstract} contains(I col) : bool
+    +{abstract} get_ptr(I col)  : V const*
+    +{abstract} accumulate()    : V
+    +{abstract} sort_and_dedup()
+    +{abstract} begin()         : iterator
+    +{abstract} end()           : iterator
+}
+
+class "aos_array_buffer<I,V,N>" as AoSBuf {
+    -buf_   : vector<elementPair<I,V>>
+    -index_ : ankerl::unordered_dense::map<I,size_t>
+    +push_back(col,val)
+    +contains(col) : bool
+    +get_ptr(col)  : V const*
+    +sort_and_dedup()
+    +accumulate()  : V
+}
+
+class "soa_array_buffer<I,V,N>" as SoABuf {
+    -col_   : vector<I>
+    -val_   : vector<V>
+    -index_ : ankerl::unordered_dense::map<I,size_t>
+    +push_back(col,val)
+    +contains(col) : bool
+    +get_ptr(col)  : V const*
+    +sort_and_dedup()
+    +accumulate()  : V
+}
+
+class "hash_map_buffer<I,V>" as HashBuf {
+    -map_ : ankerl::unordered_dense::map<I,V>
+    +push_back(col,val)
+    +contains(col) : bool
+    +get_ptr(col)  : V const*
+    +sort_and_dedup()
+    +accumulate()  : V
+}
+
+Base <|-- AoSBuf
+Base <|-- SoABuf
+Base <|-- HashBuf
+
+AoSBuf  ..|> BufferConcept
+SoABuf  ..|> BufferConcept
+HashBuf ..|> BufferConcept
+
+note right of Base
+    CRTP base: the Derived parameter
+    lets base_buffer call into the
+    concrete buffer without virtual
+    dispatch.
+end note
+
+note right of AoSBuf
+    Stores {col, val} pairs interleaved.
+    Default buffer layout.
+end note
+
+note right of SoABuf
+    Stores columns and values in
+    two parallel vectors. Used as
+    the SIMD SpMV input.
+end note
+
+note right of HashBuf
+    Direct hash map backing.
+    Optimal for insert-heavy patterns
+    with many duplicates.
+end note
+
+@enduml

@@ -1,0 +1,61 @@
+@startuml memory-layout
+title CSR memory layout: AoS vs SoA
+
+skinparam shadowing false
+skinparam objectBackgroundColor #FDFDFD
+skinparam roundCorner 6
+
+object "SoA csr_storage" as SoA {
+    n_rows    = 4
+    nnz       = 8
+    capacity  = 16
+
+    offsets   = [0, 2, 5, 5, 8]
+    cols      = [3, 7, 1, 4, 9, 2, 6, 8]
+    vals      = [a, b, c, d, e, f, g, h]
+
+    note_align = 64-byte (one cache line)
+}
+
+object "SoA csr_slice for row 1" as SoASlice {
+    cols = &cols[2]   -> [1, 4, 9]
+    vals = &vals[2]   -> [c, d, e]
+    nnz  = 3
+}
+
+object "AoS csr_storage" as AoS {
+    n_rows    = 4
+    nnz       = 8
+    capacity  = 16
+
+    offsets   = [0, 2, 5, 5, 8]
+    pairs     = [{3,a},{7,b},{1,c},{4,d},{9,e},{2,f},{6,g},{8,h}]
+
+    note_align = 64-byte (one cache line)
+}
+
+object "AoS csr_slice for row 1" as AoSSlice {
+    pairs = &pairs[2] -> [{1,c},{4,d},{9,e}]
+    nnz   = 3
+}
+
+SoA       ..> SoASlice : non-owning\nview
+AoS       ..> AoSSlice : non-owning\nview
+
+note right of SoA
+    SoA (soa_tag):
+      cols and vals are independent arrays.
+      SIMD SpMV does one vector load per array
+      per iteration. Column gather is scalar
+      (no hardware gather used).
+end note
+
+note right of AoS
+    AoS (aos_tag):
+      {column, value} stored interleaved.
+      One cache line carries both fields
+      for a given element. Best for scalar
+      scan-style access patterns.
+end note
+
+@enduml

@@ -1,0 +1,60 @@
+@startuml thread-pool
+title Sequence: thread_pool::execute(fn)
+
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.2
+skinparam roundCorner 6
+
+actor "main thread" as Main
+participant "thread_pool" as Pool
+collections "worker[0..n-1]" as Workers
+
+note over Workers
+    At construction each worker runs:
+      loop {
+        wait on start_cv for generation change
+        call fn_(id)
+        if last to finish: done_.release()
+      }
+end note
+
+Main -> Pool : execute(fn)
+activate Pool
+
+Pool -> Pool : lock start_mtx_
+Pool -> Pool : fn_ = move(fn)
+Pool -> Pool : finished_.store(0)
+Pool -> Pool : ++generation_
+Pool -> Pool : unlock start_mtx_
+
+Pool ->> Workers : start_cv_.notify_all()
+Pool -> Pool : done_.acquire()  (block)
+
+Workers -> Workers : wake, check generation
+Workers -> Workers : local_gen = generation_
+
+par for each worker
+    Workers -> Workers : fn_(id)    (outside the lock)
+end
+
+Workers -> Pool : finished_.fetch_add(1, acq_rel)
+
+alt finished == n_threads
+    Workers -> Pool : done_.release()
+else not last
+    Workers -> Workers : keep going / return to wait
+end
+
+Pool -> Main : execute returns
+
+deactivate Pool
+
+note right of Pool
+    Sync cost per parallel task:
+      1 mutex lock + unlock
+      1 cond_var notify_all
+      1 binary_semaphore release/acquire
+    No thread spawn on the hot path.
+end note
+
+@enduml

@@ -1,0 +1,77 @@
+@startuml partition-layout
+title Parallel matrix: row partitioning and per thread storage
+
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam objectBackgroundColor #FDFDFD
+
+object "parallel_matrix" as PM {
+    n_rows    = 10000
+    n_cols    = 10000
+    n_threads = 4
+    pool      = thread_pool(4)
+}
+
+object "partition[0]" as P0 {
+    row_start = 0
+    row_end   = 2500
+    rows      = vector<row>[2500]
+    csr       = csr_storage (local)
+    dirty     = bitset[2500]
+}
+
+object "partition[1]" as P1 {
+    row_start = 2500
+    row_end   = 5000
+    rows      = vector<row>[2500]
+    csr       = csr_storage (local)
+    dirty     = bitset[2500]
+}
+
+object "partition[2]" as P2 {
+    row_start = 5000
+    row_end   = 7500
+    rows      = vector<row>[2500]
+    csr       = csr_storage (local)
+    dirty     = bitset[2500]
+}
+
+object "partition[3]" as P3 {
+    row_start = 7500
+    row_end   = 10000
+    rows      = vector<row>[2500]
+    csr       = csr_storage (local)
+    dirty     = bitset[2500]
+}
+
+object "worker[0]\n(jthread)" as W0
+object "worker[1]\n(jthread)" as W1
+object "worker[2]\n(jthread)" as W2
+object "worker[3]\n(jthread)" as W3
+
+PM o-- P0
+PM o-- P1
+PM o-- P2
+PM o-- P3
+
+W0 ..> P0 : owns during execute()
+W1 ..> P1
+W2 ..> P2
+W3 ..> P3
+
+note bottom of PM
+    Row ownership (routing): owner(r) = r * n_threads / n_rows
+    Partition boundaries recomputed by rebalance() using
+    an NNZ-balanced prefix-sum + binary search.
+end note
+
+note right of P0
+    Each partition owns:
+      - its row objects (buffers + index maps)
+      - its own csr_storage
+      - its own dirty bitset
+    Partitions are disjoint;
+    no data is shared across threads.
+end note
+
+@enduml

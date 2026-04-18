@@ -1,0 +1,111 @@
+@startuml component-layers
+title Spira component / layer stack
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam roundCorner 6
+
+package "User code" as User {
+    [application]
+}
+
+package "Parallel algorithms\n(spira::parallel::algorithms)" as PAlg {
+    [spmv]
+    [spgemm]
+    [transpose]
+    [matrix_add]
+    [accumulate]
+    [scalars]
+}
+
+package "Parallel container\n(spira::parallel)" as PCont {
+    [parallel_matrix]
+    [partition]
+    [insert_staging]
+    [thread_pool]
+}
+
+package "Serial algorithms\n(spira::serial::algorithms)" as SAlg {
+    [spmv]
+    [spgemm]
+    [transpose]
+    [matrix_add]
+    [accumulate]
+    [scalars]
+}
+
+package "Core container\n(spira)" as Core {
+    [matrix]
+    [matrix_operators]
+    [row]
+}
+
+package "Storage\n(spira::storage)" as Storage {
+    [csr_storage<L,I,V>]
+    [csr_slice<L,I,V>]
+    [csr_build / merge_csr]
+}
+
+package "Buffers\n(spira::buffer)" as Buffers {
+    [base_buffer (CRTP)]
+    [aos_array_buffer]
+    [soa_array_buffer]
+    [hash_map_buffer]
+}
+
+package "Tags & primitives\n(spira::layout, spira::config)" as Tags {
+    [aos_tag / soa_tag]
+    [elementPair]
+    [array_buffer tag]
+    [hash_map_buffer tag]
+    [matrix_mode / lock_policy / insert_policy]
+}
+
+package "Concepts & traits\n(spira::concepts, spira::traits)" as Concepts {
+    [Indexable]
+    [Valueable]
+    [ValueTraits<V>]
+    [ValidLayoutTag]
+}
+
+package "SIMD kernel library\n(spira_kernels static lib)" as Kernels {
+    [dispatch.cpp]
+    [sparse_dot_double *]
+    [sparse_dot_float *]
+    [hw_detect]
+    [runtime_config]
+    [dot_scalar]
+    [dot_sse / dot_avx / dot_avx512]
+    [dot_neon]
+}
+
+User        --> PAlg
+User        --> SAlg
+User        --> Core
+User        --> PCont
+
+PAlg        --> PCont
+PAlg        --> SAlg
+PCont       --> Core
+PCont       --> Kernels : function pointer\n(SpMV hot path)
+SAlg        --> Core
+SAlg        --> Kernels : function pointer\n(SpMV hot path)
+Core        --> Storage
+Core        --> Buffers
+Storage     --> Tags
+Buffers     --> Tags
+Core        --> Tags
+PCont       --> Tags
+Tags        --> Concepts
+Buffers     --> Concepts
+Core        --> Concepts
+Storage     --> Concepts
+Kernels     ..> Concepts : uint32_t + float/double contract
+
+note right of Kernels
+    Compiled once per process.
+    Static initialiser in dispatch.cpp
+    selects best kernel per CPU.
+end note
+
+@enduml

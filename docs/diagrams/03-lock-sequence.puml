@@ -1,0 +1,75 @@
+@startuml lock-sequence
+title Sequence: matrix::lock()
+
+skinparam shadowing false
+skinparam sequenceArrowThickness 1.2
+skinparam roundCorner 6
+
+actor User as U
+participant "matrix" as M
+participant "row[i]" as R
+participant "buffer[i]" as B
+participant "csr_build" as CB
+participant "csr_storage" as CSR
+
+U -> M : lock()
+activate M
+
+group for each row i [parallel-friendly loop]
+    M -> R : lock()
+    activate R
+    R -> B : sort_and_dedup()
+    activate B
+    B -> B : sort by column
+    B -> B : resolve duplicates via index map (LWW)
+    B -> B : filter zero values
+    B --> R :
+    deactivate B
+    R --> M : row sorted
+    deactivate R
+end
+
+alt csr_ is empty [first lock]
+    M -> CB : build_csr(rows_)
+    activate CB
+    CB -> CB : fill offsets[] (prefix sum)
+    CB -> CB : copy cols, vals (or pairs) sequentially
+    CB --> M : csr_storage
+    deactivate CB
+else csr_ already built [re-lock]
+    M -> CB : merge_csr(rows_, move(csr_), dirty_)
+    activate CB
+    CB -> CB : upper-bound nnz total
+    alt fits in old capacity
+        CB -> CB : reverse in-place merge (reuse allocation)
+    else needs growth
+        CB -> CB : allocate 1.5x, forward merge
+    end
+    CB -> CB : clean rows -> memmove slice\n  dirty rows -> two-pointer merge
+    CB --> M : csr_storage
+    deactivate CB
+end
+
+M -> CSR : store new csr_
+activate CSR
+
+group install per row slices
+    M -> R : set_csr_slice(slice_i)
+    activate R
+    R --> M :
+    deactivate R
+end
+
+alt lock_policy == compact_move
+    M -> R : drop buffer storage
+else compact_preserve or no_compact
+    M -> R : clear buffer content, keep capacity
+end
+
+M -> M : dirty_.assign(n_rows, false)
+M -> M : mode_ = locked
+deactivate CSR
+M --> U : return
+deactivate M
+
+@enduml

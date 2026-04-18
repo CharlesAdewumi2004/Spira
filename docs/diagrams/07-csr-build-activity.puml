@@ -1,0 +1,49 @@
+@startuml csr-build-activity
+title Activity: build_csr and merge_csr
+
+skinparam shadowing false
+skinparam roundCorner 6
+
+start
+
+:lock() called on matrix;
+
+if (csr_ already built?) then (no)
+    partition "build_csr (first lock)" {
+        :compute total nnz = sum(row.size());
+        :allocate offsets[n_rows+1] (64B aligned);
+        :prefix sum offsets[];
+        :allocate cols[nnz] + vals[nnz]  (SoA)\nor pairs[nnz] (AoS);
+        :for each row: copy sorted buffer\ninto its slot in the flat arrays;
+    }
+else (yes)
+    partition "merge_csr (re-lock)" {
+        :compute upper-bound total nnz =\n old.nnz + sum(new_buffer.size());
+        if (upper-bound <= old.capacity?) then (yes)
+            :reuse old allocation;
+            :reverse in-place merge\n(walk rows backwards);
+        else (no)
+            :allocate new arrays at 1.5x upper-bound\n(64B aligned);
+            :forward merge;
+        endif
+
+        partition "per row merge" {
+            :for each row i;
+            if (dirty_[i] == false?) then (yes)
+                :memmove old slice into new CSR;
+            else (no)
+                :two-pointer merge old slice + new buffer;
+                :last-write-wins on column collision;
+                :filter zero values;
+            endif
+        }
+    }
+endif
+
+:install per row csr_slice;
+:clear dirty_[] bitset;
+:mode_ = locked;
+
+stop
+
+@enduml

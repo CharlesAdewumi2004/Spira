@@ -1,0 +1,61 @@
+@startuml kernel-dispatch
+title Activity: SIMD kernel dispatch at process load
+
+skinparam shadowing false
+skinparam roundCorner 6
+
+start
+
+:process load\n(dispatch.cpp static initialiser runs);
+
+partition "detect CPU features" {
+    if (architecture == x86 / x64?) then (yes)
+        :CPUID leaf 1: SSE2, SSE4.2, AVX, FMA;
+        :CPUID leaf 7: AVX2, AVX-512F/VL/BW/DQ;
+        :XSAVE check: OS saves YMM/ZMM;
+    else (ARM)
+        if (OS == Linux?) then (yes)
+            :getauxval(AT_HWCAP);
+            :read /proc/cpuinfo for NEON;
+        else if (OS == Apple?) then (yes)
+            :sysctlbyname("hw.optional.AdvSIMD");
+        else (Windows)
+            :IsProcessorFeaturePresent();
+        endif
+    endif
+    :write CpuFeatures struct;
+}
+
+partition "measure memory latency" {
+    :allocate 128 MiB scratch buffer;
+    :build pointer-chase chain\n(random order, 64B stride);
+    :time N chained loads;
+    :compute cycles_per_load;
+    :store in RuntimeConfig;
+}
+
+partition "select kernel" {
+    if (avx512f + avx512vl + avx512bw + avx512dq?) then (yes)
+        :sparse_dot_double = &sparse_dot_double_avx512;
+        :sparse_dot_float  = &sparse_dot_float_avx512;
+    else if (avx2 && fma?) then (yes)
+        :sparse_dot_double = &sparse_dot_double_avx;
+        :sparse_dot_float  = &sparse_dot_float_avx;
+    else if (sse4.2?) then (yes)
+        :sparse_dot_double = &sparse_dot_double_sse;
+        :sparse_dot_float  = &sparse_dot_float_sse;
+    else if (neon?) then (yes)
+        :sparse_dot_double = &sparse_dot_double_neon;
+        :sparse_dot_float  = &sparse_dot_float_neon;
+    else (scalar fallback)
+        :sparse_dot_double = &sparse_dot_double_scalar;
+        :sparse_dot_float  = &sparse_dot_float_scalar;
+    endif
+}
+
+:program enters main();
+:SpMV hot path calls function pointer directly;
+
+stop
+
+@enduml

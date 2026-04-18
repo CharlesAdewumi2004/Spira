@@ -1,0 +1,50 @@
+@startuml state-lifecycle
+title Matrix lifecycle: open and locked modes
+
+skinparam shadowing false
+skinparam roundCorner 8
+
+[*] --> Open : construct(n_rows, n_cols)
+
+state Open {
+    Open : inserts go to per row buffers
+    Open : buffer index map (O(1) lookups)
+    Open : dirty bitset set on each insert
+    Open : reads consult buffer first,\n  fall back to CSR slice if present
+}
+
+state "Lock pipeline" as Locking {
+    Locking : 1. sort + dedup each row buffer
+    Locking : 2. build_csr or merge_csr
+    Locking : 3. install per row CSR slices
+    Locking : 4. clear buffers per lock_policy
+    Locking : 5. clear dirty bitset
+}
+
+state Locked {
+    Locked : CSR is the authoritative store
+    Locked : reads are O(log k) per row slice
+    Locked : inserts throw logic_error
+    Locked : SpMV, SpGEMM, transpose legal
+}
+
+Open    --> Locking : lock()
+Locking --> Locked  : all rows processed
+Locked  --> Open    : open()
+Open    --> Open    : insert / get / contains
+Locked  --> Locked  : spmv / spgemm / accumulate
+Locked  --> [*]     : destruct
+
+note right of Locking
+    First lock: build_csr
+    Subsequent locks: merge_csr
+    + dirty bitset fast path
+end note
+
+note right of Open
+    compact_preserve: buffers kept, O(1) re-open
+    compact_move:     buffers freed, O(n) re-open
+    no_compact:       CSR never built
+end note
+
+@enduml
