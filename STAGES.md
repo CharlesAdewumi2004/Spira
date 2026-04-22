@@ -7,8 +7,8 @@ Spira is a C++23 header-only dynamic sparse matrix library developed in four inc
 ## Table of Contents
 
 1. [Stage 1 — MVP](#stage-1--mvp)
-2. [Stage 2 — SIMD Kernels & Hardware Detection](#stage-2--simd-kernels--hardware-detection)
-3. [Stage 3 — Layout-Aware CSR](#stage-3--layout-aware-csr)
+2. [Stage 2 — SIMD Kernels & Hardware Detection](#stage-2--simd-kernels)
+3. [Stage 3 — Layout-Aware CSR](#stage-3--csr)
 4. [Stage 4 — Multi-Threading](#stage-4--multi-threading)
 5. [Progression Summary](#progression-summary)
 

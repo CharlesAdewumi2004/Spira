@@ -66,7 +66,11 @@ All stages benchmark the same logical problem size:
 |-----------|-------|-----------|
 | `N` | 10 000 | Rows = Cols. Working sets range from 1 MB (0.1 % density) to 120 MB (10 % density), spanning L3-resident to DRAM-bound. |
 | `BATCH` | 256 | Entries per incremental Insert iteration. Models a realistic steady-state update where a small fraction of entries change per solve. |
-| `SEED` | 42 | Fixed RNG seed for reproducibility. Full-matrix and batch triples use different seeds (`SEED` vs `SEED ^ 0xDEADBEEF`) to avoid systematic column-index collisions. |
+| `SEED` | 42 | Base RNG seed for reproducibility. Three sub-streams are derived to avoid correlation between the full matrix, the incremental batch, and the input vector: `SEED` for full triples, `SEED ^ 0xDEADBEEF` for the batch, `SEED ^ 0xC0FFEE` for `x`. |
+| matrix type | `parallel_matrix<LayoutTag, uint32_t, double, hash_map_buffer>` | Partitioned CSR with a per-row hash-map staging buffer. `hash_map_buffer` gives O(1) inserts with last-write-wins dedup at `lock()` time. |
+| index / value type | `uint32_t` / `double` | 32-bit column indices (enough for N ≲ 4 G); IEEE-754 64-bit values — 12 B per non-zero in CSR. |
+| `LayoutTag` | `aos_tag` **and** `soa_tag` | Second benchmark axis — every Insert, SpMV and Scaling case is registered twice, once per layout. SoA dispatches to the SIMD kernel (4×double/iter under AVX2/AVX-512, 2×under SSE/NEON); AoS falls back to the scalar inner loop. Comparing SoA vs AoS in the same run isolates the SIMD contribution from the threading contribution. |
+| `n_threads` | `std::thread::hardware_concurrency()` (Insert / SpMV); {1, 2, 4, 8, `hw`} (ThreadScaling) | Number of row partitions in the `parallel_matrix`; one worker thread per partition. ThreadScaling adds `hw` only when `hw > 8`. |
 
 **Density levels:**
 
@@ -77,6 +81,55 @@ All stages benchmark the same logical problem size:
 | 1 000 | 10 % | 10 000 000 | ~120 MB |
 
 At 0.1 % the matrix fits in a typical 8–16 MB LLC (warm-ish after one pass). At 10 % it does not fit in any current server LLC, making it a purely DRAM-bound case.
+
+### Matrix Setup Flow
+
+Every fixture runs the same setup **outside** the timed loop (so none of it is charged to either the `Time` or `CPU` column):
+
+```
+1. Construct the partitioned matrix
+     PM<LayoutTag> mat(N, N, n_threads);
+     → carves rows [0, N) into n_threads row ranges.
+       Insert/SpMV fixtures use hardware_concurrency();
+       ThreadScaling uses state.range(0) (1, 2, 4, 8, or hw).
+
+2. Generate the full target triples  — make_full_triples(nnz_per_row, rnd)
+     rng = mt19937(SEED)
+     values  ~ U[0, 1)
+     random  : col ~ U[0, N)                        for every (r, k)
+     strided : col = (k × N/nnz_per_row) % N        deterministic
+     → vector<Triple> of length N × nnz_per_row
+
+3. Distribute triples by owning partition — distribute_by_thread
+     starts[t] = mat.partition_at(t).row_start
+     for each triple:
+         owner = upper_bound(starts, tri.row) − 1   // binary search
+     → vector<vector<Triple>>, one list per thread
+
+4. Build steady-state CSR in parallel — fill_and_lock
+     mat.parallel_fill([&](rows, r_start, r_end, tid) {
+         for (t : by_thread[tid])
+             rows[t.row − r_start].insert(t.col, t.val);
+     });
+     mat.lock();
+     → each worker only touches its own partition's buffer and CSR;
+       no synchronisation inside parallel_fill / lock.
+
+5. Per-fixture extras
+     Insert  : make_batch(nnz_per_row, rnd) with SEED ^ 0xDEADBEEF,
+               distributed via distribute_by_thread → batch_by_thread.
+               256 entries split across threads by row-range ownership.
+     SpMV    : x ∈ [0, 1)^N with SEED ^ 0xC0FFEE; y zero-initialised.
+     Scaling : same as SpMV but the partition count is the swept variable.
+```
+
+The timed loop body is just:
+
+```
+Insert  : mat.open() → mat.parallel_fill(...) → mat.lock()
+SpMV    : spira::parallel::algorithms::spmv(mat, x, y)
+          + DoNotOptimize(y.data()) + ClobberMemory()
+```
 
 ### Access Patterns
 
@@ -100,12 +153,22 @@ The performance gap between random and strided patterns quantifies the TLB/prefe
 
 ### Reported Metrics
 
-Google Benchmark outputs two throughput columns when both `SetItemsProcessed` and `SetBytesProcessed` are set:
+Every row of Google Benchmark output has the shape:
+
+```
+Benchmark                               Time          CPU    Iterations  items_per_second  bytes_per_second
+InsertFixture_SoA/Insert/100/0       12345 ns    12340 ns        54000         20.5M/s          246M/s
+```
 
 | Column | Unit | What it measures |
 |--------|------|-----------------|
-| `items_per_second` | ops/s or FLOP/s | **Insert**: insertions/s. **SpMV**: floating-point operations per second (2 FLOP per non-zero: one multiply + one accumulate). |
-| `bytes_per_second` | B/s (reported as GB/s) | **Effective memory bandwidth** — bytes that must transit the memory hierarchy per operation, computed from the analytical access model below. |
+| `Time` | ns (per iteration) | **Real / wall-clock time** — the duration of one pass through the timed body, measured via `std::chrono::steady_clock`. This is the end-to-end latency a caller would observe and the quantity that must shrink for a parallel implementation to scale. All derived throughput counters (`items_per_second`, `bytes_per_second`) are computed from this. |
+| `CPU` | ns (per iteration) | **CPU time** charged during the timed body (Google Benchmark default: process CPU time on POSIX via `CLOCK_PROCESS_CPUTIME_ID`, `GetProcessTimes` on Windows — summed across all threads in the process). For the serial fixtures (Stages 1–3) `CPU ≈ Time`. For the Stage 4 parallel fixtures, every busy worker contributes, so with T threads running flat-out you expect `CPU ≈ T × Time`. The **ratio `CPU / Time` is therefore the average number of active cores** — a direct sanity check on thread-pool utilisation and a quick way to diagnose workers that are stalling, blocked, or not being dispatched. |
+| `Iterations` | — | How many loop iterations Google Benchmark ran to reach its statistical minimum (`--benchmark_min_time`). Not a performance metric; useful only for judging measurement stability. |
+| `items_per_second` | ops/s or FLOP/s | **Insert**: insertions per second (= iterations × BATCH / Time). **SpMV**: floating-point operations per second (2 FLOP per non-zero: one multiply + one accumulate). Derived from **real time**, so parallel speedup appears here. |
+| `bytes_per_second` | B/s (reported as GB/s) | **Effective memory bandwidth** — bytes that must transit the memory hierarchy per operation, computed from the analytical access model below. Also derived from real time. |
+
+**What is and isn't in `Time` / `CPU`:** the `state.PauseTiming()` / `flush_cache()` / `state.ResumeTiming()` bracket excludes the LLC flush from **both** columns, so neither the cache-eviction work nor its CPU cost inflates the reported numbers. Matrix construction, triple generation, `distribute_by_thread`, and the initial `fill_and_lock` all happen in `SetUp()` and are outside the timed region entirely.
 
 **SpMV bandwidth model:**
 
