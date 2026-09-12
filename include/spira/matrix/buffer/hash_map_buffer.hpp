@@ -26,13 +26,16 @@ public:
     void clear_impl() noexcept { buf_.clear(); sorted_.clear(); }
     void push_back_impl(const I &col, const V &val) noexcept { buf_[col] = val; }
 
-    bool contains_impl(I col) const noexcept { return buf_.contains(col); }
+    bool contains_impl(I col) const noexcept {
+        return buf_.contains(col) || find_sorted(col) != nullptr;
+    }
 
     const V *get_ptr_impl(I col) const noexcept {
         auto it = buf_.find(col);
-        if (it == buf_.end())
-            return nullptr;
-        return &it->second;
+        if (it != buf_.end())
+            return &it->second;
+        // no_compact keeps committed data in sorted_ after lock(); buf_ is empty.
+        return find_sorted(col);
     }
 
     V accumulate_impl() const noexcept {
@@ -47,19 +50,12 @@ public:
     /// Sort by column, filter zero values, and materialize into sorted_.
     /// The hash map already deduplicates (last-write wins) on insert.
     /// After this call: buf_ is empty, sorted_ has sorted, unique, non-zero entries.
-    void sort_and_dedup() {
-        sorted_.clear();
-        sorted_.reserve(buf_.size());
-        for (auto &[col, val] : buf_) {
-            if (!traits::ValueTraits<V>::is_zero(val))
-                sorted_.push_back(entry_type{col, val});
-        }
-        std::sort(sorted_.begin(), sorted_.end(),
-                  [](const entry_type &a, const entry_type &b) {
-                      return a.first_ref() < b.first_ref();
-                  });
-        buf_.clear();
-    }
+    void sort_and_dedup() { materialize_sorted(/*keep_zeros=*/false); }
+
+    /// Sort by column and materialize into sorted_, keeping zero values.
+    /// Identical to sort_and_dedup() but zeros are not removed, so that
+    /// merge_csr can see them as deletion signals during compact_* lock cycles.
+    void sort_and_dedup_keep_zeros() { materialize_sorted(/*keep_zeros=*/true); }
 
     // Iterators return raw pointers into sorted_ (random-access, expose first_ref/second_ref).
     // Valid after sort_and_dedup(); in open mode sorted_ is empty so this is an empty range.
@@ -69,6 +65,34 @@ public:
     const entry_type *end_impl() const noexcept { return sorted_.data() + sorted_.size(); }
 
 private:
+    /// Binary search the materialized entries. push_back only touches buf_ and
+    /// materialize_sorted() drains it, so buf_ and sorted_ are never both
+    /// non-empty — a miss in one is authoritative for the other.
+    const V *find_sorted(I col) const noexcept {
+        const auto it = std::lower_bound(
+            sorted_.begin(), sorted_.end(), col,
+            [](const entry_type &e, I c) { return e.first_ref() < c; });
+        if (it != sorted_.end() && it->first_ref() == col)
+            return &it->second_ref();
+        return nullptr;
+    }
+
+    /// Drain buf_ into sorted_, ordered by column. The hash map has already
+    /// deduplicated (last-write wins) on insert, so no dedup pass is needed.
+    void materialize_sorted(bool keep_zeros) {
+        sorted_.clear();
+        sorted_.reserve(buf_.size());
+        for (auto &[col, val] : buf_) {
+            if (keep_zeros || !traits::ValueTraits<V>::is_zero(val))
+                sorted_.push_back(entry_type{col, val});
+        }
+        std::sort(sorted_.begin(), sorted_.end(),
+                  [](const entry_type &a, const entry_type &b) {
+                      return a.first_ref() < b.first_ref();
+                  });
+        buf_.clear();
+    }
+
     ankerl::unordered_dense::map<I, V> buf_{};
     std::vector<entry_type> sorted_{};
 };

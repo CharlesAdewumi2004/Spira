@@ -166,6 +166,7 @@ if (SPIRA_BUILD_TESTS)
     tests/matrix_operator_overloads_tests.cpp
     tests/simd_dot_operator_tests.cpp
     tests/compaction_tests.cpp
+    tests/hash_map_buffer_tests.cpp
     tests/serial/spmv_tests.cpp
     tests/serial/spgemm_tests.cpp
     tests/serial/transpose_tests.cpp
@@ -203,6 +204,7 @@ if (SPIRA_BUILD_PARALLEL AND SPIRA_BUILD_TESTS)
     tests/parallel/partition_tests.cpp
     tests/parallel/parallel_matrix_tests.cpp
     tests/parallel/parallel_algorithm_tests.cpp
+    tests/parallel/hash_map_buffer_parallel_tests.cpp
   )
 
   target_link_libraries(parallel_tests PRIVATE spira GTest::gtest_main)
