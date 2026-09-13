@@ -28,7 +28,6 @@ using pmat = parallel_matrix<layout::tags::aos_tag,
                               uint32_t, double,
                               buffer::tags::array_buffer<layout::tags::aos_tag>,
                               64,
-                              config::lock_policy::compact_preserve,
                               config::insert_policy::direct,
                               256>;
 

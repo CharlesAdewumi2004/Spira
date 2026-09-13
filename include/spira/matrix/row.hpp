@@ -8,7 +8,6 @@
 
 #include <spira/concepts.hpp>
 #include <spira/config.hpp>
-#include <spira/matrix/buffer/buffer_tag_traits.hpp>
 #include <spira/matrix/buffer/buffer_base.hpp>
 #include <spira/matrix/buffer/buffer_tag_traits.hpp>
 #include <spira/matrix/buffer/buffer_tags.hpp>
@@ -33,8 +32,6 @@ namespace spira
     //                 set_csr_slice() to install the slice, then calls
     //                 clear_buffer_content() to free the staging area.
     //                 Reads use the CSR slice.
-    //                 For no_compact the CSR slice is never set; reads fall back
-    //                 to the sorted buffer.
     //
     // lock()  — sort+dedup+filter buffer in-place; set locked.  O(k log k)
     // open()  — set flag to open; CSR slice and buffer left as-is.  O(1)
@@ -82,23 +79,14 @@ namespace spira
             return mode_ == config::matrix_mode::locked;
         }
 
-        /// Sort + dedup + filter buffer in-place, then freeze.  O(k log k)
+        /// Sort + dedup buffer in-place, then freeze.  O(k log k)
+        /// Zeros are kept: they survive to merge_csr, which uses them to delete
+        /// matching old CSR entries via its collision handler.
         void lock()
         {
             if (mode_ == config::matrix_mode::locked)
                 return;
             buffer_.sort_and_dedup();
-            mode_ = config::matrix_mode::locked;
-        }
-
-        /// Sort + dedup buffer in-place (keeping zeros), then freeze.  O(k log k)
-        /// For compact_* policies only: zeros survive to merge_csr, which uses them
-        /// to delete matching old CSR entries via its collision handler.
-        void lock_for_compact()
-        {
-            if (mode_ == config::matrix_mode::locked)
-                return;
-            buffer_.sort_and_dedup_keep_zeros();
             mode_ = config::matrix_mode::locked;
         }
 
@@ -121,17 +109,23 @@ namespace spira
 
         /// Clear staging buffer content (but keep allocation).
         /// Called by matrix::lock() after the CSR has been built.
-        void clear_buffer_content() noexcept { buffer_.clear(); }
-
-        /// Release staging buffer storage (compact_move policy).
-        void release_buffer() noexcept { buffer_t{}.swap(buffer_); }
+        ///
+        /// The empty() guard matters: a buffer's column-index map keeps the
+        /// bucket array it grew during the initial bulk fill, and clear() memsets
+        /// that array whatever its size. Without the guard every lock() memsets
+        /// every row's buckets even when no row changed.
+        void clear_buffer_content() noexcept
+        {
+            if (!buffer_.empty())
+                buffer_.clear();
+        }
 
         // ─────────────────────────────────────────
         // Size / capacity
         // ─────────────────────────────────────────
 
-        /// Locked compact_*: csr_slice_.nnz (exact).
-        /// Locked no_compact: buffer_.size() (sorted+deduped, exact).
+        /// Locked (matrix-owned): csr_slice_.nnz (exact; buffer cleared by lock()).
+        /// Locked (standalone): buffer_.size() (sorted+deduped, exact).
         /// Open: csr_slice_.nnz + buffer_.size() (upper bound; buffer may have dups).
         [[nodiscard]] size_type size() const noexcept
         {
@@ -151,10 +145,6 @@ namespace spira
             // CSR slice not touched — committed history persists.
         }
 
-        void reserve(size_type /*n*/) noexcept {} // no-op: buffer is growable
-
-        [[nodiscard]] size_type capacity() const noexcept { return 0; }
-
         // ─────────────────────────────────────────
         // Mutation (open mode only)
         // ─────────────────────────────────────────
@@ -172,7 +162,7 @@ namespace spira
         // Queries (both modes)
         //
         // Open:   buffer first (reverse linear, last-write wins), then CSR.
-        // Locked: CSR slice if set; else sorted buffer (no_compact fallback).
+        // Locked: CSR slice if installed, else the sorted buffer.
         // ─────────────────────────────────────────
 
         [[nodiscard]] bool contains(index_type col) const
@@ -183,7 +173,7 @@ namespace spira
                     return true;
                 return csr_slice_.binary_search(col) != nullptr;
             }
-            // Locked
+            // Locked: slice if installed, else the sorted buffer (standalone row).
             if (csr_slice_.is_set())
                 return csr_slice_.binary_search(col) != nullptr;
             return buffer_.contains(col);
@@ -199,7 +189,7 @@ namespace spira
                     return p;
                 return csr_slice_.binary_search(col);
             }
-            // Locked
+            // Locked: slice if installed, else the sorted buffer (standalone row).
             if (csr_slice_.is_set())
                 return csr_slice_.binary_search(col);
             return buffer_.get_ptr(col);
@@ -211,7 +201,7 @@ namespace spira
             {
                 if (csr_slice_.is_set())
                     return csr_slice_.accumulate();
-                // no_compact — sorted buffer
+                // Standalone locked row — sorted buffer is the committed store.
                 value_type acc = traits::ValueTraits<value_type>::zero();
                 for (const auto &entry : buffer_)
                     acc += entry.second_ref();
@@ -239,7 +229,6 @@ namespace spira
         //   — In open mode, buffer is unsorted insertion-order.
         //
         // for_each_element() (const, locked) iterates the CSR slice if set,
-        // otherwise the sorted buffer (no_compact fallback).
         // ─────────────────────────────────────────
 
         auto begin() noexcept { return buffer_.begin(); }
@@ -260,6 +249,7 @@ namespace spira
             }
             else
             {
+                // Standalone locked row — sorted buffer is the committed store.
                 for (const auto &entry : buffer_)
                     std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }
@@ -286,7 +276,8 @@ namespace spira
             }
             else
             {
-                // no_compact: committed data lives in the sorted buffer.
+                // Never locked: nothing is committed yet, so fall back to
+                // whatever the staging buffer holds.
                 for (const auto &entry : buffer_)
                     std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }

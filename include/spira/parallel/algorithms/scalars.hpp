@@ -14,9 +14,9 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat, V scaler)
+    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat, V scaler)
     {
         if (!mat.is_open())
             throw std::logic_error("multiplication_scaler: matrix must be open");
@@ -35,10 +35,10 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat,
-                               parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &out,
+    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat,
+                               parallel_matrix<L, I, V, BT, BN, IP, SN> &out,
                                V scaler)
     {
         if (!mat.is_locked())
@@ -67,9 +67,9 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    void division_scaler(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat, V scaler)
+    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat, V scaler)
     {
         if (traits::ValueTraits<V>::is_zero(scaler))
             throw std::domain_error("division by zero");
@@ -89,10 +89,10 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    void division_scaler(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat,
-                         parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &out,
+    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat,
+                         parallel_matrix<L, I, V, BT, BN, IP, SN> &out,
                          V scaler)
     {
         if (traits::ValueTraits<V>::is_zero(scaler))

@@ -22,7 +22,6 @@ using pmat = parallel_matrix<layout::tags::aos_tag,
                              uint32_t, double,
                              buffer::tags::array_buffer<layout::tags::aos_tag>,
                              64,
-                             config::lock_policy::compact_preserve,
                              config::insert_policy::direct,
                              256>;
 
@@ -31,7 +30,6 @@ using pmat_staged = parallel_matrix<layout::tags::aos_tag,
                                     uint32_t, double,
                                     buffer::tags::array_buffer<layout::tags::aos_tag>,
                                     64,
-                                    config::lock_policy::compact_preserve,
                                     config::insert_policy::staged,
                                     256>;
 
@@ -298,7 +296,6 @@ TEST(ParallelMatrixStaged, StagingBufferFlushOnCapacity)
                                          uint32_t, double,
                                          buffer::tags::array_buffer<layout::tags::aos_tag>,
                                          64,
-                                         config::lock_policy::compact_preserve,
                                          config::insert_policy::staged,
                                          4>; // tiny staging buffer
     small_staged m(8, 16, 1);                // single thread → all rows one partition, 16 cols

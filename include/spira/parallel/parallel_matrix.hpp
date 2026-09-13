@@ -23,7 +23,7 @@ namespace spira::parallel
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // parallel_matrix<LayoutTag, I, V, BufferTag, BufferN, LP, IP, StagingN>
+    // parallel_matrix<LayoutTag, I, V, BufferTag, BufferN, IP, StagingN>
     //
     // Sparse matrix whose rows are statically partitioned across n_threads worker
     // threads.  The public API mirrors spira::matrix for the core operations:
@@ -53,7 +53,6 @@ namespace spira::parallel
               concepts::Valueable V = double,
               class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
               std::size_t BufferN = 64,
-              config::lock_policy   LP       = config::lock_policy::compact_preserve,
               config::insert_policy IP       = config::insert_policy::direct,
               std::size_t           StagingN = 256>
         requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
@@ -61,7 +60,7 @@ namespace spira::parallel
     class parallel_matrix
     {
     public:
-        using partition_type = partition<LayoutTag, I, V, BufferTag, BufferN, LP>;
+        using partition_type = partition<LayoutTag, I, V, BufferTag, BufferN>;
         using row_type = typename partition_type::row_type;
         using index_type = I;
         using value_type = V;
@@ -271,22 +270,22 @@ namespace spira::parallel
     // ═════════════════════════════════════════════════════════════════════════════
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::parallel_matrix(
+    parallel_matrix<L, I, V, BT, BN, IP, SN>::parallel_matrix(
         size_type n_rows, size_type n_cols, size_type n_threads)
         : parallel_matrix(n_rows, n_cols, n_threads, config::default_row_reserve_hint)
     {
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::parallel_matrix(
+    parallel_matrix<L, I, V, BT, BN, IP, SN>::parallel_matrix(
         size_type n_rows, size_type n_cols, size_type n_threads, size_type reserve_per_row)
         : n_rows_{n_rows}, n_cols_{n_cols}, pool_{std::make_unique<thread_pool>(n_threads)}
     {
@@ -314,83 +313,66 @@ namespace spira::parallel
     // ═════════════════════════════════════════════════════════════════════════════
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::lock_partition(partition_type &p)
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::lock_partition(partition_type &p)
     {
         // Detach stale CSR slice pointers before rebuilding.
         for (auto &r : p.rows)
             r.reset_csr_slice();
 
-        // Sort + dedup each row's buffer in-place.
-        // compact_* keeps zeros so merge_csr can use them as deletion signals.
-        if constexpr (LP == config::lock_policy::compact_preserve ||
-                      LP == config::lock_policy::compact_move)
+        // Sort + dedup each row's buffer in-place.  Zeros are kept so merge_csr
+        // can use them as deletion signals against the committed CSR.
+        for (auto &r : p.rows)
+            r.lock();
+
+        // Build or merge the flat CSR for this partition.
+        // offsets == nullptr signals "first lock cycle".
+        if (p.csr.offsets != nullptr)
         {
-            for (auto &r : p.rows)
-                r.lock_for_compact();
+            // Derive dirty flags from buffer state: a row is dirty iff its
+            // buffer is non-empty after sort+dedup.  thread_local avoids a
+            // heap allocation on every merge call.
+            thread_local std::vector<bool> dirty_tl;
+            dirty_tl.assign(p.rows.size(), false);
+            for (std::size_t i = 0; i < p.rows.size(); ++i)
+                dirty_tl[i] = (p.rows[i].begin() != p.rows[i].end());
+            p.csr = merge_csr<L>(p.rows, std::move(p.csr), dirty_tl);
         }
         else
+            p.csr = build_csr<L>(p.rows);
+
+        // Install layout-appropriate CSR slices on every row.
+        const std::size_t *off = p.csr.offsets.get();
+        if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
         {
-            for (auto &r : p.rows)
-                r.lock();
+            const I *cols_flat = p.csr.cols.get();
+            const V *vals_flat = p.csr.vals.get();
+            for (std::size_t i = 0; i < p.rows.size(); ++i)
+                p.rows[i].set_csr_slice(csr_slice<L, I, V>{
+                    cols_flat + off[i], vals_flat + off[i], off[i + 1] - off[i]});
+        }
+        else // aos_tag
+        {
+            const auto *pairs_flat = p.csr.pairs.get();
+            for (std::size_t i = 0; i < p.rows.size(); ++i)
+                p.rows[i].set_csr_slice(csr_slice<L, I, V>{
+                    pairs_flat + off[i], off[i + 1] - off[i]});
         }
 
-        if constexpr (LP == config::lock_policy::compact_preserve ||
-                      LP == config::lock_policy::compact_move)
-        {
-            // Build or merge the flat CSR for this partition.
-            // offsets == nullptr signals "first lock cycle".
-            if (p.csr.offsets != nullptr)
-            {
-                // Derive dirty flags from buffer state: a row is dirty iff its
-                // buffer is non-empty after sort+dedup.  thread_local avoids a
-                // heap allocation on every merge call.
-                thread_local std::vector<bool> dirty_tl;
-                dirty_tl.assign(p.rows.size(), false);
-                for (std::size_t i = 0; i < p.rows.size(); ++i)
-                    dirty_tl[i] = (p.rows[i].begin() != p.rows[i].end());
-                p.csr = merge_csr<L>(p.rows, std::move(p.csr), dirty_tl);
-            }
-            else
-                p.csr = build_csr<L>(p.rows);
-
-            // Install layout-appropriate CSR slices on every row.
-            const std::size_t *off = p.csr.offsets.get();
-            if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
-            {
-                const I *cols_flat = p.csr.cols.get();
-                const V *vals_flat = p.csr.vals.get();
-                for (std::size_t i = 0; i < p.rows.size(); ++i)
-                    p.rows[i].set_csr_slice(csr_slice<L, I, V>{
-                        cols_flat + off[i], vals_flat + off[i], off[i + 1] - off[i]});
-            }
-            else // aos_tag
-            {
-                const auto *pairs_flat = p.csr.pairs.get();
-                for (std::size_t i = 0; i < p.rows.size(); ++i)
-                    p.rows[i].set_csr_slice(csr_slice<L, I, V>{
-                        pairs_flat + off[i], off[i + 1] - off[i]});
-            }
-
-            // Clear staging buffers — data now lives in the flat CSR.
-            for (auto &r : p.rows)
-                r.clear_buffer_content();
-
-            if constexpr (LP == config::lock_policy::compact_move)
-                for (auto &r : p.rows)
-                    r.release_buffer();
-        }
+        // Clear staging buffers — data now lives in the flat CSR.
+        for (auto &r : p.rows)
+            r.clear_buffer_content();
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::lock()
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::lock()
     {
         if (mode_ == config::matrix_mode::locked)
             return;
@@ -405,11 +387,11 @@ namespace spira::parallel
     }
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::open()
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::open()
     {
         if (mode_ == config::matrix_mode::open)
             return;
@@ -427,11 +409,11 @@ namespace spira::parallel
     // ═════════════════════════════════════════════════════════════════════════════
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
                  layout::ValidLayoutTag<L>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::rebalance()
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::rebalance()
     {
         if (mode_ != config::matrix_mode::locked)
             throw std::logic_error("rebalance: matrix must be locked");
@@ -502,13 +484,13 @@ namespace spira::parallel
 
 #define SPIRA_PM_TMPL \
     template <class L, concepts::Indexable I, concepts::Valueable V, \
-              class BT, std::size_t BN, config::lock_policy LP, \
+              class BT, std::size_t BN, \
               config::insert_policy IP, std::size_t SN> \
         requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && \
                  layout::ValidLayoutTag<L>
 
     SPIRA_PM_TMPL
-    auto parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::nnz() const noexcept -> size_type
+    auto parallel_matrix<L, I, V, BT, BN, IP, SN>::nnz() const noexcept -> size_type
     {
         size_type total = 0;
         for (const auto &p : parts_)
@@ -518,7 +500,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    bool parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::empty() const noexcept
+    bool parallel_matrix<L, I, V, BT, BN, IP, SN>::empty() const noexcept
     {
         for (const auto &p : parts_)
             for (const auto &r : p.rows)
@@ -528,7 +510,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    auto parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::row_nnz(size_type row_idx) const -> size_type
+    auto parallel_matrix<L, I, V, BT, BN, IP, SN>::row_nnz(size_type row_idx) const -> size_type
     {
         validate_row(row_idx);
         const auto &p = parts_[owner(row_idx)];
@@ -536,7 +518,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    auto parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::row_at(size_type row_idx) const
+    auto parallel_matrix<L, I, V, BT, BN, IP, SN>::row_at(size_type row_idx) const
         -> const row_type &
     {
         validate_row(row_idx);
@@ -545,7 +527,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    bool parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::contains(size_type row_idx, I col_idx) const
+    bool parallel_matrix<L, I, V, BT, BN, IP, SN>::contains(size_type row_idx, I col_idx) const
     {
         validate_row(row_idx);
         validate_col(static_cast<size_type>(col_idx));
@@ -554,7 +536,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    auto parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::get(size_type row_idx, I col_idx) const
+    auto parallel_matrix<L, I, V, BT, BN, IP, SN>::get(size_type row_idx, I col_idx) const
         -> value_type
     {
         validate_row(row_idx);
@@ -565,7 +547,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    auto parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::accumulate(size_type row_idx) const
+    auto parallel_matrix<L, I, V, BT, BN, IP, SN>::accumulate(size_type row_idx) const
         -> value_type
     {
         validate_row(row_idx);
@@ -578,7 +560,7 @@ namespace spira::parallel
     // ═════════════════════════════════════════════════════════════════════════════
 
     SPIRA_PM_TMPL
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::insert(size_type row_idx, I col, V val)
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::insert(size_type row_idx, I col, V val)
     {
         if (mode_ != config::matrix_mode::open)
             throw std::logic_error("parallel_matrix::insert() requires open mode");
@@ -602,7 +584,7 @@ namespace spira::parallel
     }
 
     SPIRA_PM_TMPL
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::clear()
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::clear()
     {
         if (mode_ != config::matrix_mode::open)
             throw std::logic_error("parallel_matrix::clear() requires open mode");
@@ -617,7 +599,7 @@ namespace spira::parallel
 
     SPIRA_PM_TMPL
     template <class Func>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::for_each_row(Func &&f) const
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::for_each_row(Func &&f) const
     {
         for (const auto &p : parts_)
             for (size_type i = 0; i < p.rows.size(); ++i)
@@ -626,7 +608,7 @@ namespace spira::parallel
 
     SPIRA_PM_TMPL
     template <class Func>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::for_each_row(Func &&f)
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::for_each_row(Func &&f)
     {
         for (auto &p : parts_)
             for (size_type i = 0; i < p.rows.size(); ++i)
@@ -635,7 +617,7 @@ namespace spira::parallel
 
     SPIRA_PM_TMPL
     template <class Func>
-    void parallel_matrix<L, I, V, BT, BN, LP, IP, SN>::for_each_nnz_row(Func &&f) const
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::for_each_nnz_row(Func &&f) const
     {
         for (const auto &p : parts_)
             for (size_type i = 0; i < p.rows.size(); ++i)

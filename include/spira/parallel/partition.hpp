@@ -16,7 +16,7 @@ namespace spira::parallel
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // partition<LayoutTag, I, V, BufferTag, BufferN, LP>
+    // partition<LayoutTag, I, V, BufferTag, BufferN>
     //
     // Owns everything one thread needs to work independently:
     //   - [row_start, row_end): the global row range this thread owns
@@ -33,8 +33,7 @@ namespace spira::parallel
               concepts::Indexable I = uint32_t,
               concepts::Valueable V = double,
               class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
-              std::size_t BufferN = 64,
-              config::lock_policy LP = config::lock_policy::compact_preserve>
+              std::size_t BufferN = 64>
         requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
                  layout::ValidLayoutTag<LayoutTag>
     struct partition

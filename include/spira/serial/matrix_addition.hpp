@@ -29,8 +29,7 @@ namespace spira::serial::algorithms
 
     /// Merge two locked rows into a single open output row.
     /// A and B must be locked. out must be in open mode and empty.
-    /// Iteration is via for_each_element which dispatches to the CSR slice
-    /// (compact_*) or sorted buffer (no_compact) as appropriate.
+    /// Iteration is via for_each_element, which reads the CSR slice.
     template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
     void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
     {

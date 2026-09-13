@@ -12,10 +12,6 @@ namespace spira::buffer
     public:
         [[nodiscard]] bool empty() const noexcept { return self().empty_impl(); }
         [[nodiscard]] size_t size() const noexcept { return self().size_impl(); }
-        [[nodiscard]] size_t remaining_capacity() const noexcept
-        {
-            return self().remaining_capacity_impl();
-        }
 
         void clear() noexcept { self().clear_impl(); }
 
@@ -41,14 +37,10 @@ namespace spira::buffer
             return self().accumulate_impl();
         }
 
-        /// Sort by column, deduplicate (last-write wins), and filter zero values.
-        /// After this call the buffer is sorted, unique, and zero-free.
-        void sort_and_dedup() { self().sort_and_dedup(); }
-
         /// Sort by column and deduplicate (last-write wins), keeping zero values.
-        /// Used by compact_* lock policies so that zero-value inserts (deletions)
-        /// survive into merge_csr, which performs its own zero-filtering.
-        void sort_and_dedup_keep_zeros() { self().sort_and_dedup_keep_zeros(); }
+        /// Zeros survive so that merge_csr can read them as deletions; it does
+        /// its own zero-filtering when writing the CSR.
+        void sort_and_dedup() { self().sort_and_dedup(); }
 
         [[nodiscard]] auto begin() noexcept { return self().begin_impl(); }
         [[nodiscard]] auto end() noexcept { return self().end_impl(); }

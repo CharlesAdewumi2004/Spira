@@ -14,9 +14,9 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    V accumulate(const parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat, std::size_t row)
+    V accumulate(const parallel_matrix<L, I, V, BT, BN, IP, SN> &mat, std::size_t row)
     {
         if (row >= mat.n_rows())
             throw std::out_of_range("accumulate: row index out of range");
@@ -30,9 +30,9 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    std::vector<V> accumulate(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat)
+    std::vector<V> accumulate(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat)
     {
         std::vector<V> result(mat.n_rows());
 

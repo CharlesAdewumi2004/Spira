@@ -17,28 +17,6 @@ option(SPIRA_BUILD_PARALLEL    "Build parallel_matrix and its tests" ON)
 
 include(FetchContent)
 
-# -------------------------------------------------------------------
-# Boundcraft (dependency)
-# IMPORTANT: force its tests/bench OFF when consumed via FetchContent
-# -------------------------------------------------------------------
-set(BOUNDCRAFT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BOUNDCRAFT_BUILD_BENCH OFF CACHE BOOL "" FORCE)
-
-FetchContent_Declare(
-  boundcraft_repo
-  GIT_REPOSITORY https://github.com/CharlesAdewumi2004/Boundcraft.git
-  GIT_TAG        main
-)
-FetchContent_MakeAvailable(boundcraft_repo)
-
-if (TARGET boundcraft::boundcraft)
-  set(_BOUNDCRAFT_TARGET boundcraft::boundcraft)
-elseif (TARGET boundcraft)
-  set(_BOUNDCRAFT_TARGET boundcraft)
-else()
-  message(FATAL_ERROR "Boundcraft did not define a target (expected boundcraft::boundcraft or boundcraft).")
-endif()
-
 # ---------- unordered_dense (ankerl::unordered_dense) ----------
 FetchContent_Declare(
   unordered_dense
@@ -55,7 +33,7 @@ target_include_directories(spira INTERFACE
 target_compile_features(spira INTERFACE cxx_std_23)
 
 # Make deps available to all spira consumers
-target_link_libraries(spira INTERFACE unordered_dense::unordered_dense ${_BOUNDCRAFT_TARGET})
+target_link_libraries(spira INTERFACE unordered_dense::unordered_dense)
 
 # ---------- Architecture Detection ----------
 unset(SPIRA_ARCH_X86 CACHE)

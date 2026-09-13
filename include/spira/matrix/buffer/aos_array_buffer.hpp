@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -26,10 +25,6 @@ namespace spira::buffer::impls
 
         [[nodiscard]] bool empty_impl() const noexcept { return buf_.empty(); }
         [[nodiscard]] size_type size_impl() const noexcept { return buf_.size(); }
-        [[nodiscard]] size_type remaining_capacity_impl() const noexcept
-        {
-            return std::numeric_limits<size_type>::max();
-        }
 
         void clear_impl() noexcept { buf_.clear(); index_.clear(); }
 
@@ -71,9 +66,9 @@ namespace spira::buffer::impls
         }
 
         /// Sort by column, deduplicate (last-write wins), keeping zero values.
-        /// Identical to sort_and_dedup() but zeros are not removed, so that
-        /// merge_csr can see them as deletion signals during compact_* lock cycles.
-        void sort_and_dedup_keep_zeros() const
+        /// Zeros survive to merge_csr, which reads them as deletion signals and
+        /// filters them when writing the CSR.
+        void sort_and_dedup() const
         {
             if (buf_.empty())
                 return;
@@ -95,43 +90,6 @@ namespace spira::buffer::impls
             }
             buf_.erase(write, buf_.end());
 
-            index_.clear();
-            for (std::size_t i = 0; i < buf_.size(); ++i)
-                index_[buf_[i].column] = i;
-        }
-
-        /// Sort by column, deduplicate (last-write wins), and filter zero values.
-        /// No temporary allocations: after reverse+stable_sort the dedup and
-        /// zero-filter step uses an in-place write pointer (write <= read always).
-        void sort_and_dedup() const
-        {
-            if (buf_.empty())
-                return;
-
-            // Reverse so last-inserted element sorts first on equal columns,
-            // giving last-write-wins semantics after stable_sort.
-            std::reverse(buf_.begin(), buf_.end());
-            std::stable_sort(buf_.begin(), buf_.end(), [](const auto &a, const auto &b)
-                             { return a.first_ref() < b.first_ref(); });
-
-            // Compact in-place: write pointer is always <= read pointer, so no
-            // element is overwritten before it is read.
-            auto write = buf_.begin();
-            I last_col{};
-            bool first = true;
-            for (const auto &e : buf_)
-            {
-                if (!first && e.first_ref() == last_col)
-                    continue; // duplicate — last-written already kept
-                last_col = e.first_ref();
-                first = false;
-                if (traits::ValueTraits<V>::is_zero(e.second_ref()))
-                    continue; // last-write was zero = deletion
-                *write++ = e;
-            }
-            buf_.erase(write, buf_.end());
-
-            // Rebuild index map to match the compacted buffer.
             index_.clear();
             for (std::size_t i = 0; i < buf_.size(); ++i)
                 index_[buf_[i].column] = i;

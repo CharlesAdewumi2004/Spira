@@ -4,8 +4,6 @@
 #include <cassert>
 #include <cstddef>
 #include <iterator>
-#include <limits>
-#include <numeric>
 #include <type_traits>
 #include <vector>
 
@@ -46,10 +44,6 @@ namespace spira::buffer::impls
 
         [[nodiscard]] bool empty_impl() const noexcept { return col_.empty(); }
         [[nodiscard]] size_type size_impl() const noexcept { return col_.size(); }
-        [[nodiscard]] size_type remaining_capacity_impl() const noexcept
-        {
-            return std::numeric_limits<size_type>::max();
-        }
 
         void clear_impl() noexcept
         {
@@ -88,9 +82,9 @@ namespace spira::buffer::impls
         }
 
         /// Sort by column, deduplicate (last-write wins), keeping zero values.
-        /// Identical to sort_and_dedup() but zeros are not removed, so that
-        /// merge_csr can see them as deletion signals during compact_* lock cycles.
-        void sort_and_dedup_keep_zeros() const
+        /// Zeros survive to merge_csr, which reads them as deletion signals and
+        /// filters them when writing the CSR.
+        void sort_and_dedup() const
         {
             const std::size_t sz = col_.size();
             if (sz == 0)
@@ -145,77 +139,6 @@ namespace spira::buffer::impls
             col_.resize(write);
             val_.resize(write);
 
-            index_.clear();
-            for (std::size_t i = 0; i < col_.size(); ++i)
-                index_[col_[i]] = i;
-        }
-
-        /// Sort by column, deduplicate (last-write wins), and filter zero values.
-        /// Only one allocation (idx). The sort permutation is applied to col_/val_
-        /// in-place via cycle decomposition, then dedup+filter uses a write pointer.
-        void sort_and_dedup() const
-        {
-            const std::size_t sz = col_.size();
-            if (sz == 0)
-                return;
-
-            // Build reversed index so stable_sort gives last-write-wins on equal columns.
-            thread_local std::vector<size_type> idx;
-            idx.resize(sz);
-            for (size_type i = 0; i < sz; ++i)
-                idx[i] = sz - 1 - i;
-
-            std::stable_sort(idx.begin(), idx.end(),
-                             [&](size_type a, size_type b)
-                             { return col_[a] < col_[b]; });
-
-            // Apply permutation in-place via cycle decomposition.
-            // Each cycle is traced from its lowest unprocessed index; idx[j] is
-            // overwritten with j once element j has been placed, so visited
-            // elements are naturally skipped.
-            for (std::size_t i = 0; i < sz; ++i)
-            {
-                if (idx[i] == i)
-                    continue;
-                I tmp_col = col_[i];
-                V tmp_val = val_[i];
-                std::size_t j = i;
-                while (idx[j] != i)
-                {
-                    col_[j] = col_[idx[j]];
-                    val_[j] = val_[idx[j]];
-                    const std::size_t k = idx[j];
-                    idx[j] = j; // mark placed
-                    j = k;
-                }
-                col_[j] = tmp_col;
-                val_[j] = tmp_val;
-                idx[j] = j; // close cycle
-            }
-
-            // Compact in-place: dedup + zero-filter with a write pointer.
-            std::size_t write = 0;
-            I last_col{};
-            bool first = true;
-            for (std::size_t i = 0; i < sz; ++i)
-            {
-                if (!first && col_[i] == last_col)
-                    continue;
-                last_col = col_[i];
-                first = false;
-                if (traits::ValueTraits<V>::is_zero(val_[i]))
-                    continue;
-                if (write != i)
-                {
-                    col_[write] = col_[i];
-                    val_[write] = val_[i];
-                }
-                ++write;
-            }
-            col_.resize(write);
-            val_.resize(write);
-
-            // Rebuild index map to match the compacted buffer.
             index_.clear();
             for (std::size_t i = 0; i < col_.size(); ++i)
                 index_[col_[i]] = i;

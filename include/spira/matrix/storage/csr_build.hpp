@@ -16,14 +16,14 @@ namespace spira
     // build_csr<LayoutTag>
     //
     // First-lock construction: two-pass build from a vector of locked rows whose
-    // buffers have been sorted+deduped by row::lock_for_compact().
+    // buffers have been sorted+deduped by row::lock().
     //
     //   Pass 1 — count non-zero entries per row to compute offsets and total nnz.
     //   Pass 2 — copy non-zero entries into the CSR arrays.
     //            For soa_tag: fills cols[] and vals[] separately.
     //            For aos_tag: fills pairs[] with interleaved {col, val} entries.
     //
-    // Zero values are filtered here: lock_for_compact() keeps zeros in the buffer
+    // Zero values are filtered here: row::lock() keeps zeros in the buffer
     // for merge_csr to consume, but on the first lock there is no old CSR, so
     // zeros are simply omitted.
     // Precondition: every row in `rows` must be in locked mode.

@@ -6,8 +6,8 @@
 // Two regressions are pinned here:
 //   1. sort_and_dedup_keep_zeros() was missing, so the CRTP base forwarded to
 //      itself and any compact_* lock() recursed until the stack ran out.
-//   2. contains()/get() consulted only the open-mode hash map, so under
-//      no_compact every locked read reported "absent".
+//   2. contains()/get() consulted only the open-mode hash map, so entries
+//      materialised by sort_and_dedup() were invisible to reads.
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -18,16 +18,15 @@
 using Layout = spira::layout::tags::soa_tag;
 using BufTag = spira::buffer::tags::hash_map_buffer;
 
-template <spira::config::lock_policy LP = spira::config::lock_policy::compact_preserve>
-using HMat = spira::matrix<Layout, uint32_t, double, BufTag, 64, LP>;
+using HMat = spira::matrix<Layout, uint32_t, double, BufTag, 64>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// compact_preserve — the policy bench/spira_bench.cpp relies on
+// lock() -> flat CSR -> read back
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST(HashMapBuffer, LockBuildsCsrAndReadsBack)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(0, 1u, 2.0);
     A.insert(2, 3u, 5.0);
     A.lock();
@@ -42,7 +41,7 @@ TEST(HashMapBuffer, LockBuildsCsrAndReadsBack)
 
 TEST(HashMapBuffer, LastWriteWinsWithinOpenPhase)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(0, 1u, 2.0);
     A.insert(0, 1u, 7.0);
 
@@ -55,7 +54,7 @@ TEST(HashMapBuffer, LastWriteWinsWithinOpenPhase)
 
 TEST(HashMapBuffer, ZeroValueFilteredOnFirstLock)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(0, 1u, 0.0);
     A.insert(0, 2u, 3.0);
     A.lock();
@@ -69,7 +68,7 @@ TEST(HashMapBuffer, ZeroValueFilteredOnFirstLock)
 // deletion signals against the committed CSR.
 TEST(HashMapBuffer, ZeroInsertDeletesCommittedEntry)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(0, 1u, 2.0);
     A.insert(0, 2u, 3.0);
     A.lock();
@@ -87,7 +86,7 @@ TEST(HashMapBuffer, ZeroInsertDeletesCommittedEntry)
 
 TEST(HashMapBuffer, RepeatedLockCyclesMergeIntoCsr)
 {
-    HMat<> A(8, 8);
+    HMat A(8, 8);
     for (uint32_t r = 0; r < 8; ++r)
         A.insert(r, r, 1.0);
     A.lock();
@@ -110,7 +109,7 @@ TEST(HashMapBuffer, RepeatedLockCyclesMergeIntoCsr)
 
 TEST(HashMapBuffer, OverwriteCommittedValueAcrossLockCycle)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(1, 2u, 4.0);
     A.lock();
 
@@ -124,7 +123,7 @@ TEST(HashMapBuffer, OverwriteCommittedValueAcrossLockCycle)
 
 TEST(HashMapBuffer, AccumulateOpenAndLocked)
 {
-    HMat<> A(4, 4);
+    HMat A(4, 4);
     A.insert(0, 1u, 2.0);
     A.insert(0, 3u, 5.0);
 
@@ -132,30 +131,4 @@ TEST(HashMapBuffer, AccumulateOpenAndLocked)
     A.lock();
     EXPECT_DOUBLE_EQ(A.accumulate(0), 7.0); // locked: CSR slice
     EXPECT_DOUBLE_EQ(A.accumulate(1), 0.0);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// no_compact — no CSR is built; locked reads fall back to the sorted buffer
-// ─────────────────────────────────────────────────────────────────────────────
-
-TEST(HashMapBuffer, NoCompactLockedReadsSeeCommittedEntries)
-{
-    HMat<spira::config::lock_policy::no_compact> A(4, 4);
-    A.insert(0, 1u, 2.0);
-    A.insert(0, 3u, 5.0);
-    A.insert(2, 0u, 8.0);
-    A.lock();
-
-    EXPECT_EQ(A.csr(), nullptr); // no_compact builds no CSR
-
-    EXPECT_TRUE(A.contains(0, 1u));
-    EXPECT_TRUE(A.contains(0, 3u));
-    EXPECT_TRUE(A.contains(2, 0u));
-    EXPECT_DOUBLE_EQ(A.get(0, 1u), 2.0);
-    EXPECT_DOUBLE_EQ(A.get(0, 3u), 5.0);
-    EXPECT_DOUBLE_EQ(A.get(2, 0u), 8.0);
-
-    EXPECT_FALSE(A.contains(0, 2u));
-    EXPECT_DOUBLE_EQ(A.get(0, 2u), 0.0);
-    EXPECT_DOUBLE_EQ(A.accumulate(0), 7.0);
 }

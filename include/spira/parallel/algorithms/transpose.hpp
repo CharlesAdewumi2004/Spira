@@ -31,17 +31,17 @@ namespace spira::parallel::algorithms
     // ─────────────────────────────────────────────────────────────────────────
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN, config::lock_policy LP,
+              class BT, std::size_t BN,
               config::insert_policy IP, std::size_t SN>
-    parallel_matrix<L, I, V, BT, BN, LP, IP, SN>
-    transpose(parallel_matrix<L, I, V, BT, BN, LP, IP, SN> &mat)
+    parallel_matrix<L, I, V, BT, BN, IP, SN>
+    transpose(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat)
     {
         if (!mat.is_locked())
             throw std::logic_error("transpose: matrix must be locked");
 
         const std::size_t n_in = mat.n_threads();
 
-        parallel_matrix<L, I, V, BT, BN, LP, IP, SN> out(
+        parallel_matrix<L, I, V, BT, BN, IP, SN> out(
             mat.n_cols(), mat.n_rows(), mat.n_threads());
 
         out.execute([&mat, n_in](auto &p_out, std::size_t)
