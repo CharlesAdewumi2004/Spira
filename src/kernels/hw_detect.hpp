@@ -1,14 +1,10 @@
 #ifndef SPIRA_KERNELS_HW_DETECT_HPP
 #define SPIRA_KERNELS_HW_DETECT_HPP
 
-#include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <numeric>
-#include <random>
 #include <vector>
 
 // ============================================================================
@@ -57,17 +53,7 @@ namespace spira::kernel
 {
 
     // ============================================================================
-    // Cache size information
     // ============================================================================
-
-    struct CacheInfo
-    {
-        uint32_t l1d_size = 0;  // L1 data cache in bytes        (0 = unknown)
-        uint32_t l1i_size = 0;  // L1 instruction cache in bytes (0 = unknown)
-        uint32_t l2_size = 0;   // L2 unified cache in bytes     (0 = unknown)
-        uint32_t l3_size = 0;   // L3 unified cache in bytes     (0 = unknown)
-        uint32_t line_size = 0; // Cache line size in bytes      (0 = unknown)
-    };
 
     struct CpuFeatures
     {
@@ -87,9 +73,6 @@ namespace spira::kernel
         bool sve = false;
         bool sve2 = false;
 
-        // Cache topology (populated for all architectures)
-        CacheInfo cache;
-
         CpuFeatures() { detect(); }
 
     private:
@@ -99,16 +82,6 @@ namespace spira::kernel
             detect_x86();
 #elif defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
             detect_arm();
-#endif
-            detect_cache();
-        }
-
-        void detect_cache()
-        {
-#if defined(SPIRA_ARCH_X86)
-            detect_cache_x86();
-#elif defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
-            detect_cache_arm();
 #endif
         }
 
@@ -221,50 +194,6 @@ namespace spira::kernel
             }
         }
 
-        void detect_cache_x86()
-        {
-            // CPUID leaf 4: deterministic cache parameters — enumerate subleaves
-            // until cache type field (bits 4:0 of EAX) is zero (null).
-            auto leaf0 = cpuid(0);
-            if (leaf0.eax < 4)
-                return;
-
-            for (uint32_t sub = 0; sub < 32; ++sub)
-            {
-                auto r = cpuid(4, sub);
-                uint32_t type = r.eax & 0x1F; // 0=null, 1=data, 2=instruction, 3=unified
-                if (type == 0)
-                    break;
-
-                uint32_t level = (r.eax >> 5) & 0x7;               // bits 7:5
-                uint32_t line_size = (r.ebx & 0xFFF) + 1;          // bits 11:0
-                uint32_t partitions = ((r.ebx >> 12) & 0x3FF) + 1; // bits 21:12
-                uint32_t ways = ((r.ebx >> 22) & 0x3FF) + 1;       // bits 31:22
-                uint32_t sets = r.ecx + 1;
-
-                uint32_t size = line_size * partitions * ways * sets;
-
-                if (cache.line_size == 0)
-                    cache.line_size = line_size;
-
-                if (level == 1)
-                {
-                    if (type == 1 || type == 3)
-                        cache.l1d_size = size; // data or unified
-                    if (type == 2 || type == 3)
-                        cache.l1i_size = size; // instr or unified
-                }
-                else if (level == 2)
-                {
-                    cache.l2_size = size;
-                }
-                else if (level == 3)
-                {
-                    cache.l3_size = size;
-                }
-            }
-        }
-
 #endif // SPIRA_ARCH_X86
 
 #if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
@@ -281,17 +210,6 @@ namespace spira::kernel
             detect_arm_linux();
 #elif defined(_MSC_VER)
             detect_arm_windows();
-#endif
-        }
-
-        void detect_cache_arm()
-        {
-#if defined(__APPLE__)
-            detect_cache_arm_apple();
-#elif defined(__linux__)
-            detect_cache_arm_linux();
-#elif defined(_MSC_VER)
-            detect_cache_arm_windows();
 #endif
         }
 
@@ -313,23 +231,6 @@ namespace spira::kernel
             {
                 sve2 = (val != 0);
             }
-        }
-
-        void detect_cache_arm_apple()
-        {
-            auto sysctl_u32 = [](const char *name) -> uint32_t
-            {
-                uint64_t val = 0;
-                size_t sz = sizeof(val);
-                if (sysctlbyname(name, &val, &sz, nullptr, 0) == 0)
-                    return static_cast<uint32_t>(val);
-                return 0;
-            };
-            cache.l1d_size = sysctl_u32("hw.l1dcachesize");
-            cache.l1i_size = sysctl_u32("hw.l1icachesize");
-            cache.l2_size = sysctl_u32("hw.l2cachesize");
-            cache.l3_size = sysctl_u32("hw.l3cachesize");
-            cache.line_size = sysctl_u32("hw.cachelinesize");
         }
 #endif
 
@@ -360,91 +261,6 @@ namespace spira::kernel
             // No SVE on 32-bit ARM
 #endif
         }
-
-        void detect_cache_arm_linux()
-        {
-            // Read cache topology from sysfs.
-            // Each index under /sys/devices/system/cpu/cpu0/cache/ is one level.
-            for (int idx = 0; idx < 16; ++idx)
-            {
-                char path[128];
-
-                // Cache type: "Data", "Instruction", or "Unified"
-                snprintf(path, sizeof(path),
-                         "/sys/devices/system/cpu/cpu0/cache/index%d/type", idx);
-                FILE *f = fopen(path, "r");
-                if (!f)
-                    break;
-                char type[32] = {};
-                bool ok = (fscanf(f, "%31s", type) == 1);
-                fclose(f);
-                if (!ok)
-                    break;
-
-                // Cache level (1, 2, 3, ...)
-                int level = 0;
-                snprintf(path, sizeof(path),
-                         "/sys/devices/system/cpu/cpu0/cache/index%d/level", idx);
-                f = fopen(path, "r");
-                if (!f)
-                    break;
-                fscanf(f, "%d", &level);
-                fclose(f);
-
-                // Cache size, e.g. "32K", "512K", "8192K"
-                uint32_t sz = 0;
-                snprintf(path, sizeof(path),
-                         "/sys/devices/system/cpu/cpu0/cache/index%d/size", idx);
-                f = fopen(path, "r");
-                if (f)
-                {
-                    char unit = 'K';
-                    if (fscanf(f, "%u%c", &sz, &unit) >= 1)
-                    {
-                        if (unit == 'M' || unit == 'm')
-                            sz *= 1024u * 1024u;
-                        else
-                            sz *= 1024u; // K (default)
-                    }
-                    fclose(f);
-                }
-
-                // Cache line size (same for all levels on most CPUs; read once)
-                if (cache.line_size == 0)
-                {
-                    snprintf(path, sizeof(path),
-                             "/sys/devices/system/cpu/cpu0/cache/index%d/coherency_line_size",
-                             idx);
-                    f = fopen(path, "r");
-                    if (f)
-                    {
-                        fscanf(f, "%u", &cache.line_size);
-                        fclose(f);
-                    }
-                }
-
-                bool is_data = (strcmp(type, "Data") == 0 ||
-                                strcmp(type, "Unified") == 0);
-                bool is_instr = (strcmp(type, "Instruction") == 0 ||
-                                 strcmp(type, "Unified") == 0);
-
-                if (level == 1)
-                {
-                    if (is_data)
-                        cache.l1d_size = sz;
-                    if (is_instr)
-                        cache.l1i_size = sz;
-                }
-                else if (level == 2)
-                {
-                    cache.l2_size = sz;
-                }
-                else if (level == 3)
-                {
-                    cache.l3_size = sz;
-                }
-            }
-        }
 #endif
 
 #if defined(_MSC_VER)
@@ -461,134 +277,10 @@ namespace spira::kernel
             neon = IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE) != 0;
 #endif
         }
-
-        void detect_cache_arm_windows()
-        {
-            DWORD buf_size = 0;
-            GetLogicalProcessorInformation(nullptr, &buf_size);
-            if (buf_size == 0)
-                return;
-
-            auto *buf = static_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION *>(
-                std::malloc(buf_size));
-            if (!buf)
-                return;
-
-            if (GetLogicalProcessorInformation(buf, &buf_size))
-            {
-                DWORD count = buf_size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-                for (DWORD i = 0; i < count; ++i)
-                {
-                    if (buf[i].Relationship != RelationCache)
-                        continue;
-                    const auto &ci = buf[i].Cache;
-                    if (cache.line_size == 0)
-                        cache.line_size = ci.LineSize;
-                    if (ci.Level == 1 && ci.Type == CacheData)
-                        cache.l1d_size = ci.Size;
-                    if (ci.Level == 1 && ci.Type == CacheInstruction)
-                        cache.l1i_size = ci.Size;
-                    if (ci.Level == 2)
-                        cache.l2_size = ci.Size;
-                    if (ci.Level == 3)
-                        cache.l3_size = ci.Size;
-                }
-            }
-            std::free(buf);
-        }
 #endif
 
 #endif // SPIRA_ARCH_ARM64 || SPIRA_ARCH_ARM32
     };
-
-    // ============================================================================
-    // Memory latency measurement
-    // ============================================================================
-
-    struct MemoryLatencyInfo
-    {
-        double dram_latency_ns;
-        int dram_latency_cycles;
-        int l3_latency_cycles;
-        int estimated_prefetch_distance; // calibrated for scalar (~4 cycles/iter, stride 1)
-
-        // Compute the index-offset prefetch distance for a loop with the given
-        // stride and estimated cycles per iteration.
-        // d = latency * stride / cycles ensures x[cols[i+d]] is ready when the
-        // loop reaches index i+d (which takes d/stride iterations to arrive).
-        int prefetch_distance_for(int stride, int cycles_per_iter) const
-        {
-            return std::max(stride, dram_latency_cycles * stride / cycles_per_iter);
-        }
-    };
-
-    inline double get_cpu_frequency_ghz()
-    {
-#if defined(__linux__)
-        FILE *f = fopen("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", "r");
-        if (f)
-        {
-            unsigned long khz = 0;
-            if (fscanf(f, "%lu", &khz) == 1)
-            {
-                fclose(f);
-                return static_cast<double>(khz) / 1e6;
-            }
-            fclose(f);
-        }
-#endif
-        return 3.0; // fallback
-    }
-
-    inline MemoryLatencyInfo measure_memory_latency()
-    {
-        // Allocate a buffer much larger than L3 (force DRAM access)
-        constexpr size_t BUF_SIZE = 32 * 1024 * 1024; // 32MB — larger than typical L3
-        constexpr size_t N = BUF_SIZE / sizeof(size_t);
-
-        std::vector<size_t> buf(N);
-
-        // Build a random pointer chain — defeats hardware prefetcher
-        // Each element points to another random element
-        std::vector<size_t> indices(N);
-        std::iota(indices.begin(), indices.end(), 0);
-        std::shuffle(indices.begin(), indices.end(),
-                     std::mt19937{std::random_device{}()});
-
-        for (size_t i = 0; i < N - 1; i++)
-            buf[indices[i]] = indices[i + 1];
-        buf[indices[N - 1]] = indices[0]; // close the chain
-
-        // Chase the chain — each load depends on the previous
-        // so OoO can't overlap them — true latency measurement
-        constexpr int ITERATIONS = 10000;
-        size_t pos = 0;
-
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < ITERATIONS; i++)
-            pos = buf[pos];
-        auto end = std::chrono::high_resolution_clock::now();
-
-        // Prevent the compiler optimising away the loop
-        volatile size_t sink = pos;
-        (void)sink;
-
-        double ns_per_access = std::chrono::duration<double, std::nano>(end - start).count() / ITERATIONS;
-
-        double ghz = get_cpu_frequency_ghz();
-        int cycles = static_cast<int>(ns_per_access * ghz);
-
-        // Prefetch distance: how many iterations ahead to issue a prefetch so the
-        // data arrives in time.  Assumes ~4 cycles per loop iteration.
-        int prefetch_distance = std::max(1, cycles / 4);
-
-        return MemoryLatencyInfo{
-            .dram_latency_ns = ns_per_access,
-            .dram_latency_cycles = cycles,
-            .l3_latency_cycles = cycles / 5, // rough heuristic
-            .estimated_prefetch_distance = prefetch_distance,
-        };
-    }
 
 } // namespace spira::kernel
 
