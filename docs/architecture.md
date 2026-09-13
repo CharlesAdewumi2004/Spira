@@ -80,11 +80,9 @@ accumulation type is the same as the value type. For `std::complex<T>` the
 zero is `complex(0, 0)` and `is_zero` is a tolerance aware magnitude
 check. All of this is in [traits.hpp](../include/spira/traits.hpp).
 
-`config.hpp` defines the three enumerations that control lifecycle
-behaviour: `matrix_mode` (open, locked), `lock_policy`
-(no_compact, compact_preserve, compact_move), and `insert_policy` (direct,
-staged). It also pins the search policy used inside buffers to a hybrid
-binary-linear search from the `boundcraft` dependency.
+`config.hpp` defines the two enumerations that control lifecycle
+behaviour: `matrix_mode` (open, locked) and `insert_policy` (direct,
+staged).
 
 ## 3. Layout tags
 
@@ -204,8 +202,8 @@ The storage types live under
 The **SoA** specialisation in
 [csr_storage_soa.hpp](../include/spira/matrix/storage/csr_storage_soa.hpp)
 has three arrays: `offsets[n_rows+1]`, `cols[nnz]`, `vals[nnz]`. All three
-are allocated with `std::aligned_alloc` at 64 byte alignment (one cache
-line). The `offsets` array has one entry per row plus a sentinel, and row
+are allocated with `::operator new(n, std::align_val_t{64})`, one cache
+line of alignment. The `offsets` array has one entry per row plus a sentinel, and row
 `i` occupies the range `cols[offsets[i]..offsets[i+1])` and
 `vals[offsets[i]..offsets[i+1])`.
 
@@ -296,8 +294,8 @@ hit the slice.
    `build_csr`; otherwise it is a `merge_csr` with the dirty bitset.
 3. **Install CSR slices.** Every row gets a `csr_slice` pointing at its
    position in the new CSR array.
-4. **Clear buffers.** If the lock policy is `compact_move` the buffers
-   are deallocated; otherwise they are emptied but keep their capacity.
+4. **Clear buffers.** They are emptied but keep their capacity, so the
+   next `open()` costs nothing.
 
 After these steps `mode_` flips to locked and the dirty bitset is
 cleared.
@@ -310,10 +308,9 @@ work and go through the CSR slices without touching buffers.
 
 ### Re-opening
 
-`matrix::open()` sets `mode_` back to open. The CSR array is not touched.
-Under `compact_preserve` the row buffers still exist and inserts work
-immediately. Under `compact_move` the row buffers are re-allocated here,
-which is the one linear cost of re-opening.
+`matrix::open()` sets `mode_` back to open. The CSR array is not touched
+and the row buffers still exist, so inserts work immediately and re-opening
+is O(1).
 
 ### The dirty bitset
 
@@ -522,11 +519,10 @@ of partitions.
 
 ### Insert routing
 
-`insert(r, c, v)` picks the owning partition by integer division:
-`owner(r) = r * n_threads / n_rows`. This is a simple uniform split by
-row count, which is fine as long as the user expects it; the nnz
-balanced split only applies to the partition boundaries stored in the
-partitions themselves after construction or rebalance.
+`insert(r, c, v)` finds the owning partition with a short linear scan over
+the stored partition boundaries (`n_threads` is small). Scanning the real
+boundaries rather than recomputing a uniform split means routing stays
+correct after `rebalance()` has moved them.
 
 If the insert policy is `direct`, the insert writes to
 `partitions_[owner].rows[r - row_start].buffer` directly. If it is
@@ -557,10 +553,8 @@ the last lock do any real merge work; the rest do a memcpy per row.
 ### Parallel open
 
 `open()` is symmetric. It dispatches `partition::open()` to each
-partition, which clears the locked flag and re-enables inserts. Under
-`compact_move` the row buffers are re-allocated at this point, which
-is the one O(n) cost of re-opening. Under `compact_preserve` the
-buffers were never freed so re-opening is O(1).
+partition, which clears the locked flag and re-enables inserts. The row
+buffers were never freed, so re-opening is O(1).
 
 ### Rebalance
 
@@ -601,15 +595,16 @@ pool->execute([&](size_t tid) {
     auto &p = partitions_[tid];
     for (size_t i = 0; i < p.rows.size(); ++i) {
         size_t r = p.row_start + i;
-        y[r] = spira::serial::algorithms::sparse_dot_row(p.csr, i, x);
+        y[r] = kernel::sparse_dot_double(vals + off[i], cols + off[i],
+                                         x.data(), off[i+1] - off[i], x.size());
     }
 });
 ```
 
-When the layout, index type, and value type line up for the SIMD path,
-`sparse_dot_row` ends up calling `kernel::sparse_dot_float` or
-`kernel::sparse_dot_double` directly through the function pointer set at
-startup. This is where the parallel and SIMD layers compose: the outer
+When the layout, index type, and value type line up for the SIMD path, the
+overload calls `kernel::sparse_dot_float` or `kernel::sparse_dot_double`
+directly through the function pointer set at startup; otherwise the inner
+loop is a plain scalar accumulation over the same flat arrays. This is where the parallel and SIMD layers compose: the outer
 structure is partition driven, the inner loop is SIMD.
 
 See [04-spmv-sequence.puml](diagrams/04-spmv-sequence.puml) for the full

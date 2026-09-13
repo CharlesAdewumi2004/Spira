@@ -11,14 +11,13 @@ All external dependencies are fetched automatically by CMake via
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| `boundcraft` | latest | Hybrid binary/linear searcher used inside buffers |
 | `ankerl::unordered_dense` | 4.5.0 | Fast hash map for the per row buffer index |
 | GoogleTest | 1.14.0 | Unit test framework (optional) |
 | Google Benchmark | 1.8.4 | Benchmark framework (optional) |
 
 The standard library requirements come from C++23: `std::jthread`,
-`std::binary_semaphore`, `std::move_only_function`, and `std::aligned_alloc`
-are all used unconditionally.
+`std::binary_semaphore`, `std::move_only_function`, and aligned
+`operator new` are all used unconditionally.
 
 ## Build options
 
@@ -162,8 +161,7 @@ Spira/
   LICENSE
   bench/
     spira_bench.cpp            benchmark driver
-  cmake/
-    ...                        helper modules
+    run_benchmark.sh           multi-stage build + run harness
   include/
     spira/
       spira.hpp                umbrella include
@@ -216,7 +214,6 @@ Spira/
       dispatch.cpp               startup dispatch + function pointers
       hw_detect.hpp              CPU feature detection
       runtime_config.hpp         singleton with CpuFeatures + latency
-      simd_aliases.hpp
       simd_aliases/              per architecture intrinsic wrappers
       dot_impls/
         dot_scalar.cpp

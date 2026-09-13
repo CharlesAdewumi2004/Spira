@@ -45,7 +45,7 @@ self contained so you can read it in isolation.
 
 ## Status and scope
 
-The current active branch is `stage4/MutilThreaded`. This branch contains the
+Development now happens on `main`, which contains the
 full four stage implementation: the mutable matrix, the SIMD kernel dispatch
 layer, the compressed storage with open and locked modes, and the partitioned
 multi threaded matrix. Other branches in the repository hold earlier or

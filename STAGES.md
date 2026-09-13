@@ -142,15 +142,15 @@ auto S = A * 2.5;       // scalar multiply
 
 ## Stage 2 — SIMD Kernels & Hardware Detection
 
-**Branch:** `stage3/simd-kernels-and-prefetch`
+**Branch:** `stage2/SIMD-Kernels`
 
 ### Goal
 
-Replace the scalar sparse dot-product inner loop with architecture-specific SIMD kernels selected at runtime. Add CPU feature detection and adaptive memory-latency measurement so the optimal kernel and prefetch distance are chosen automatically on any machine.
+Replace the scalar sparse dot-product inner loop with architecture-specific SIMD kernels selected at runtime, with CPU feature detection so the best kernel is chosen automatically on any machine.
 
 ### Architecture
 
-A **dispatch layer** runs once at program startup (via a `static` initialiser). It probes CPU features, measures DRAM latency, and installs function pointers that the hot path calls directly — zero branches on the critical path.
+A **dispatch layer** runs once at program startup (via a `static` initialiser). It probes CPU features and installs function pointers that the hot path calls directly — zero branches on the critical path.
 
 ```
 Program start
@@ -163,13 +163,10 @@ Program start
 │     ├─ x86: CPUID leaves 1, 7 + XSAVE check │
 │     └─ ARM: hwcap / sysctl / WinAPI          │
 │                                              │
-│  2. measure_memory_latency()                 │
-│     └─ pointer-chase chain → DRAM ns / cyc  │
-│                                              │
-│  3. select best kernel                       │
+│  2. select best kernel                       │
 │     AVX-512 > AVX2+FMA > SSE4.2 > NEON      │
 │                   │                          │
-│  4. write to function pointers               │
+│  3. write to function pointers               │
 │     kernel::sparse_dot_double = &dot_avx2   │
 │     kernel::sparse_dot_float  = &dot_avx2f  │
 └─────────────────────────────────────────────┘
@@ -193,21 +190,8 @@ Program start
   │    Apple:          sysctlbyname("hw.optional.AdvSIMD")            │
   │    Windows:        IsProcessorFeaturePresent()                     │
   │                                                                    │
-  └─── All ────────────────────────────────────────────────────────────┘
-       Cache sizes: L1d/L1i/L2/L3 — used for prefetch distance tuning
+  └────────────────────────────────────────────────────────────────────┘
 ```
-
-### Adaptive Prefetching
-
-DRAM latency is measured with a **pointer-chase chain** (linked list of random pointers spanning memory, forces cache misses):
-
-```
-prefetch_distance = ceil( dram_latency_cycles × stride_bytes
-                          ─────────────────────────────────── )
-                           bytes_per_iter × cycles_per_iter
-```
-
-This gives the number of elements to prefetch ahead so a `__builtin_prefetch` request arrives in DRAM just before the element is needed.
 
 ### Kernel Hierarchy
 
@@ -365,7 +349,7 @@ pairs:    [{3,v},{7,v},{1,v},{4,v},{9,v},{2,v},{6,v},{8,v}]
            col+val interleaved — one cache line carries both
 ```
 
-Both layouts are **64-byte aligned** and allocated with `std::aligned_alloc`.
+Both layouts are **64-byte aligned**, allocated with `::operator new(n, std::align_val_t{64})`.
 
 ### Merge Strategy
 
@@ -422,19 +406,13 @@ template <
     concepts::Indexable   I       = uint32_t,
     concepts::Valueable   V       = double,
     class BufferTag               = buffer::tags::array_buffer<layout::tags::aos_tag>,
-    std::size_t           BufferN = 64,           // initial buffer reserve hint
-    config::lock_policy   LP      = config::lock_policy::compact_preserve
+    std::size_t           BufferN = 64            // initial buffer reserve hint
 >
 class matrix;
 ```
 
-**Lock policies:**
-
-| Policy             | After `lock()`                              | After `open()`        |
-|--------------------|--------------------------------------------|-----------------------|
-| `compact_preserve` | CSR built; per-row buffers kept (zero-size)| O(1) — just flip flag |
-| `compact_move`     | CSR built; per-row buffers freed           | O(n) — re-allocate    |
-| `no_compact`       | Sorted buffer used directly (no CSR)       | O(1)                  |
+`lock()` always builds the flat CSR and empties the per-row staging buffers,
+keeping their capacity so `open()` is O(1).
 
 ### Key API (Stage 3 additions)
 
@@ -584,7 +562,6 @@ template <
     concepts::Valueable     V        = double,
     class BufferTag                  = buffer::tags::array_buffer<layout::tags::aos_tag>,
     std::size_t             BufferN  = 64,
-    config::lock_policy     LP       = config::lock_policy::compact_preserve,
     config::insert_policy   IP       = config::insert_policy::direct,
     std::size_t             StagingN = 256      // entries per staging buffer
 >
@@ -599,7 +576,6 @@ using PM = spira::parallel::parallel_matrix<
     uint32_t, double,
     spira::buffer::tags::array_buffer<spira::layout::tags::aos_tag>,
     64,
-    spira::config::lock_policy::compact_preserve,
     spira::config::insert_policy::direct
 >;
 
@@ -693,7 +669,6 @@ Stage 1: MVP
            │
            │  +SIMD kernels
            │  +CPU feature detection (CPUID / hwcap / sysctl)
-           │  +Adaptive prefetch distance (DRAM latency measurement)
            ▼
 Stage 2: SIMD Kernels & Hardware Detection
   Runtime kernel dispatch: AVX-512 > AVX2+FMA > SSE4.2 > NEON > scalar
@@ -709,7 +684,6 @@ Stage 2: SIMD Kernels & Hardware Detection
 Stage 3: Layout-Aware CSR
   Formal open → lock → open cycle
   Single contiguous CSR allocation shared across all rows
-  Lock policy: compact_preserve / compact_move / no_compact
   Per-row dirty tracking; bulk memmove for clean rows
            │
            │  +static row partitioning across n_threads
@@ -736,7 +710,6 @@ Stage 4: Multi-Threading
 | SpMV / SpGEMM / Transpose| ✓       | ✓       | ✓       | ✓       |
 | SIMD kernels             |         | ✓       | ✓       | ✓       |
 | CPU feature detection    |         | ✓       | ✓       | ✓       |
-| Adaptive prefetch        |         | ✓       | ✓       | ✓       |
 | Open / locked lifecycle  |         |         | ✓       | ✓       |
 | Flat CSR (contiguous)    |         |         | ✓       | ✓       |
 | Two-pointer CSR merge    |         |         | ✓       | ✓       |

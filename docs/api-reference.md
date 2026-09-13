@@ -70,12 +70,6 @@ namespace spira::config {
         locked
     };
 
-    enum class lock_policy : uint8_t {
-        no_compact,       // never build CSR, use sorted buffers in locked mode
-        compact_preserve, // build CSR, keep buffers (default)
-        compact_move      // build CSR, free buffers
-    };
-
     enum class insert_policy : uint8_t {
         direct, // write inserts straight to partition row buffers
         staged  // accumulate into per-partition staging arrays first
@@ -151,8 +145,7 @@ template <
     concepts::Valueable   V       = double,
     class                 BufferTag
         = buffer::tags::array_buffer<layout::tags::aos_tag>,
-    std::size_t           BufferN = 64,
-    config::lock_policy   LP      = config::lock_policy::compact_preserve
+    std::size_t           BufferN = 64
 >
 class matrix;
 ```
@@ -200,8 +193,8 @@ void open();
 
 `lock()` sorts and deduplicates every row buffer, builds or merges the CSR,
 and installs per row CSR slices. `open()` transitions back to mutable mode;
-the CSR array is kept regardless of policy, but the row buffers may be
-re-allocated depending on the lock policy.
+the CSR array is kept as committed history and the row buffers keep their
+capacity, so `open()` is O(1).
 
 ### Element operations
 
@@ -225,8 +218,8 @@ const csr_storage<LayoutTag, I, V> *csr() const noexcept;
 void load_csr(csr_storage<LayoutTag, I, V> &&csr);
 ```
 
-`csr()` returns a pointer to the flat CSR array if the matrix is locked and
-the lock policy built one; `nullptr` otherwise. `load_csr` installs a CSR
+`csr()` returns a pointer to the flat CSR array once the matrix has been
+locked, or `nullptr` before the first `lock()`. `load_csr` installs a CSR
 built externally and puts the matrix into locked mode without going through
 the lock pipeline.
 
@@ -325,7 +318,6 @@ template <
     class                  BufferTag
         = buffer::tags::array_buffer<layout::tags::aos_tag>,
     std::size_t            BufferN  = 64,
-    config::lock_policy    LP       = config::lock_policy::compact_preserve,
     config::insert_policy  IP       = config::insert_policy::direct,
     std::size_t            StagingN = 256
 >

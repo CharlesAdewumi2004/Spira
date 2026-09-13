@@ -34,8 +34,8 @@ operation onto each partition. Because partitions are disjoint there is no
 synchronisation on the critical path.
 
 Both containers are templated on a layout tag, an index type, a value type,
-a buffer tag, an initial reserve hint, and a lock policy. The parallel one
-adds an insert policy and a staging buffer size on top. All of those choices
+a buffer tag, and an initial reserve hint. The parallel one adds an insert
+policy and a staging buffer size on top. All of those choices
 are made at compile time so the compiler can specialise the read and SpMV
 paths aggressively.
 
@@ -52,9 +52,8 @@ modes (`spmv`, `balanced`, `insert_heavy`) pick different buffer sizes for
 different access patterns. This stage proves out the basic abstraction.
 
 **Stage 2, SIMD kernels and hardware detection.** Adds a dispatch layer
-that probes the CPU at startup, measures DRAM latency with a pointer chase
-chain, and installs function pointers pointing at the best available
-sparse dot product kernel. SSE, AVX2 with FMA, AVX-512, and NEON are all
+that probes the CPU at startup and installs function pointers pointing at
+the best available sparse dot product kernel. SSE, AVX2 with FMA, AVX-512, and NEON are all
 present, with a scalar fallback. The hot SpMV path calls the function
 pointer directly, so there are no branches on the inner loop.
 
