@@ -443,3 +443,98 @@ TEST(ParallelMatrixStreaming, InsertLockSpmvOpenRepeat)
     EXPECT_DOUBLE_EQ(y[N - 1], 1.0);
     m.open();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// add()
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace
+{
+    // Shared scenario: sums within a cycle, onto committed values across a
+    // re-lock, and down to zero (deletion), on rows owned by different threads.
+    template <class M>
+    void run_add_cycle(M &m)
+    {
+        m.add(0, 0, 2.0);
+        m.add(0, 0, 3.0);
+        m.add(7, 7, 1.0);
+        m.insert(7, 6, 4.0);
+        m.lock();
+        EXPECT_DOUBLE_EQ(m.get(0, 0), 5.0);
+        EXPECT_DOUBLE_EQ(m.get(7, 7), 1.0);
+
+        m.open();
+        m.add(0, 0, 1.0);
+        m.add(7, 6, -4.0);
+        m.lock();
+        EXPECT_DOUBLE_EQ(m.get(0, 0), 6.0);
+        EXPECT_FALSE(m.contains(7, 6));
+        EXPECT_EQ(m.nnz(), 2u);
+    }
+}
+
+TEST(ParallelMatrixAdd, DirectPolicy)
+{
+    pmat<> m(8, 8, 2);
+    run_add_cycle(m);
+}
+
+TEST(ParallelMatrixAdd, StagedPolicy)
+{
+    pmat_staged<> m(8, 8, 2);
+    run_add_cycle(m);
+}
+
+TEST(ParallelMatrixAdd, StagedAddSeesStagedInsert)
+{
+    // The insert is still in the staging array when add() is called, so the
+    // sum must be taken at flush time, not when add() runs.
+    pmat_staged<> m(8, 8, 2);
+    m.insert(3, 3, 10.0);
+    m.add(3, 3, 1.0);
+    m.insert(3, 4, 1.0);
+    m.insert(3, 4, 2.0); // plain inserts keep last-write-wins
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(3, 3), 11.0);
+    EXPECT_DOUBLE_EQ(m.get(3, 4), 2.0);
+}
+
+TEST(ParallelMatrixAdd, StagedAddAcrossMidInsertFlush)
+{
+    using small_staged = parallel_matrix<layout::tags::aos_tag,
+                                         uint32_t, double,
+                                         buffer::tags::array_buffer<layout::tags::aos_tag>,
+                                         64,
+                                         config::insert_policy::staged,
+                                         4>; // tiny staging buffer
+    small_staged m(8, 16, 1);
+    // 10 adds to one entry forces several flushes between them.
+    for (int k = 0; k < 10; ++k)
+        m.add(0, 5, 1.0);
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(0, 5), 10.0);
+    EXPECT_EQ(m.row_nnz(0), 1u);
+}
+
+TEST(ParallelMatrixAdd, ParallelFillRowsSupportAdd)
+{
+    pmat<> m(8, 8, 2);
+    m.parallel_fill([](auto &rows, std::size_t r_start, std::size_t r_end, std::size_t)
+    {
+        for (std::size_t r = r_start; r < r_end; ++r)
+        {
+            rows[r - r_start].add(static_cast<uint32_t>(r), 1.5);
+            rows[r - r_start].add(static_cast<uint32_t>(r), 1.5);
+        }
+    });
+    m.lock();
+    for (std::size_t r = 0; r < 8; ++r)
+        EXPECT_DOUBLE_EQ(m.get(r, static_cast<uint32_t>(r)), 3.0) << "row " << r;
+}
+
+TEST(ParallelMatrixAdd, ThrowsWhenLocked)
+{
+    pmat<> m(4, 4, 2);
+    m.lock();
+    EXPECT_THROW(m.add(0, 0, 1.0), std::logic_error);
+}

@@ -159,6 +159,11 @@ namespace spira::parallel
         /// involvement.
         void insert(size_type row_idx, I col, V val);
 
+        /// Like insert(), but adds val onto the current value at (row, col);
+        /// a missing entry counts as zero. A sum of exactly zero deletes the
+        /// entry at the next lock().
+        void add(size_type row_idx, I col, V val);
+
         /// Clear all row buffers across every partition.
         void clear();
 
@@ -573,13 +578,39 @@ namespace spira::parallel
 
         if constexpr (IP == config::insert_policy::staged)
         {
-            staging_.bufs_[t].push_back({loc, col, val});
+            staging_.bufs_[t].push_back({loc, col, false, val});
             if (staging_.bufs_[t].size() >= SN)
                 staging_.flush(t, p);
         }
         else
         {
             p.rows[loc].insert(col, val);
+        }
+    }
+
+    SPIRA_PM_TMPL
+    void parallel_matrix<L, I, V, BT, BN, IP, SN>::add(size_type row_idx, I col, V val)
+    {
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("parallel_matrix::add() requires open mode");
+        validate_row(row_idx);
+        validate_col(static_cast<size_type>(col));
+
+        const size_type t    = owner(row_idx);
+        auto           &p   = parts_[t];
+        const size_type loc = p.local_row(row_idx);
+
+        if constexpr (IP == config::insert_policy::staged)
+        {
+            // Staged as a delta: the current value may still be sitting in the
+            // staging array, so the sum is only taken when the entry is flushed.
+            staging_.bufs_[t].push_back({loc, col, true, val});
+            if (staging_.bufs_[t].size() >= SN)
+                staging_.flush(t, p);
+        }
+        else
+        {
+            p.rows[loc].add(col, val);
         }
     }
 

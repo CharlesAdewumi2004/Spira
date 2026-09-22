@@ -138,6 +138,7 @@ if (SPIRA_BUILD_TESTS)
   add_executable(unit_tests
     tests/layout_and_type_constraints_tests.cpp
     tests/matrix_tests.cpp
+    tests/add_tests.cpp
     tests/flush_behaviour_tests.cpp
     tests/mode_switch_tests.cpp
     tests/large_matrix_stress_tests.cpp

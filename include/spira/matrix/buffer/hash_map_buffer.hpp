@@ -34,6 +34,13 @@ public:
         return find_sorted(col);
     }
 
+    /// Mutable lookup covers only the staging map: sorted_ is rebuilt from buf_
+    /// on the next sort_and_dedup(), so a write into it would be lost.
+    V *get_ptr_impl(I col) noexcept {
+        auto it = buf_.find(col);
+        return it != buf_.end() ? &it->second : nullptr;
+    }
+
     V accumulate_impl() const noexcept {
         V acc = traits::ValueTraits<V>::zero();
         for (auto const &kv : buf_)

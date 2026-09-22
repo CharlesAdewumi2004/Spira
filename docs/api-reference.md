@@ -200,13 +200,20 @@ capacity, so `open()` is O(1).
 
 ```cpp
 void insert(size_type row, index_type col, value_type value);
+void add(size_type row, index_type col, value_type value);
 
 [[nodiscard]] value_type get(size_type row, index_type col) const;
 [[nodiscard]] bool       contains(size_type row, index_type col) const;
 [[nodiscard]] size_type  row_nnz(size_type row) const;
 ```
 
-`insert` is only valid in open mode. `get` returns `ValueTraits<V>::zero()`
+`insert` and `add` are only valid in open mode. `insert` is last-write-wins:
+it replaces whatever value the entry holds. `add` adds onto the entry's
+current value instead, whether that value is still in the row buffer or was
+committed by an earlier `lock()`; a missing entry counts as zero. Use it for
+assembly, where several contributions land on the same entry. Both follow the
+same deletion rule: an entry whose value is exactly zero at `lock()` is
+removed, so an `add` that cancels an entry to zero deletes it. `get` returns `ValueTraits<V>::zero()`
 for missing entries. `row_nnz` returns the current non zero count for the
 given row.
 
@@ -372,11 +379,17 @@ void open();   // parallel over partitions
 
 ```cpp
 void insert(size_type row, index_type col, value_type value);
+void add(size_type row, index_type col, value_type value);
 
 [[nodiscard]] value_type get(size_type row, index_type col)      const;
 [[nodiscard]] bool       contains(size_type row, index_type col) const;
 [[nodiscard]] size_type  row_nnz(size_type row)                  const;
 ```
+
+`add` has the same semantics as on `spira::matrix`. Under
+`insert_policy::staged` it is staged as a delta and summed when the staging
+array is flushed, so it also builds on inserts that are still staged. Rows
+handed to `parallel_fill` expose `add(col, value)` as well.
 
 ### Parallel fill
 

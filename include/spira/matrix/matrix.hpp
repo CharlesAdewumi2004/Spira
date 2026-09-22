@@ -100,6 +100,11 @@ namespace spira
 
         void insert(index_type row_index, index_type col_index,
                     const value_type &val);
+
+        /// Add val onto the current value at (row, col); a missing entry counts
+        /// as zero. A sum of exactly zero deletes the entry at the next lock().
+        void add(index_type row_index, index_type col_index,
+                 const value_type &val);
         void clear();
 
         [[nodiscard]] storage_type &row_at_mut(index_type row_index);
@@ -438,6 +443,21 @@ namespace spira
         validate_row_index(row_index);
         validate_col_index(col_index);
         rows_[to_size(row_index)].insert(col_index, val);
+        dirty_[to_size(row_index)] = true;
+    }
+
+    template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
+              std::size_t BN>
+        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> &&
+                 layout::ValidLayoutTag<L>
+    void matrix<L, I, V, BT, BN>::add(index_type row_index, index_type col_index,
+                                          const value_type &val)
+    {
+        if (mode_ != config::matrix_mode::open)
+            throw std::logic_error("matrix::add() requires open mode");
+        validate_row_index(row_index);
+        validate_col_index(col_index);
+        rows_[to_size(row_index)].add(col_index, val);
         dirty_[to_size(row_index)] = true;
     }
 

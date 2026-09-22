@@ -158,6 +158,26 @@ namespace spira
             buffer_.push_back(col, val);
         }
 
+        /// Add val onto the entry's current value (staged or committed); a
+        /// missing entry counts as zero. The sum is staged like an insert, so
+        /// a sum of exactly zero deletes the entry at the next lock().
+        void add(index_type col, const value_type &val)
+        {
+            assert(mode_ == config::matrix_mode::open &&
+                   "row::add() requires open mode");
+            if (to_size(col) >= column_limit_)
+                throw std::out_of_range("Column index out of range");
+            if (value_type *p = buffer_.get_ptr(col); p != nullptr)
+            {
+                *p += val;
+                return;
+            }
+            const value_type *current = get(col);
+            value_type sum = current ? *current : traits::ValueTraits<value_type>::zero();
+            sum += val;
+            buffer_.push_back(col, sum);
+        }
+
         // ─────────────────────────────────────────
         // Queries (both modes)
         //

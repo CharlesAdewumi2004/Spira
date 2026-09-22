@@ -64,6 +64,8 @@ namespace spira::parallel
         {
             std::size_t local_row;
             I           col;
+            bool        add; // apply via row::add() instead of insert(); sits in
+                             // the padding after col, so entry size is unchanged
             V           val;
         };
 
@@ -82,7 +84,12 @@ namespace spira::parallel
         void flush(std::size_t t, Partition &p)
         {
             for (const auto &e : bufs_[t])
-                p.rows[e.local_row].insert(e.col, e.val);
+            {
+                if (e.add)
+                    p.rows[e.local_row].add(e.col, e.val);
+                else
+                    p.rows[e.local_row].insert(e.col, e.val);
+            }
             bufs_[t].clear();
         }
 

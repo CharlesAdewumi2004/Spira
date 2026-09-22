@@ -32,6 +32,12 @@ namespace spira::buffer
             return self().get_ptr_impl(col);
         }
 
+        /// Mutable pointer to a value staged in this buffer, or nullptr.
+        [[nodiscard]] V *get_ptr(I col) noexcept
+        {
+            return self().get_ptr_impl(col);
+        }
+
         [[nodiscard]] V accumulate() const
         {
             return self().accumulate_impl();

@@ -56,6 +56,14 @@ namespace spira::buffer::impls
             return &buf_[it->second].value;
         }
 
+        V *get_ptr_impl(I col) noexcept
+        {
+            auto it = index_.find(col);
+            if (it == index_.end())
+                return nullptr;
+            return &buf_[it->second].value;
+        }
+
         // O(unique columns) — index_ always points to the last-written entry per column.
         V accumulate_impl() const noexcept
         {
