@@ -46,21 +46,21 @@ void scale_copy(const M &mat, M &out, Op op, const char *name) {
 
 /// In-place scalar multiply. The matrix must be open and stays open; the
 /// scaled values are committed by the next lock().
-template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-void multiplication_scaler(spira::matrix<Layout, I, V, BT, BN> &mat, V scaler) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+void multiplication_scaler(spira::matrix<Layout, I, V, BT, BN, S> &mat, V scaler) {
     if (!mat.is_open())
         throw std::logic_error("multiplication_scaler: matrix must be open");
     detail::scale_in_place(mat, [scaler](const V v) { return v * scaler; });
 }
 
 /// Copy: out becomes scaler × mat (mat must be locked); out is left locked.
-template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-void multiplication_scaler(const spira::matrix<Layout, I, V, BT, BN> &mat, spira::matrix<Layout, I, V, BT, BN> &out, V scaler) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+void multiplication_scaler(const spira::matrix<Layout, I, V, BT, BN, S> &mat, spira::matrix<Layout, I, V, BT, BN, S> &out, V scaler) {
     detail::scale_copy(mat, out, [scaler](const V v) { return v * scaler; }, "multiplication_scaler");
 }
 
-template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-void division_scaler(spira::matrix<Layout, I, V, BT, BN> &mat, V scaler) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+void division_scaler(spira::matrix<Layout, I, V, BT, BN, S> &mat, V scaler) {
     if (spira::traits::ValueTraits<V>::is_zero(scaler))
         throw std::domain_error("Divison by zero");
     if (!mat.is_open())
@@ -68,8 +68,8 @@ void division_scaler(spira::matrix<Layout, I, V, BT, BN> &mat, V scaler) {
     detail::scale_in_place(mat, [scaler](const V v) { return v / scaler; });
 }
 
-template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-void division_scaler(const spira::matrix<Layout, I, V, BT, BN> &mat, spira::matrix<Layout, I, V, BT, BN> &out, V scaler) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+void division_scaler(const spira::matrix<Layout, I, V, BT, BN, S> &mat, spira::matrix<Layout, I, V, BT, BN, S> &out, V scaler) {
     if (spira::traits::ValueTraits<V>::is_zero(scaler))
         throw std::domain_error("Divison by zero");
     detail::scale_copy(mat, out, [scaler](const V v) { return v / scaler; }, "division_scaler");

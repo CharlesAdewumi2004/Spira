@@ -586,3 +586,30 @@ TEST(ParallelMatrixStaged, ClearDropsStagedInserts)
     m.lock();
     EXPECT_EQ(m.nnz(), 0u);
 }
+
+TEST(ParallelMatrixSlack, PartitionsUseTheConfiguredPolicy)
+{
+    using slack_pmat = parallel_matrix<layout::tags::aos_tag, uint32_t, double,
+                                       buffer::tags::array_buffer<layout::tags::aos_tag>, 64,
+                                       config::insert_policy::direct, 256,
+                                       config::row_slack<0, 3, 12, 25, config::slack_rows::all>>;
+    slack_pmat m(8, 8, 2);
+    for (std::size_t r = 0; r < 8; ++r)
+        m.insert(r, static_cast<uint32_t>(r), 1.0);
+    m.lock();
+    for (std::size_t t = 0; t < 2; ++t)
+        for (std::size_t i = 0; i < m.partition_at(t).rows.size(); ++i)
+            EXPECT_EQ(m.partition_at(t).csr.row_cap[i], 4u) << "1 entry + base 3";
+
+    // Growth within the base slack stays in its slot.
+    const auto &p = m.partition_at(1);
+    const std::size_t local = 5 - p.row_start;
+    const std::size_t start_before = p.csr.row_start[local];
+    m.open();
+    m.insert(5, 0, 2.0);
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(5, 0), 2.0);
+    EXPECT_DOUBLE_EQ(m.get(5, 5), 1.0);
+    EXPECT_EQ(p.csr.row_start[local], start_before) << "row 5 should grow inside its slot";
+    EXPECT_EQ(p.csr.row_len[local], 2u);
+}

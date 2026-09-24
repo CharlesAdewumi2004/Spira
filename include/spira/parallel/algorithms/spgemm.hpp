@@ -23,10 +23,10 @@ namespace spira::parallel::algorithms
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
               class BT, std::size_t BN,
-              config::insert_policy IP, std::size_t SN>
-    parallel_matrix<L, I, V, BT, BN, IP, SN>
-    spgemm(parallel_matrix<L, I, V, BT, BN, IP, SN> &A,
-           parallel_matrix<L, I, V, BT, BN, IP, SN> &B)
+              config::insert_policy IP, std::size_t SN, class S>
+    parallel_matrix<L, I, V, BT, BN, IP, SN, S>
+    spgemm(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &A,
+           parallel_matrix<L, I, V, BT, BN, IP, SN, S> &B)
     {
         if (A.n_cols() != B.n_rows())
             throw std::invalid_argument("spgemm: A.n_cols() must equal B.n_rows()");
@@ -36,7 +36,7 @@ namespace spira::parallel::algorithms
         if (!B.is_locked())
             throw std::logic_error("spgemm: B must be locked");
 
-        parallel_matrix<L, I, V, BT, BN, IP, SN> C(
+        parallel_matrix<L, I, V, BT, BN, IP, SN, S> C(
             A.n_rows(), B.n_cols(), A.n_threads());
 
         A.execute([&B, &C](const auto &p_A, std::size_t t)

@@ -67,8 +67,8 @@ namespace spira::serial::algorithms
         while (bi < b_entries.size()) { out.insert(b_entries[bi].first, b_entries[bi].second); ++bi; }
     }
 
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V, class BT, std::size_t BN>
-    spira::matrix<Layout, I, V, BT, BN> MatrixAddition(const spira::matrix<Layout, I, V, BT, BN> &A, const spira::matrix<Layout, I, V, BT, BN> &B)
+    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V, class BT, std::size_t BN, class S>
+    spira::matrix<Layout, I, V, BT, BN, S> MatrixAddition(const spira::matrix<Layout, I, V, BT, BN, S> &A, const spira::matrix<Layout, I, V, BT, BN, S> &B)
     {
         if (A.shape() != B.shape())
         {
@@ -81,7 +81,7 @@ namespace spira::serial::algorithms
             throw std::logic_error("MatrixAddition: B must be locked");
 
         const auto [r, c] = A.shape();
-        spira::matrix<Layout, I, V, BT, BN> out(r, c);
+        spira::matrix<Layout, I, V, BT, BN, S> out(r, c);
 
         for (std::size_t i = 0; i < A.n_rows(); ++i)
         {

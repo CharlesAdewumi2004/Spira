@@ -13,8 +13,8 @@ namespace spira::parallel::algorithms
     /// partition; the output ranges are disjoint, so no synchronisation is
     /// needed. mat must be locked.
     template <class L, concepts::Indexable I, concepts::Valueable V, class BT,
-              std::size_t BN, config::insert_policy IP, std::size_t SN>
-    inline void spmv(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat,
+              std::size_t BN, config::insert_policy IP, std::size_t SN, class S>
+    inline void spmv(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &mat,
                      const std::vector<V> &x, std::vector<V> &y)
     {
         spira::detail::check_spmv_args(mat, x, y);

@@ -24,7 +24,7 @@ namespace spira::parallel
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // parallel_matrix<LayoutTag, I, V, BufferTag, BufferN, IP, StagingN>
+    // parallel_matrix<LayoutTag, I, V, BufferTag, BufferN, IP, StagingN, Slack>
     //
     // Sparse matrix whose rows are split into contiguous partitions, one per
     // worker thread. The public API mirrors spira::matrix for the core operations:
@@ -41,6 +41,7 @@ namespace spira::parallel
     // for algorithms that iterate over the full matrix.
     //
     // Insert policy (IP): see insert_staging.hpp.
+    // Slack: the partitions' CSR spare room (see config::row_slack).
     //
     // Not copyable (owns a thread_pool). Moveable only if the pool is idle.
     // ─────────────────────────────────────────────────────────────────────────────
@@ -51,9 +52,10 @@ namespace spira::parallel
               class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
               std::size_t BufferN = 64,
               config::insert_policy IP       = config::insert_policy::direct,
-              std::size_t           StagingN = 256>
+              std::size_t           StagingN = 256,
+              class                 Slack    = config::default_row_slack>
         requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
-                 layout::ValidLayoutTag<LayoutTag>
+                 layout::ValidLayoutTag<LayoutTag> && config::is_row_slack_v<Slack>
     class parallel_matrix
     {
     public:
@@ -63,6 +65,7 @@ namespace spira::parallel
         using value_type = V;
         using size_type = std::size_t;
         using shape_type = std::pair<size_type, size_type>;
+        using slack_policy = Slack;
 
         // ─────────────────────────────────────────
         // Construction
@@ -334,7 +337,7 @@ namespace spira::parallel
                 // First lock: every row is laid out once.
                 for (auto &r : p.rows)
                     r.lock();
-                p.csr = build_csr<LayoutTag>(p.rows);
+                p.csr = build_csr<LayoutTag, slack_policy>(p.rows);
                 install_slices<LayoutTag>(p.csr, p.rows);
                 for (auto &r : p.rows)
                     r.clear_buffer_content();
@@ -353,7 +356,7 @@ namespace spira::parallel
                             p.rows[i].lock();
                     }
                 }
-                relock_rows<LayoutTag>(p.csr, p.rows, p.dirty_rows);
+                relock_rows<LayoutTag, slack_policy>(p.csr, p.rows, p.dirty_rows);
             }
             p.end_cycle();
         }

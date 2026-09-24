@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <vector>
 
+#include <spira/config.hpp>
 #include <spira/matrix/layout/element_pair.hpp>
 #include <spira/matrix/layout/layout_tags.hpp>
 #include <spira/matrix/storage/csr_storage.hpp>
@@ -16,15 +17,16 @@ namespace spira
     // ─────────────────────────────────────────────────────────────────────────────
     // CSR construction and incremental re-lock.
     //
-    // The locked CSR gives every row a slot with slack (row_slot_capacity), so a
-    // re-lock only has to touch the rows that were edited:
+    // The locked CSR gives every row a slot with slack (a config::row_slack
+    // policy, the Slack parameter below), so a re-lock only has to touch the
+    // rows that were edited:
     //
     //   build_csr    — first lock: lay every row out from its sorted buffer.
     //   relock_rows  — later locks: merge each dirty row's buffer into its own
     //                  slot. A row that no longer fits moves to the free tail
     //                  and leaves a hole. When the tail is too small or holes
-    //                  pass a quarter of the assigned slots, everything is
-    //                  repacked into a fresh allocation instead.
+    //                  pass Slack's repack threshold, everything is repacked
+    //                  into a fresh allocation instead.
     //
     // Zero values in a buffer are deletion signals: they remove the matching
     // committed entry and are never written to the CSR.
@@ -35,39 +37,42 @@ namespace spira
 
     namespace detail
     {
-        // Free tail reserved after the assigned slots when a CSR is laid out,
-        // so the first rows that outgrow their slot can move without a repack.
-        constexpr std::size_t tail_reserve(std::size_t assigned) noexcept
-        {
-            return assigned / 8;
-        }
-
-        // Capacity for a row that has outgrown its slot: normal slack for the
-        // new length, and at least double the old slot so a row that keeps
+        // Capacity for a row that has outgrown its slot. The first time, it
+        // gets the policy's normal slack for its new length; a row that grows
+        // again gets at least double its old slot, so a row that keeps
         // growing moves O(log n) times.
-        constexpr std::size_t relocated_capacity(std::size_t need, std::size_t old_cap) noexcept
+        template <class Slack>
+        constexpr std::size_t relocated_capacity(std::size_t need, std::size_t old_cap, bool grown_before) noexcept
         {
-            const std::size_t slack = row_slot_capacity(need);
+            const std::size_t slack = Slack::capacity(need);
+            if (!grown_before)
+                return slack;
             return slack > 2 * old_cap ? slack : 2 * old_cap;
         }
 
-        // Allocate a CSR whose rows get row_slot_capacity(len_ub[r]) slots each,
-        // in row order, plus a free tail. Row lengths start at zero.
-        template <class LayoutTag, class I, class V>
-        csr_storage<LayoutTag, I, V> layout_rows(const std::vector<std::size_t> &len_ub)
+        // Allocate a CSR with one slot per row, in row order, plus Slack's free
+        // tail. Row r gets Slack::layout_capacity(len[r], grown[r]) slots and
+        // keeps its grown flag; with no flags every row counts as never grown.
+        // Row lengths start at zero.
+        template <class Slack, class LayoutTag, class I, class V>
+        csr_storage<LayoutTag, I, V> layout_rows(const std::vector<std::size_t> &len,
+                                                 const std::vector<bool> *grown = nullptr)
         {
-            const std::size_t n_rows = len_ub.size();
+            const std::size_t n_rows = len.size();
+            auto grown_at = [&](std::size_t r) { return grown != nullptr && (*grown)[r]; };
+
             std::size_t assigned = 0;
             for (std::size_t r = 0; r < n_rows; ++r)
-                assigned += row_slot_capacity(len_ub[r]);
+                assigned += Slack::layout_capacity(len[r], grown_at(r));
 
-            csr_storage<LayoutTag, I, V> csr(n_rows, assigned + tail_reserve(assigned));
+            csr_storage<LayoutTag, I, V> csr(n_rows, assigned + Slack::tail(assigned));
             std::size_t pos = 0;
             for (std::size_t r = 0; r < n_rows; ++r)
             {
                 csr.row_start[r] = pos;
                 csr.row_len[r] = 0;
-                csr.row_cap[r] = row_slot_capacity(len_ub[r]);
+                csr.row_cap[r] = Slack::layout_capacity(len[r], grown_at(r));
+                csr.row_grown[r] = grown_at(r);
                 pos += csr.row_cap[r];
             }
             csr.end = assigned;
@@ -75,19 +80,18 @@ namespace spira
         }
 
         // Two-pointer merge of a row's committed entries (old_count of them,
-        // read through old_col/old_val) with its sorted buffer, written to
-        // consecutive slots from dst. The buffer wins on a shared column; zeros
-        // are dropped. Returns the number of entries written.
-        template <class LayoutTag, class I, class V, class RowType, class OldCol, class OldVal>
-        std::size_t merge_row(csr_storage<LayoutTag, I, V> &out, std::size_t dst,
-                              const RowType &row, std::size_t old_count,
-                              OldCol &&old_col, OldVal &&old_val)
+        // read through old_col/old_val) with its sorted buffer, calling
+        // emit(col, val) for each surviving entry in column order. The buffer
+        // wins on a shared column; zeros (deletions) are dropped.
+        template <class RowType, class OldCol, class OldVal, class Emit>
+        void for_each_merged(const RowType &row, std::size_t old_count,
+                             OldCol &&old_col, OldVal &&old_val, Emit &&emit)
         {
-            std::size_t wp = dst;
-            auto emit = [&](I c, const V &v)
+            using V = typename RowType::value_type;
+            auto keep = [&](auto c, const V &v)
             {
                 if (!traits::ValueTraits<V>::is_zero(v))
-                    out.set(wp++, c, v);
+                    emit(c, v);
             };
 
             auto bit = row.begin();
@@ -95,38 +99,57 @@ namespace spira
             std::size_t oi = 0;
             while (oi < old_count && bit != bend)
             {
-                const I oc = old_col(oi);
-                const I bc = (*bit).first_ref();
+                const auto oc = old_col(oi);
+                const auto bc = (*bit).first_ref();
                 if (oc < bc)
                 {
-                    emit(oc, old_val(oi));
+                    keep(oc, old_val(oi));
                     ++oi;
                 }
                 else
                 {
-                    emit(bc, (*bit).second_ref());
+                    keep(bc, (*bit).second_ref());
                     if (oc == bc)
                         ++oi;
                     ++bit;
                 }
             }
             for (; oi < old_count; ++oi)
-                emit(old_col(oi), old_val(oi));
+                keep(old_col(oi), old_val(oi));
             for (; bit != bend; ++bit)
-                emit((*bit).first_ref(), (*bit).second_ref());
+                keep((*bit).first_ref(), (*bit).second_ref());
+        }
+
+        // Write the merge to consecutive slots from dst; returns the count.
+        template <class LayoutTag, class I, class V, class RowType, class OldCol, class OldVal>
+        std::size_t merge_row(csr_storage<LayoutTag, I, V> &out, std::size_t dst,
+                              const RowType &row, std::size_t old_count,
+                              OldCol &&old_col, OldVal &&old_val)
+        {
+            std::size_t wp = dst;
+            for_each_merged(row, old_count, old_col, old_val,
+                            [&](I c, const V &v) { out.set(wp++, c, v); });
             return wp - dst;
         }
 
-        template <class RowType>
-        std::size_t buffer_size(const RowType &row) noexcept
+        // Exact length row r will have once its buffer is merged into csr.
+        template <class LayoutTag, class I, class V, class RowType>
+        std::size_t merged_length(const csr_storage<LayoutTag, I, V> &csr, std::size_t r, const RowType &row)
         {
-            return static_cast<std::size_t>(row.end() - row.begin());
+            const std::size_t start = csr.row_start[r];
+            std::size_t n = 0;
+            for_each_merged(row, csr.row_len[r],
+                            [&](std::size_t k) { return csr.col(start + k); },
+                            [&](std::size_t k) { return csr.val(start + k); },
+                            [&](I, const V &) { ++n; });
+            return n;
         }
 
-        // Rebuild every row into a fresh allocation: dirty rows are merged
-        // with their buffers, clean rows are copied. Used when a re-lock would
-        // overflow the free tail or leave too many holes.
-        template <class LayoutTag, class RowType>
+        // Rebuild every row into a fresh allocation in row order: dirty rows
+        // are merged with their buffers, clean rows are copied. Rows that have
+        // ever grown past a slot keep slack (see config::row_slack). Used when
+        // a re-lock would overflow the free tail or leave too many holes.
+        template <class LayoutTag, class Slack, class RowType>
         auto repack(const csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type> &old,
                     const std::vector<RowType> &rows, const std::vector<bool> &is_dirty)
             -> csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type>
@@ -135,24 +158,28 @@ namespace spira
             using V = typename RowType::value_type;
 
             const std::size_t n_rows = rows.size();
-            std::vector<std::size_t> len_ub(n_rows);
+            std::vector<std::size_t> len(n_rows);
+            std::vector<bool> grown(n_rows);
             for (std::size_t r = 0; r < n_rows; ++r)
-                len_ub[r] = old.row_len[r] + (is_dirty[r] ? buffer_size(rows[r]) : 0);
+            {
+                len[r] = is_dirty[r] ? merged_length(old, r, rows[r]) : old.row_len[r];
+                grown[r] = old.row_grown[r] || len[r] > old.row_cap[r];
+            }
 
-            auto out = layout_rows<LayoutTag, I, V>(len_ub);
+            auto out = layout_rows<Slack, LayoutTag, I, V>(len, &grown);
             for (std::size_t r = 0; r < n_rows; ++r)
             {
                 const std::size_t src = old.row_start[r];
-                const std::size_t len = old.row_len[r];
+                const std::size_t old_len = old.row_len[r];
                 if (!is_dirty[r])
                 {
-                    out.copy_from(out.row_start[r], old, src, len);
-                    out.row_len[r] = len;
+                    out.copy_from(out.row_start[r], old, src, old_len);
+                    out.row_len[r] = old_len;
                 }
                 else
                 {
                     out.row_len[r] = merge_row(
-                        out, out.row_start[r], rows[r], len,
+                        out, out.row_start[r], rows[r], old_len,
                         [&](std::size_t k) { return old.col(src + k); },
                         [&](std::size_t k) { return old.val(src + k); });
                 }
@@ -167,10 +194,11 @@ namespace spira
     //
     // First-lock construction from rows whose buffers are sorted and
     // deduplicated. Zero values are skipped (there is nothing to delete yet).
+    // No row has grown yet, so under slack_rows::edited every row is packed.
     // Precondition: every row in `rows` is locked.
     // ─────────────────────────────────────────────────────────────────────────────
 
-    template <class LayoutTag, class RowType>
+    template <class LayoutTag, class Slack = config::default_row_slack, class RowType>
     auto build_csr(const std::vector<RowType> &rows)
         -> csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type>
     {
@@ -188,7 +216,7 @@ namespace spira
             len[r] = cnt;
         }
 
-        auto csr = detail::layout_rows<LayoutTag, I, V>(len);
+        auto csr = detail::layout_rows<Slack, LayoutTag, I, V>(len);
         for (std::size_t r = 0; r < n_rows; ++r)
         {
             csr.row_len[r] = detail::merge_row(
@@ -219,38 +247,42 @@ namespace spira
     // Returns true if the CSR was repacked (every row moved).
     // ─────────────────────────────────────────────────────────────────────────────
 
-    template <class LayoutTag, class RowType>
+    template <class LayoutTag, class Slack = config::default_row_slack, class RowType>
     bool relock_rows(csr_storage<LayoutTag, typename RowType::index_type, typename RowType::value_type> &csr,
                      std::vector<RowType> &rows, const std::vector<std::size_t> &dirty)
     {
         using I = typename RowType::index_type;
         using V = typename RowType::value_type;
 
-        // Sort each dirty buffer, and total the tail space and holes that
-        // moving the overflowing rows would need.
+        // Sort each dirty buffer and work out its exact merged length. Only a
+        // row that really grows past its slot moves; total the tail space and
+        // holes those moves would need.
+        thread_local std::vector<std::size_t> new_len;
+        new_len.resize(dirty.size());
         std::size_t tail_needed = 0;
         std::size_t freed = 0;
-        for (const std::size_t r : dirty)
+        for (std::size_t d = 0; d < dirty.size(); ++d)
         {
+            const std::size_t r = dirty[d];
             rows[r].lock();
-            const std::size_t need = csr.row_len[r] + detail::buffer_size(rows[r]);
-            if (need > csr.row_cap[r])
+            new_len[d] = detail::merged_length(csr, r, rows[r]);
+            if (new_len[d] > csr.row_cap[r])
             {
-                tail_needed += detail::relocated_capacity(need, csr.row_cap[r]);
+                tail_needed += detail::relocated_capacity<Slack>(new_len[d], csr.row_cap[r], csr.row_grown[r]);
                 freed += csr.row_cap[r];
             }
         }
 
         const std::size_t end_after = csr.end + tail_needed;
         const bool out_of_tail = end_after > csr.capacity;
-        const bool too_many_holes = 4 * (csr.holes + freed) > end_after;
+        const bool too_many_holes = Slack::should_repack(csr.holes + freed, end_after);
 
         if (out_of_tail || too_many_holes)
         {
             std::vector<bool> is_dirty(rows.size(), false);
             for (const std::size_t r : dirty)
                 is_dirty[r] = true;
-            csr = detail::repack<LayoutTag>(csr, rows, is_dirty);
+            csr = detail::repack<LayoutTag, Slack>(csr, rows, is_dirty);
             install_slices<LayoutTag>(csr, rows);
             for (const std::size_t r : dirty)
                 rows[r].clear_buffer_content();
@@ -262,8 +294,9 @@ namespace spira
         // read, so each row's old entries are copied to scratch first.
         thread_local std::vector<I> old_cols;
         thread_local std::vector<V> old_vals;
-        for (const std::size_t r : dirty)
+        for (std::size_t d = 0; d < dirty.size(); ++d)
         {
+            const std::size_t r = dirty[d];
             const std::size_t len = csr.row_len[r];
             const std::size_t start = csr.row_start[r];
             old_cols.resize(len);
@@ -274,22 +307,21 @@ namespace spira
                 old_vals[k] = csr.val(start + k);
             }
 
-            const std::size_t need = len + detail::buffer_size(rows[r]);
-            if (need > csr.row_cap[r])
+            if (new_len[d] > csr.row_cap[r])
             {
-                const std::size_t cap = detail::relocated_capacity(need, csr.row_cap[r]);
+                const std::size_t cap = detail::relocated_capacity<Slack>(new_len[d], csr.row_cap[r], csr.row_grown[r]);
                 csr.holes += csr.row_cap[r];
                 csr.row_start[r] = csr.end;
                 csr.row_cap[r] = cap;
+                csr.row_grown[r] = true;
                 csr.end += cap;
             }
 
-            const std::size_t new_len = detail::merge_row(
-                csr, csr.row_start[r], rows[r], len,
-                [](std::size_t k) { return old_cols[k]; },
-                [](std::size_t k) { return old_vals[k]; });
-            csr.nnz = csr.nnz - len + new_len;
-            csr.row_len[r] = new_len;
+            detail::merge_row(csr, csr.row_start[r], rows[r], len,
+                              [](std::size_t k) { return old_cols[k]; },
+                              [](std::size_t k) { return old_vals[k]; });
+            csr.nnz = csr.nnz - len + new_len[d];
+            csr.row_len[r] = new_len[d];
 
             rows[r].set_csr_slice(csr.slice(r));
             rows[r].clear_buffer_content();

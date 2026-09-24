@@ -18,30 +18,30 @@
 namespace spira
 {
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator+(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator+(const matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         return serial::algorithms::MatrixAddition(a, b);
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator*(const matrix<L, I, V, BT, BN> &m, std::type_identity_t<V> s)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator*(const matrix<L, I, V, BT, BN, S> &m, std::type_identity_t<V> s)
     {
-        matrix<L, I, V, BT, BN> out(m.n_rows(), m.n_cols());
+        matrix<L, I, V, BT, BN, S> out(m.n_rows(), m.n_cols());
         serial::algorithms::multiplication_scaler(m, out, s);
         return out;
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator/(const matrix<L, I, V, BT, BN> &m, std::type_identity_t<V> s)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator/(const matrix<L, I, V, BT, BN, S> &m, std::type_identity_t<V> s)
     {
-        matrix<L, I, V, BT, BN> out(m.n_rows(), m.n_cols());
+        matrix<L, I, V, BT, BN, S> out(m.n_rows(), m.n_cols());
         serial::algorithms::division_scaler(m, out, s);
         return out;
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator-(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator-(const matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         if (a.shape() != b.shape())
             throw std::invalid_argument("operator-: matrix shapes must match");
@@ -49,15 +49,15 @@ namespace spira
     }
 
     /// SpGEMM.
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator*(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator*(const matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         return serial::algorithms::spgemm(a, b);
     }
 
     /// SpMV: returns a · x.
-    template <class L, class I, class V, class BT, std::size_t BN>
-    std::vector<V> operator*(const matrix<L, I, V, BT, BN> &a, const std::vector<V> &x)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    std::vector<V> operator*(const matrix<L, I, V, BT, BN, S> &a, const std::vector<V> &x)
     {
         std::vector<V> y(a.n_rows());
         serial::algorithms::spmv(a, x, y);
@@ -65,41 +65,41 @@ namespace spira
     }
 
     /// Transpose.
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> operator~(const matrix<L, I, V, BT, BN> &a)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> operator~(const matrix<L, I, V, BT, BN, S> &a)
     {
         return serial::algorithms::transpose(a);
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> &operator+=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> &operator+=(matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         return a = a + b;
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> &operator-=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> &operator-=(matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         return a = a - b;
     }
 
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> &operator*=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> &operator*=(matrix<L, I, V, BT, BN, S> &a, const matrix<L, I, V, BT, BN, S> &b)
     {
         return a = a * b;
     }
 
     /// In place: a must be open, and stays open (see multiplication_scaler).
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> &operator*=(matrix<L, I, V, BT, BN> &a, std::type_identity_t<V> s)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> &operator*=(matrix<L, I, V, BT, BN, S> &a, std::type_identity_t<V> s)
     {
         serial::algorithms::multiplication_scaler(a, s);
         return a;
     }
 
     /// In place: a must be open, and stays open (see division_scaler).
-    template <class L, class I, class V, class BT, std::size_t BN>
-    matrix<L, I, V, BT, BN> &operator/=(matrix<L, I, V, BT, BN> &a, std::type_identity_t<V> s)
+    template <class L, class I, class V, class BT, std::size_t BN, class S>
+    matrix<L, I, V, BT, BN, S> &operator/=(matrix<L, I, V, BT, BN, S> &a, std::type_identity_t<V> s)
     {
         serial::algorithms::division_scaler(a, s);
         return a;

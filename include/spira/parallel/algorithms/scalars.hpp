@@ -56,8 +56,8 @@ namespace spira::parallel::algorithms
     /// values are committed by the next lock().
     template <class L, concepts::Indexable I, concepts::Valueable V,
               class BT, std::size_t BN,
-              config::insert_policy IP, std::size_t SN>
-    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat, V scaler)
+              config::insert_policy IP, std::size_t SN, class S>
+    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &mat, V scaler)
     {
         if (!mat.is_open())
             throw std::logic_error("multiplication_scaler: matrix must be open");
@@ -68,9 +68,9 @@ namespace spira::parallel::algorithms
     /// left locked.
     template <class L, concepts::Indexable I, concepts::Valueable V,
               class BT, std::size_t BN,
-              config::insert_policy IP, std::size_t SN>
-    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat,
-                               parallel_matrix<L, I, V, BT, BN, IP, SN> &out,
+              config::insert_policy IP, std::size_t SN, class S>
+    void multiplication_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &mat,
+                               parallel_matrix<L, I, V, BT, BN, IP, SN, S> &out,
                                V scaler)
     {
         detail::scale_copy(mat, out, [scaler](V v) { return v * scaler; }, "multiplication_scaler");
@@ -78,8 +78,8 @@ namespace spira::parallel::algorithms
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
               class BT, std::size_t BN,
-              config::insert_policy IP, std::size_t SN>
-    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat, V scaler)
+              config::insert_policy IP, std::size_t SN, class S>
+    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &mat, V scaler)
     {
         if (traits::ValueTraits<V>::is_zero(scaler))
             throw std::domain_error("division by zero");
@@ -90,9 +90,9 @@ namespace spira::parallel::algorithms
 
     template <class L, concepts::Indexable I, concepts::Valueable V,
               class BT, std::size_t BN,
-              config::insert_policy IP, std::size_t SN>
-    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN> &mat,
-                         parallel_matrix<L, I, V, BT, BN, IP, SN> &out,
+              config::insert_policy IP, std::size_t SN, class S>
+    void division_scaler(parallel_matrix<L, I, V, BT, BN, IP, SN, S> &mat,
+                         parallel_matrix<L, I, V, BT, BN, IP, SN, S> &out,
                          V scaler)
     {
         if (traits::ValueTraits<V>::is_zero(scaler))

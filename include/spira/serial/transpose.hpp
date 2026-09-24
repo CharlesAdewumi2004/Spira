@@ -28,8 +28,8 @@ namespace spira::serial::algorithms
     // mat must be locked.
     // ─────────────────────────────────────────────────────────────────────────
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-    spira::matrix<Layout, I, V, BT, BN> transpose(const spira::matrix<Layout, I, V, BT, BN> &mat)
+    template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+    spira::matrix<Layout, I, V, BT, BN, S> transpose(const spira::matrix<Layout, I, V, BT, BN, S> &mat)
     {
         if (!mat.is_locked())
             throw std::logic_error("transpose: matrix must be locked");
@@ -45,7 +45,7 @@ namespace spira::serial::algorithms
             for (std::size_t k = in_start[i]; k < in_start[i] + in_len[i]; ++k)
                 counts[static_cast<std::size_t>(in_csr->col(k))]++;
 
-        auto out_csr = spira::detail::layout_rows<Layout, I, V>(counts);
+        auto out_csr = spira::detail::layout_rows<S, Layout, I, V>(counts);
         std::vector<std::size_t> cursor(c);
         for (std::size_t j = 0; j < c; ++j)
         {
@@ -60,13 +60,13 @@ namespace spira::serial::algorithms
                 out_csr.set(cursor[static_cast<std::size_t>(in_csr->col(k))]++,
                             static_cast<I>(i), in_csr->val(k));
 
-        spira::matrix<Layout, I, V, BT, BN> result(c, r);
+        spira::matrix<Layout, I, V, BT, BN, S> result(c, r);
         result.load_csr(std::move(out_csr));
         return result;
     }
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-    void transpose_itself(spira::matrix<Layout, I, V, BT, BN> &mat)
+    template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+    void transpose_itself(spira::matrix<Layout, I, V, BT, BN, S> &mat)
     {
         if (!mat.is_open())
             throw std::logic_error("transpose_itself: matrix must be open");

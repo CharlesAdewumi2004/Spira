@@ -68,8 +68,8 @@ namespace spira
     namespace serial::algorithms
     {
         /// y = mat · x. mat must be locked.
-        template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        inline void spmv(const spira::matrix<L, I, V, BT, BN> &mat,
+        template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN, class S>
+        inline void spmv(const spira::matrix<L, I, V, BT, BN, S> &mat,
                          const std::vector<V> &x, std::vector<V> &y)
         {
             spira::detail::check_spmv_args(mat, x, y);

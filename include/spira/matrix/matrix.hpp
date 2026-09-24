@@ -20,27 +20,31 @@ namespace spira
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // matrix<LayoutTag, I, V, BufferTag, BufferN>
+    // matrix<LayoutTag, I, V, BufferTag, BufferN, Slack>
     //
     // Single-threaded dynamic sparse matrix with an open / locked lifecycle:
     //   open   — insert() / add() stage edits in per-row buffers.
     //   locked — reads and algorithms go through a flat CSR with per-row slack.
     // lock() commits only the rows edited since the previous lock; open() is O(1).
-    // Arithmetic operators live in matrix_operators.hpp.
+    // Slack (a config::row_slack) sets the CSR's spare room: per-row slack, the
+    // free tail and the repack threshold. Arithmetic operators live in
+    // matrix_operators.hpp.
     // ─────────────────────────────────────────────────────────────────────────────
 
     template <class LayoutTag, concepts::Indexable I = uint32_t,
               concepts::Valueable V = double,
               class BufferTag = buffer::tags::array_buffer<layout::tags::aos_tag>,
-              std::size_t BufferN = 64>
+              std::size_t BufferN = 64,
+              class Slack = config::default_row_slack>
         requires buffer::Buffer<buffer::traits::traits_of_type<BufferTag, I, V, BufferN>, I, V> &&
-                 layout::ValidLayoutTag<LayoutTag>
+                 layout::ValidLayoutTag<LayoutTag> && config::is_row_slack_v<Slack>
     class matrix
     {
     public:
         using index_type = I;
         using value_type = V;
         using storage_type = row<LayoutTag, I, V, BufferTag, BufferN>;
+        using slack_policy = Slack;
         using size_type = std::size_t;
         using shape_type = std::pair<size_type, size_type>;
 
@@ -106,14 +110,14 @@ namespace spira
                 // First lock: every row is laid out once.
                 for (auto &r : rows_)
                     r.lock();
-                csr_ = build_csr<LayoutTag>(rows_);
+                csr_ = build_csr<LayoutTag, slack_policy>(rows_);
                 install_slices<LayoutTag>(*csr_, rows_);
                 for (const size_type r : dirty_rows_)
                     rows_[r].clear_buffer_content();
             }
             else
             {
-                relock_rows<LayoutTag>(*csr_, rows_, dirty_rows_);
+                relock_rows<LayoutTag, slack_policy>(*csr_, rows_, dirty_rows_);
             }
 
             end_cycle();
