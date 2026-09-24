@@ -1,9 +1,10 @@
 // tests/parallel/hash_map_buffer_parallel_tests.cpp
 //
-// Exercises parallel_matrix with hash_map_buffer — the exact matrix type used
-// by bench/spira_bench.cpp, which no test covered. Before the missing
-// sort_and_dedup_keep_zeros() was added, lock() here recursed until the stack
-// ran out (-O0) or spun forever after tail-call optimisation (-O2).
+// Exercises parallel_matrix with hash_map_buffer and the SoA layout — the
+// matrix type bench/spira_bench.cpp uses, and the only parallel coverage of
+// the SoA/double SIMD SpMV path. When the buffer's sort_and_dedup() was
+// missing, lock() here recursed until the stack ran out (-O0) or spun forever
+// after tail-call optimisation (-O2).
 #include <gtest/gtest.h>
 
 #include <cstddef>

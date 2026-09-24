@@ -1,25 +1,14 @@
 # Build
 build/
-build_bench/
-build_release/
-build_bench/
+build_*/
+cmake-build-*/
+CMakeUserPresets.json
 
 # IDE
 .idea/
 .vscode/
 .cache/
 
-# CMake
-cmake-build-*/
-CMakeUserPresets.json
-
-# Docker
-.dockerignore
-
 # OS
 .DS_Store
 Thumbs.db
-
-.clang-format
-.vscode/
-.clangd-format

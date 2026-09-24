@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 #include <cstddef>
 
-// Tests for open ↔ locked mode transitions and multi-cycle slab accumulation.
+// Tests for open ↔ locked mode transitions and multi-cycle accumulation into the CSR.
 
 TEST(ModeSwitchTest, OpenToLock_AOS) {
     using I = std::size_t;
@@ -35,7 +35,7 @@ TEST(ModeSwitchTest, OpenToLock_SOA) {
     EXPECT_EQ(mat.nnz(), 2u);
 }
 
-TEST(ModeSwitchTest, LockToOpen_SlabPreserved_AOS) {
+TEST(ModeSwitchTest, LockToOpen_CommittedPreserved_AOS) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
@@ -49,7 +49,7 @@ TEST(ModeSwitchTest, LockToOpen_SlabPreserved_AOS) {
     EXPECT_DOUBLE_EQ(mat.get(0, 3), 1.5);
 }
 
-TEST(ModeSwitchTest, LockToOpen_SlabPreserved_SOA) {
+TEST(ModeSwitchTest, LockToOpen_CommittedPreserved_SOA) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);
@@ -99,7 +99,7 @@ TEST(ModeSwitchTest, MultiCycle_DataAccumulates_SOA) {
     EXPECT_EQ(mat.nnz(), 2u);
 }
 
-TEST(ModeSwitchTest, MultiCycle_BufferOverwritesSlab_AOS) {
+TEST(ModeSwitchTest, MultiCycle_BufferOverwritesCommitted_AOS) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(4, 4);
@@ -108,7 +108,7 @@ TEST(ModeSwitchTest, MultiCycle_BufferOverwritesSlab_AOS) {
     mat.lock();
 
     mat.open();
-    mat.insert(1, 2, 99.0); // overwrite slab entry
+    mat.insert(1, 2, 99.0); // overwrite committed entry
     mat.insert(1, 3, 9.0);
     mat.lock();
 
@@ -118,7 +118,7 @@ TEST(ModeSwitchTest, MultiCycle_BufferOverwritesSlab_AOS) {
     EXPECT_EQ(mat.nnz(), 2u);
 }
 
-TEST(ModeSwitchTest, MultiCycle_BufferOverwritesSlab_SOA) {
+TEST(ModeSwitchTest, MultiCycle_BufferOverwritesCommitted_SOA) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(4, 4);

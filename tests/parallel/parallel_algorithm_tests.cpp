@@ -562,3 +562,57 @@ TEST(ParallelSpgemm, MatchesAcrossThreadCounts)
             EXPECT_DOUBLE_EQ(C1.get(r, c), C2.get(r, c))
                 << "1 vs 2 threads at (" << r << "," << c << ")";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Algorithms that write into partition rows after an earlier lock cycle
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(ParallelScalers, InPlaceAfterEarlierLockIsCommitted)
+{
+    // Regression: rows stay locked until their first write, and the scalers
+    // wrote into them directly without queueing them for the next lock.
+    pmat m(8, 8, 2);
+    for (std::size_t r = 0; r < 8; ++r)
+        m.insert(r, static_cast<uint32_t>(r), r + 1.0);
+    m.lock();
+    m.open();
+
+    palg::multiplication_scaler(m, 10.0);
+    m.lock();
+    for (std::size_t r = 0; r < 8; ++r)
+        EXPECT_DOUBLE_EQ(m.get(r, static_cast<uint32_t>(r)), 10.0 * (r + 1.0)) << "row " << r;
+
+    m.open();
+    palg::division_scaler(m, 4.0);
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(7, 7), 20.0);
+}
+
+TEST(ParallelScalers, InPlaceScalesPendingEditsToo)
+{
+    pmat m(4, 4, 2);
+    m.insert(0, 0, 1.0);
+    m.lock();
+    m.open();
+    m.insert(3, 1, 4.0); // still buffered when the scaler runs
+
+    palg::multiplication_scaler(m, 2.0);
+    EXPECT_TRUE(m.is_open());
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(0, 0), 2.0);
+    EXPECT_DOUBLE_EQ(m.get(3, 1), 8.0);
+}
+
+TEST(ParallelScalers, CopyIntoPreviouslyLockedOutput)
+{
+    pmat a(4, 4, 2), out(4, 4, 2);
+    a.insert(1, 2, 3.0);
+    a.lock();
+    out.insert(0, 0, 9.0);
+    out.lock();
+    out.open();
+
+    palg::multiplication_scaler(a, out, 2.0);
+    EXPECT_DOUBLE_EQ(out.get(1, 2), 6.0);
+    EXPECT_DOUBLE_EQ(out.get(0, 0), 9.0);
+}

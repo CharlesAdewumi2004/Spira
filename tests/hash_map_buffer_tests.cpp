@@ -1,11 +1,11 @@
 // tests/hash_map_buffer_tests.cpp
 //
-// Coverage for spira::buffer::impls::hash_map_buffer, which until now was
-// referenced only by bench/spira_bench.cpp and exercised by no test.
+// Coverage for spira::buffer::impls::hash_map_buffer (the buffer the
+// benchmarks use).
 //
 // Two regressions are pinned here:
-//   1. sort_and_dedup_keep_zeros() was missing, so the CRTP base forwarded to
-//      itself and any compact_* lock() recursed until the stack ran out.
+//   1. The buffer's sort_and_dedup() was once missing, so the CRTP base
+//      forwarded to itself and lock() recursed until the stack ran out.
 //   2. contains()/get() consulted only the open-mode hash map, so entries
 //      materialised by sort_and_dedup() were invisible to reads.
 #include <gtest/gtest.h>
@@ -64,7 +64,7 @@ TEST(HashMapBuffer, ZeroValueFilteredOnFirstLock)
     EXPECT_DOUBLE_EQ(A.get(0, 2u), 3.0);
 }
 
-// Zeros must survive sort_and_dedup_keep_zeros() so merge_csr can read them as
+// Zeros must survive sort_and_dedup() so the re-lock can read them as
 // deletion signals against the committed CSR.
 TEST(HashMapBuffer, ZeroInsertDeletesCommittedEntry)
 {

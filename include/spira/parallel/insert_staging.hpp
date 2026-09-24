@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cassert>
 #include <cstddef>
+#include <type_traits>
 #include <vector>
 
 #include <spira/config.hpp>
@@ -11,52 +11,23 @@ namespace spira::parallel
 {
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // insert_staging<IP, I, V, StagingN>
+    // Insert staging for parallel_matrix
     //
-    // Compile-time policy type that controls how parallel_matrix::insert() routes
-    // data to partition row buffers.
-    //
-    //   direct  — empty type, zero memory, zero overhead. insert() writes straight
-    //             to the target partition's row buffer. Cache-hostile under random
-    //             row arrival order (main thread jumps across partition memory).
-    //
-    //   staged  — holds N per-partition staging arrays on the main thread. insert()
-    //             appends to staging[t] (small, stays hot in L1/L2). When staging[t]
-    //             reaches StagingN entries it is burst-flushed sequentially into the
-    //             partition's row buffers. At lock() the remainder is flushed first.
-    //             StagingN must be >= 1.
-    //
-    // Both specialisations expose the same interface so parallel_matrix can call
-    // them unconditionally inside `if constexpr` branches.
+    //   direct — no_staging: an empty type; insert() writes straight to the
+    //            target partition's row buffer.
+    //   staged — staged_inserts: one small staging array per partition, owned by
+    //            the inserting thread. insert() appends to it; when it reaches
+    //            StagingN entries it is burst-flushed into the partition's rows,
+    //            and lock() flushes the remainder. Writing one partition at a
+    //            time keeps the active array hot in L1/L2 under random row order.
     // ─────────────────────────────────────────────────────────────────────────────
 
-    // Primary template — only the two specialisations below are used.
-    template <config::insert_policy IP, concepts::Indexable I, concepts::Valueable V,
-              std::size_t StagingN>
-    struct insert_staging;
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // direct specialisation — empty, no storage
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    template <concepts::Indexable I, concepts::Valueable V, std::size_t StagingN>
-    struct insert_staging<config::insert_policy::direct, I, V, StagingN>
+    struct no_staging
     {
-        void init(std::size_t /*n_parts*/) noexcept {}
-
-        template <class Partition>
-        void flush(std::size_t /*t*/, Partition & /*p*/) noexcept {}
-
-        template <class Parts>
-        void flush_all(Parts & /*parts*/) noexcept {}
     };
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // staged specialisation — per-partition staging arrays
-    // ─────────────────────────────────────────────────────────────────────────────
-
     template <concepts::Indexable I, concepts::Valueable V, std::size_t StagingN>
-    struct insert_staging<config::insert_policy::staged, I, V, StagingN>
+    struct staged_inserts
     {
         static_assert(StagingN >= 1, "StagingN must be >= 1 for staged insert policy");
 
@@ -69,37 +40,56 @@ namespace spira::parallel
             V           val;
         };
 
-        // One staging array per partition, owned by the main (inserting) thread.
         std::vector<std::vector<entry>> bufs_;
 
         void init(std::size_t n_parts)
         {
-            bufs_.resize(n_parts);
+            bufs_.assign(n_parts, {});
             for (auto &b : bufs_)
                 b.reserve(StagingN);
         }
 
-        // Burst-flush partition t's staging array into its row buffers, then clear.
+        // Append to partition t's staging array, flushing it when full.
+        template <class Partition>
+        void push(std::size_t t, Partition &p, const entry &e)
+        {
+            bufs_[t].push_back(e);
+            if (bufs_[t].size() >= StagingN)
+                flush(t, p);
+        }
+
+        // Burst-flush partition t's staging array into its row buffers.
         template <class Partition>
         void flush(std::size_t t, Partition &p)
         {
             for (const auto &e : bufs_[t])
             {
+                auto &row = p.writable_row(e.local_row);
                 if (e.add)
-                    p.rows[e.local_row].add(e.col, e.val);
+                    row.add(e.col, e.val);
                 else
-                    p.rows[e.local_row].insert(e.col, e.val);
+                    row.insert(e.col, e.val);
             }
             bufs_[t].clear();
         }
 
-        // Flush all partitions — called at lock() before the pool runs.
         template <class Parts>
         void flush_all(Parts &parts)
         {
             for (std::size_t t = 0; t < parts.size(); ++t)
                 flush(t, parts[t]);
         }
+
+        void clear() noexcept
+        {
+            for (auto &b : bufs_)
+                b.clear();
+        }
     };
+
+    template <config::insert_policy IP, concepts::Indexable I, concepts::Valueable V,
+              std::size_t StagingN>
+    using insert_staging = std::conditional_t<IP == config::insert_policy::staged,
+                                              staged_inserts<I, V, StagingN>, no_staging>;
 
 } // namespace spira::parallel

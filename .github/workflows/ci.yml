@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         build_type: [Debug, RelWithDebInfo]
-        compiler: [gcc, clang]
+        compiler: [g++, clang++]
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +19,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake g++ clang
 
+      # Benchmarks only need to compile here; CI never runs them.
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
 
       - name: Build
         run: cmake --build build -j 2

@@ -1,11 +1,9 @@
-#if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
-
 #include <arm_neon.h>
-#include <cstddef>
-#include <cstdint>
+
+#include "kernels/dot_impls.hpp"
 
 double sparse_dot_double_neon(const double *vals, const uint32_t *cols,
-                              const double *x, size_t n, size_t /*x_size*/)
+                              const double *x, size_t n)
 {
     size_t i = 0;
     float64x2_t acc0 = vdupq_n_f64(0.0);
@@ -56,7 +54,7 @@ double sparse_dot_double_neon(const double *vals, const uint32_t *cols,
 }
 
 float sparse_dot_float_neon(const float *vals, const uint32_t *cols,
-                            const float *x, size_t n, size_t /*x_size*/)
+                            const float *x, size_t n)
 {
     size_t i = 0;
     float32x4_t acc0 = vdupq_n_f32(0.0f);
@@ -105,5 +103,3 @@ float sparse_dot_float_neon(const float *vals, const uint32_t *cols,
 
     return result;
 }
-
-#endif

@@ -1,4 +1,4 @@
-// tests/test_matrix_ops.cpp
+// tests/matrix_operator_overloads_tests.cpp
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -18,12 +18,6 @@ using LayoutTag = spira::layout::tags::aos_tag;
 // -------------------------
 // Helpers
 // -------------------------
-template <class M>
-static void expect_same_shape(const M& A, const M& B) {
-    EXPECT_EQ(A.shape().first,  B.shape().first);
-    EXPECT_EQ(A.shape().second, B.shape().second);
-}
-
 template <class M>
 static void expect_matrix_eq(const M& A, const M& B, double eps = 1e-12) {
     auto [rA, cA] = A.shape();
@@ -304,4 +298,36 @@ TEST(MatrixOps, AddShapeMismatchThrows) {
     // Shape check fires before locked assert — no lock needed
     EXPECT_THROW((void)(A + B), std::invalid_argument);
     EXPECT_THROW((void)(A - B), std::invalid_argument);
+}
+
+// Regression: the serial algorithms (and so every operator) only accepted
+// matrices with the default buffer, so none of this compiled for a matrix
+// using hash_map_buffer or a non-default BufferN.
+TEST(MatrixOps, OperatorsWorkWithNonDefaultBuffer)
+{
+    using HMat = spira::matrix<spira::layout::tags::soa_tag, uint32_t, double,
+                               spira::buffer::tags::hash_map_buffer, 16>;
+    HMat a(2, 2);
+    a.insert(0, 0, 1.0);
+    a.insert(0, 1, 2.0);
+    a.insert(1, 1, 3.0);
+    a.lock();
+
+    const HMat sum = a + a;
+    EXPECT_DOUBLE_EQ(sum.get(0, 1), 4.0);
+    EXPECT_DOUBLE_EQ((a * 2.0).get(1, 1), 6.0);
+    EXPECT_DOUBLE_EQ((a / 2.0).get(0, 1), 1.0);
+    EXPECT_TRUE((a - a).empty());
+    EXPECT_DOUBLE_EQ((~a).get(1, 0), 2.0);
+    EXPECT_DOUBLE_EQ((a * a).get(0, 1), 1.0 * 2.0 + 2.0 * 3.0);
+
+    const std::vector<double> y = a * std::vector<double>{1.0, 1.0};
+    EXPECT_DOUBLE_EQ(y[0], 3.0);
+    EXPECT_DOUBLE_EQ(spira::serial::algorithms::accumulate(a, 1), 3.0);
+
+    HMat b = a;
+    b.open();
+    b *= 10.0;
+    b.lock();
+    EXPECT_DOUBLE_EQ(b.get(1, 1), 30.0);
 }

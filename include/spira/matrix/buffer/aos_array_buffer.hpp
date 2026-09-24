@@ -28,10 +28,6 @@ namespace spira::buffer::impls
 
         void clear_impl() noexcept { buf_.clear(); index_.clear(); }
 
-        [[nodiscard]] const I &key_at(size_type idx) const noexcept { return buf_[idx].column; }
-        [[nodiscard]] V &value_at(size_type idx) noexcept { return buf_[idx].value; }
-        [[nodiscard]] const V &value_at(size_type idx) const noexcept { return buf_[idx].value; }
-
         [[nodiscard]] entry_type *begin_impl() noexcept { return buf_.data(); }
         [[nodiscard]] entry_type *end_impl() noexcept { return buf_.data() + buf_.size(); }
         [[nodiscard]] const entry_type *begin_impl() const noexcept { return buf_.data(); }
@@ -74,38 +70,28 @@ namespace spira::buffer::impls
         }
 
         /// Sort by column, deduplicate (last-write wins), keeping zero values.
-        /// Zeros survive to merge_csr, which reads them as deletion signals and
+        /// Zeros survive to relock_rows, which reads them as deletion signals and
         /// filters them when writing the CSR.
-        void sort_and_dedup() const
+        void sort_and_dedup()
         {
             if (buf_.empty())
                 return;
-
-            std::reverse(buf_.begin(), buf_.end());
-            std::stable_sort(buf_.begin(), buf_.end(), [](const auto &a, const auto &b)
-                             { return a.first_ref() < b.first_ref(); });
-
-            auto write = buf_.begin();
-            I last_col{};
-            bool first = true;
-            for (const auto &e : buf_)
-            {
-                if (!first && e.first_ref() == last_col)
-                    continue;
-                last_col = e.first_ref();
-                first = false;
-                *write++ = e;
-            }
-            buf_.erase(write, buf_.end());
-
-            index_.clear();
+            // index_ already holds the last write for each column. Sorting in
+            // thread-local scratch and assigning back keeps buf_'s capacity.
+            thread_local std::vector<entry_type> out;
+            out.clear();
+            for (const auto &[col, idx] : index_)
+                out.push_back(buf_[idx]);
+            std::sort(out.begin(), out.end(), [](const auto &a, const auto &b)
+                      { return a.column < b.column; });
+            buf_.assign(out.begin(), out.end());
             for (std::size_t i = 0; i < buf_.size(); ++i)
                 index_[buf_[i].column] = i;
         }
 
     private:
-        mutable std::vector<entry_type> buf_;
-        mutable ankerl::unordered_dense::map<I, std::size_t> index_;
+        std::vector<entry_type> buf_;
+        ankerl::unordered_dense::map<I, std::size_t> index_;
     };
 
 } // namespace spira::buffer::impls

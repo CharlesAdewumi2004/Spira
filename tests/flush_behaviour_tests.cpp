@@ -2,15 +2,8 @@
 #include <gtest/gtest.h>
 #include <cstddef>
 
-// Tests for slab+buffer merge semantics via lock()/open().
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-template <class Mat>
-static void insert_all(Mat& mat, std::initializer_list<std::tuple<std::size_t, std::size_t, double>> xs)
-{
-    for (auto [r, c, v] : xs) mat.insert(r, c, v);
-}
+// Merge semantics of lock()/open(): how buffered edits combine with the
+// committed CSR.
 
 // ── Single open→lock cycle ────────────────────────────────────────────────────
 
@@ -93,7 +86,7 @@ TEST(LockBehaviorTest, LockIsIdempotent_SOA) {
 
 // ── Open → lock → open → insert → lock (incremental merge) ──────────────────
 
-TEST(LockBehaviorTest, IncrementalMerge_SlabPreserved_AOS) {
+TEST(LockBehaviorTest, IncrementalMerge_CommittedPreserved_AOS) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(1, 10);
@@ -105,7 +98,7 @@ TEST(LockBehaviorTest, IncrementalMerge_SlabPreserved_AOS) {
 
     EXPECT_EQ(mat.row_nnz(0), 2u);
 
-    // Cycle 2: add new column, existing slab preserved
+    // Cycle 2: add new column, existing committed entries preserved
     mat.open();
     mat.insert(0, 9, 7.0);
     mat.lock();
@@ -116,7 +109,7 @@ TEST(LockBehaviorTest, IncrementalMerge_SlabPreserved_AOS) {
     EXPECT_DOUBLE_EQ(mat.get(0, 9), 7.0);
 }
 
-TEST(LockBehaviorTest, IncrementalMerge_SlabPreserved_SOA) {
+TEST(LockBehaviorTest, IncrementalMerge_CommittedPreserved_SOA) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(1, 10);
@@ -135,14 +128,14 @@ TEST(LockBehaviorTest, IncrementalMerge_SlabPreserved_SOA) {
     EXPECT_DOUBLE_EQ(mat.get(0, 9), 7.0);
 }
 
-// ── Buffer overwrites existing slab entry ────────────────────────────────────
+// ── Buffer overwrites an existing committed entry ────────────────────────────────────
 
-TEST(LockBehaviorTest, BufferOverwritesSlabEntry_AOS) {
+TEST(LockBehaviorTest, BufferOverwritesCommittedEntry_AOS) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(1, 10);
 
-    // Cycle 1: commit col 5 = 2.0 to slab
+    // Cycle 1: commit col 5 = 2.0 to the CSR
     mat.insert(0, 5, 2.0);
     mat.lock();
 
@@ -157,7 +150,7 @@ TEST(LockBehaviorTest, BufferOverwritesSlabEntry_AOS) {
     EXPECT_EQ(mat.row_nnz(0), 1u);
 }
 
-TEST(LockBehaviorTest, BufferOverwritesSlabEntry_SOA) {
+TEST(LockBehaviorTest, BufferOverwritesCommittedEntry_SOA) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::soa_tag, I, V> mat(1, 10);
@@ -205,7 +198,7 @@ TEST(LockBehaviorTest, ZeroValueFilteredDuringLock_SOA) {
 }
 
 // ── Zero-insert on second lock deletes a committed CSR entry ─────────────────
-// Regression for the bug where sort_and_dedup() stripped zeros before merge_csr
+// Regression: sort_and_dedup() used to strip zeros before the re-lock merge
 // could see them, leaving old CSR entries alive after a zero-insert deletion.
 
 TEST(LockBehaviorTest, ZeroInsertDeletesCommittedEntry_AOS) {
@@ -273,22 +266,22 @@ TEST(LockBehaviorTest, ZeroInsertDeletesAllCommittedEntries_AOS) {
     EXPECT_FALSE(mat.contains(1, 3));
 }
 
-// ── Reads in open mode use buffer-first then slab ────────────────────────────
+// ── Reads in open mode use buffer first, then the CSR ────────────────────────────
 
-TEST(LockBehaviorTest, OpenModeGet_BufferFirst_ThenSlab) {
+TEST(LockBehaviorTest, OpenModeGet_BufferFirst_ThenCommitted) {
     using I = std::size_t;
     using V = double;
     spira::matrix<spira::layout::tags::aos_tag, I, V> mat(1, 10);
 
-    // Commit col 7 = 1.0 to slab
+    // Commit col 7 = 1.0 to the CSR
     mat.insert(0, 7, 1.0);
     mat.lock();
 
-    // In open mode, col 7 is in slab. New insert (col 7 = 9.0) goes to buffer.
+    // In open mode, col 7 is in the CSR. New insert (col 7 = 9.0) goes to buffer.
     mat.open();
     mat.insert(0, 7, 9.0);
 
-    // Before lock: get should see buffer value (9.0) not slab value (1.0)
+    // Before lock: get should see buffer value (9.0) not the committed value (1.0)
     EXPECT_DOUBLE_EQ(mat.get(0, 7), 9.0);
 
     mat.lock();

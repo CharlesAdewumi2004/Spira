@@ -1,11 +1,9 @@
 #include <immintrin.h>
-#include <cstddef>
-#include <cstdint>
 
-#if defined(SPIRA_ARCH_X86)
+#include "kernels/dot_impls.hpp"
 
 double sparse_dot_double_avx512(const double *vals, const uint32_t *cols,
-                                const double *x, size_t n, size_t /*x_size*/)
+                                const double *x, size_t n)
 {
     size_t i = 0;
     __m512d acc0 = _mm512_setzero_pd();
@@ -56,7 +54,7 @@ double sparse_dot_double_avx512(const double *vals, const uint32_t *cols,
 }
 
 float sparse_dot_float_avx512(const float *vals, const uint32_t *cols,
-                              const float *x, size_t n, size_t /*x_size*/)
+                              const float *x, size_t n)
 {
     size_t i = 0;
     __m512 acc0 = _mm512_setzero_ps();
@@ -105,5 +103,3 @@ float sparse_dot_float_avx512(const float *vals, const uint32_t *cols,
 
     return acc;
 }
-
-#endif

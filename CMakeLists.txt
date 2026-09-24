@@ -5,17 +5,22 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Single-config generators default to Release (sanitizers are Debug-only).
+if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
 # ---------- Options ----------
-option(SPIRA_BUILD_TESTS       "Build unit tests"           ON)
-option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"  ON)
-option(SPIRA_ENABLE_SIMD       "Build SIMD-accelerated kernels" ON)
-option(SPIRA_BUILD_PARALLEL    "Build parallel_matrix and its tests" ON)
+option(SPIRA_BUILD_TESTS       "Build unit tests"                  ON)
+option(SPIRA_BUILD_BENCHMARKS  "Build performance benches"         ON)
+option(SPIRA_BUILD_PARALLEL    "Build the parallel_matrix tests"   ON)
 
 include(FetchContent)
+find_package(Threads REQUIRED)
 
 # ---------- unordered_dense (ankerl::unordered_dense) ----------
 FetchContent_Declare(
@@ -25,106 +30,84 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(unordered_dense)
 
-# ---------- Library (header-only core) ----------
+# ---------- Architecture Detection ----------
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
+  set(SPIRA_ARCH_X86 TRUE)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+  set(SPIRA_ARCH_ARM64 TRUE)
+endif()
+# Any other architecture builds with the scalar kernel only.
+
+# ---------- Kernel library ----------
+# The sparse dot kernels (scalar fallback plus one file per ISA, each built
+# with its own flags) and the startup dispatch that picks between them.
+set(KERNEL_SOURCES
+  src/kernels/dispatch.cpp
+  src/kernels/dot_impls/dot_scalar.cpp
+)
+if (SPIRA_ARCH_X86)
+  list(APPEND KERNEL_SOURCES
+    src/kernels/dot_impls/x86/dot_sse.cpp
+    src/kernels/dot_impls/x86/dot_avx.cpp
+    src/kernels/dot_impls/x86/dot_avx512.cpp
+  )
+elseif (SPIRA_ARCH_ARM64)
+  list(APPEND KERNEL_SOURCES src/kernels/dot_impls/arm/dot_neon.cpp)
+endif()
+
+add_library(spira_kernels STATIC ${KERNEL_SOURCES})
+target_include_directories(spira_kernels PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+if (SPIRA_ARCH_X86)
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
+      PROPERTIES COMPILE_OPTIONS "-msse4.2")
+    set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
+      PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+    # Dispatch only checks AVX-512F, so allow nothing beyond it.
+    set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
+      PROPERTIES COMPILE_OPTIONS "-mavx512f")
+  elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
+      PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
+      PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+  endif()
+endif()
+
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(spira_kernels PRIVATE -fno-omit-frame-pointer)
+endif()
+
+# ---------- Library (header-only core + kernels) ----------
 add_library(spira INTERFACE)
 target_include_directories(spira INTERFACE
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 target_compile_features(spira INTERFACE cxx_std_23)
-
-# Make deps available to all spira consumers
-target_link_libraries(spira INTERFACE unordered_dense::unordered_dense)
-
-# ---------- Architecture Detection ----------
-unset(SPIRA_ARCH_X86 CACHE)
-unset(SPIRA_ARCH_ARM64 CACHE)
-unset(SPIRA_ARCH_ARM32 CACHE)
-
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
-  set(SPIRA_ARCH_X86 TRUE)
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-  set(SPIRA_ARCH_ARM64 TRUE)
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "armv[78]")
-  set(SPIRA_ARCH_ARM32 TRUE)
-endif()
-
-# ---------- SIMD Kernel Library ----------
-if (SPIRA_ENABLE_SIMD)
-
-  set(KERNEL_SOURCES
-    src/kernels/dispatch.cpp
-    src/kernels/dot_impls/dot_scalar.cpp
-  )
-
-  if (SPIRA_ARCH_X86)
-    list(APPEND KERNEL_SOURCES
-      src/kernels/dot_impls/x86/dot_sse.cpp
-      src/kernels/dot_impls/x86/dot_avx.cpp
-      src/kernels/dot_impls/x86/dot_avx512.cpp
-    )
-  endif()
-
-  if (SPIRA_ARCH_ARM64 OR SPIRA_ARCH_ARM32)
-    list(APPEND KERNEL_SOURCES
-      src/kernels/dot_impls/arm/dot_neon.cpp
-    )
-  endif()
-
-  add_library(spira_kernels STATIC ${KERNEL_SOURCES})
-  target_include_directories(spira_kernels PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-  )
-  target_include_directories(spira_kernels PRIVATE ${PROJECT_SOURCE_DIR}/src)
-  target_compile_features(spira_kernels PUBLIC cxx_std_23)
-
-  if (SPIRA_ARCH_X86)
-    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_X86)
-  elseif (SPIRA_ARCH_ARM64)
-    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_ARM64)
-  elseif (SPIRA_ARCH_ARM32)
-    target_compile_definitions(spira_kernels PRIVATE SPIRA_ARCH_ARM32)
-  endif()
-
-  # Per-file SIMD compile flags (x86)
-  if (SPIRA_ARCH_X86)
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
-        PROPERTIES COMPILE_OPTIONS "-msse4.2"
-      )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
-        PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
-      )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
-        PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512vl;-mavx512bw;-mavx512dq"
-      )
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_sse.cpp
-        PROPERTIES COMPILE_OPTIONS "/arch:SSE2"
-      )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx.cpp
-        PROPERTIES COMPILE_OPTIONS "/arch:AVX2"
-      )
-      set_source_files_properties(src/kernels/dot_impls/x86/dot_avx512.cpp
-        PROPERTIES COMPILE_OPTIONS "/arch:AVX512"
-      )
-    endif()
-  endif()
-
-  target_link_libraries(spira INTERFACE spira_kernels)
-endif()
-
-# ---------- Perf-friendly flags (apply only to your targets) ----------
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  if (TARGET spira_kernels)
-    target_compile_options(spira_kernels PRIVATE -fno-omit-frame-pointer)
-  endif()
-endif()
+target_link_libraries(spira INTERFACE
+  unordered_dense::unordered_dense
+  spira_kernels
+  Threads::Threads
+)
 
 # ---------- Tests ----------
-if (SPIRA_BUILD_TESTS)
-  unset(FETCHCONTENT_SOURCE_DIR_GOOGLETEST CACHE)
-  set(FETCHCONTENT_SOURCE_DIR_GOOGLETEST "" CACHE PATH "" FORCE)
+function(spira_test_target target)
+  target_link_libraries(${target} PRIVATE spira GTest::gtest_main)
+  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -fno-omit-frame-pointer)
+    if (NOT WIN32)
+      target_compile_options(${target} PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+      target_link_options(${target} PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
+    endif()
+  endif()
+  gtest_discover_tests(${target} DISCOVERY_TIMEOUT 30)
+endfunction()
 
+if (SPIRA_BUILD_TESTS)
   FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -134,6 +117,7 @@ if (SPIRA_BUILD_TESTS)
   FetchContent_MakeAvailable(googletest)
 
   enable_testing()
+  include(GoogleTest)
 
   add_executable(unit_tests
     tests/layout_and_type_constraints_tests.cpp
@@ -153,55 +137,17 @@ if (SPIRA_BUILD_TESTS)
     tests/serial/scalar_tests.cpp
     tests/serial/accumulate_algo_tests.cpp
   )
+  spira_test_target(unit_tests)
 
-  target_link_libraries(unit_tests PRIVATE spira GTest::gtest_main)
-
-  if (SPIRA_ARCH_X86)
-  target_compile_definitions(unit_tests PRIVATE SPIRA_ARCH_X86)
-endif()
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(unit_tests PRIVATE -Wall -Wextra -Wpedantic)
-    if (NOT WIN32)
-      target_compile_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-      target_link_options(unit_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-    endif()
-    target_compile_options(unit_tests PRIVATE -fno-omit-frame-pointer)
+  if (SPIRA_BUILD_PARALLEL)
+    add_executable(parallel_tests
+      tests/parallel/partition_tests.cpp
+      tests/parallel/parallel_matrix_tests.cpp
+      tests/parallel/parallel_algorithm_tests.cpp
+      tests/parallel/hash_map_buffer_parallel_tests.cpp
+    )
+    spira_test_target(parallel_tests)
   endif()
-
-  if (UNIX AND NOT APPLE)
-    target_link_libraries(unit_tests PRIVATE pthread)
-  endif()
-
-  include(GoogleTest)
-  gtest_discover_tests(unit_tests DISCOVERY_TIMEOUT 30)
-endif()
-
-# ---------- Parallel tests ----------
-if (SPIRA_BUILD_PARALLEL AND SPIRA_BUILD_TESTS)
-  add_executable(parallel_tests
-    tests/parallel/partition_tests.cpp
-    tests/parallel/parallel_matrix_tests.cpp
-    tests/parallel/parallel_algorithm_tests.cpp
-    tests/parallel/hash_map_buffer_parallel_tests.cpp
-  )
-
-  target_link_libraries(parallel_tests PRIVATE spira GTest::gtest_main)
-
-  if (UNIX AND NOT APPLE)
-    target_link_libraries(parallel_tests PRIVATE pthread)
-  endif()
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(parallel_tests PRIVATE -Wall -Wextra -Wpedantic)
-    if (NOT WIN32)
-      target_compile_options(parallel_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-      target_link_options(parallel_tests PRIVATE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
-    endif()
-    target_compile_options(parallel_tests PRIVATE -fno-omit-frame-pointer)
-  endif()
-
-  gtest_discover_tests(parallel_tests DISCOVERY_TIMEOUT 30)
 endif()
 
 # ---------- Benchmarks ----------
@@ -215,20 +161,13 @@ if (SPIRA_BUILD_BENCHMARKS)
   set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(benchmark)
 
-  add_executable(spira_bench bench/spira_bench.cpp)
-  target_link_libraries(spira_bench PRIVATE spira benchmark::benchmark)
-
-  if (UNIX AND NOT APPLE)
-    target_link_libraries(spira_bench PRIVATE pthread)
-  endif()
-
-  target_compile_features(spira_bench PRIVATE cxx_std_23)
-
-
-  if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-  endif()
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(spira_bench PRIVATE -march=native)
-  endif()
+  foreach(bench spira_bench spira_cloth_bench)
+    add_executable(${bench})
+    target_link_libraries(${bench} PRIVATE spira benchmark::benchmark)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+      target_compile_options(${bench} PRIVATE -march=native)
+    endif()
+  endforeach()
+  target_sources(spira_bench PRIVATE bench/spira_bench.cpp)
+  target_sources(spira_cloth_bench PRIVATE bench/cloth_bench.cpp)
 endif()

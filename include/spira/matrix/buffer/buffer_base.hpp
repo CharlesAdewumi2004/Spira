@@ -15,9 +15,8 @@ namespace spira::buffer
 
         void clear() noexcept { self().clear_impl(); }
 
-        void push_back(const I &col,
-                       const V &val) noexcept(std::is_nothrow_copy_assignable_v<I> &&
-                                              std::is_nothrow_copy_assignable_v<V>)
+        // Allocates (vector growth, index map insert), so it may throw.
+        void push_back(const I &col, const V &val)
         {
             self().push_back_impl(col, val);
         }
@@ -44,7 +43,7 @@ namespace spira::buffer
         }
 
         /// Sort by column and deduplicate (last-write wins), keeping zero values.
-        /// Zeros survive so that merge_csr can read them as deletions; it does
+        /// Zeros survive so that relock_rows can read them as deletions; it does
         /// its own zero-filtering when writing the CSR.
         void sort_and_dedup() { self().sort_and_dedup(); }
 
@@ -52,8 +51,6 @@ namespace spira::buffer
         [[nodiscard]] auto end() noexcept { return self().end_impl(); }
         [[nodiscard]] auto begin() const noexcept { return self().begin_impl(); }
         [[nodiscard]] auto end() const noexcept { return self().end_impl(); }
-        [[nodiscard]] auto cbegin() const noexcept { return self().begin_impl(); }
-        [[nodiscard]] auto cend() const noexcept { return self().end_impl(); }
 
     private:
         Derived &self() { return static_cast<Derived &>(*this); }

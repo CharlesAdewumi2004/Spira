@@ -1,152 +1,108 @@
 #pragma once
 
+#include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include <spira/matrix/matrix.hpp>
-#include <spira/matrix/buffer/buffer_base.hpp>
-#include <spira/matrix/buffer/buffer_tag_traits.hpp>
+#include <spira/serial/matrix_addition.hpp>
+#include <spira/serial/scalars.hpp>
 #include <spira/serial/spgemm.hpp>
 #include <spira/serial/spmv.hpp>
 #include <spira/serial/transpose.hpp>
-#include <spira/serial/matrix_addition.hpp>
-#include <spira/serial/scalars.hpp>
+
+// Arithmetic on locked matrices. Each operator returns (or leaves) a locked
+// matrix built by the matching serial algorithm; the compound forms rebuild the
+// left operand.
 
 namespace spira
 {
 
-    // =====================
-    // Add / Sub
-    // =====================
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator+(const matrix &other) const
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator+(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
     {
-        return serial::algorithms::MatrixAddition(*this, other);
+        return serial::algorithms::MatrixAddition(a, b);
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator-(const matrix &other) const
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator*(const matrix<L, I, V, BT, BN> &m, std::type_identity_t<V> s)
     {
-        if (this->shape() != other.shape())
+        matrix<L, I, V, BT, BN> out(m.n_rows(), m.n_cols());
+        serial::algorithms::multiplication_scaler(m, out, s);
+        return out;
+    }
+
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator/(const matrix<L, I, V, BT, BN> &m, std::type_identity_t<V> s)
+    {
+        matrix<L, I, V, BT, BN> out(m.n_rows(), m.n_cols());
+        serial::algorithms::division_scaler(m, out, s);
+        return out;
+    }
+
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator-(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
+    {
+        if (a.shape() != b.shape())
             throw std::invalid_argument("operator-: matrix shapes must match");
-        matrix<L, I, V, BT, BN> out(other.shape().first, other.shape().second);
-        serial::algorithms::multiplication_scaler(other, out, V{-1});
-        return serial::algorithms::MatrixAddition(*this, out);
+        return a + b * V{-1};
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN> &
-    matrix<L, I, V, BT, BN>::operator+=(const matrix &other)
+    /// SpGEMM.
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator*(const matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
     {
-        *this = serial::algorithms::MatrixAddition(*this, other);
-        return *this;
+        return serial::algorithms::spgemm(a, b);
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN> &
-    matrix<L, I, V, BT, BN>::operator-=(const matrix &other)
+    /// SpMV: returns a · x.
+    template <class L, class I, class V, class BT, std::size_t BN>
+    std::vector<V> operator*(const matrix<L, I, V, BT, BN> &a, const std::vector<V> &x)
     {
-        if (this->shape() != other.shape())
-            throw std::invalid_argument("operator-=: matrix shapes must match");
-        matrix<L, I, V, BT, BN> out(other.shape().first, other.shape().second);
-        serial::algorithms::multiplication_scaler(other, out, V{-1});
-        *this = serial::algorithms::MatrixAddition(*this, out);
-        return *this;
-    }
-
-    // =====================
-    // SpGEMM
-    // =====================
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator*(const matrix &other) const
-    {
-        return serial::algorithms::spgemm(*this, other);
-    }
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN> &
-    matrix<L, I, V, BT, BN>::operator*=(const matrix &other)
-    {
-        *this = serial::algorithms::spgemm(*this, other);
-        return *this;
-    }
-
-    // =====================
-    // SpMV
-    // =====================
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline std::vector<V>
-    matrix<L, I, V, BT, BN>::operator*(const std::vector<V> &x) const
-    {
-        std::vector<V> y(this->n_rows());
-        serial::algorithms::spmv(*this, x, y);
+        std::vector<V> y(a.n_rows());
+        serial::algorithms::spmv(a, x, y);
         return y;
     }
 
-    // =====================
-    // Scalar ops
-    // =====================
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator*(V s) const
+    /// Transpose.
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> operator~(const matrix<L, I, V, BT, BN> &a)
     {
-        matrix out(*this);
-        serial::algorithms::multiplication_scaler(*this, out, s);
-        return out;
+        return serial::algorithms::transpose(a);
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN> &
-    matrix<L, I, V, BT, BN>::operator*=(V s)
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> &operator+=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
     {
-        serial::algorithms::multiplication_scaler(*this, s);
-        return *this;
+        return a = a + b;
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator/(V s) const
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> &operator-=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
     {
-        matrix out(*this);
-        serial::algorithms::division_scaler(*this, out, s);
-        return out;
+        return a = a - b;
     }
 
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN> &
-    matrix<L, I, V, BT, BN>::operator/=(V s)
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> &operator*=(matrix<L, I, V, BT, BN> &a, const matrix<L, I, V, BT, BN> &b)
     {
-        serial::algorithms::division_scaler(*this, s);
-        return *this;
+        return a = a * b;
     }
 
-    // =====================
-    // Transpose
-    // =====================
-
-    template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
-        requires buffer::Buffer<buffer::traits::traits_of_type<BT, I, V, BN>, I, V> && layout::ValidLayoutTag<L>
-    inline matrix<L, I, V, BT, BN>
-    matrix<L, I, V, BT, BN>::operator~() const
+    /// In place: a must be open, and stays open (see multiplication_scaler).
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> &operator*=(matrix<L, I, V, BT, BN> &a, std::type_identity_t<V> s)
     {
-        return serial::algorithms::transpose(*this);
+        serial::algorithms::multiplication_scaler(a, s);
+        return a;
+    }
+
+    /// In place: a must be open, and stays open (see division_scaler).
+    template <class L, class I, class V, class BT, std::size_t BN>
+    matrix<L, I, V, BT, BN> &operator/=(matrix<L, I, V, BT, BN> &a, std::type_identity_t<V> s)
+    {
+        serial::algorithms::division_scaler(a, s);
+        return a;
     }
 
 } // namespace spira

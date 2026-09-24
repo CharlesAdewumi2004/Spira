@@ -15,38 +15,26 @@ namespace spira
     // ── AoS CSR storage ─────────────────────────────────────────────────────────
 
     template <class I, class V>
-    struct csr_storage<layout::tags::aos_tag, I, V>
+    struct csr_storage<layout::tags::aos_tag, I, V> : detail::csr_row_table
     {
-        std::size_t n_rows{0};
-        std::size_t nnz{0};
-        std::size_t capacity{0}; // allocated element count in pairs (>= nnz)
-
-        std::unique_ptr<std::size_t[]> offsets;           // [n_rows + 1]
         detail::csr_buf<layout::elementPair<I, V>> pairs; // [capacity], 64-byte aligned
 
         csr_storage() = default;
 
-        csr_storage(std::size_t n_rows_, std::size_t nnz_)
-            : csr_storage(n_rows_, nnz_, nnz_)
-        {
-        }
-
-        csr_storage(std::size_t n_rows_, std::size_t nnz_, std::size_t cap)
-            : n_rows{n_rows_}, nnz{nnz_}, capacity{cap},
-              offsets{std::make_unique<std::size_t[]>(n_rows_ + 1)},
+        // Row table for n_rows_ rows plus a data array of cap slots, all empty.
+        csr_storage(std::size_t n_rows_, std::size_t cap)
+            : detail::csr_row_table(n_rows_, cap),
               pairs{detail::alloc_csr_buf<layout::elementPair<I, V>>(cap)}
         {
         }
 
+        // Copies the assigned slots [0, end); the free tail is not carried over.
         csr_storage(const csr_storage &other)
-            : n_rows{other.n_rows}, nnz{other.nnz}, capacity{other.nnz},
-              offsets{other.offsets ? std::make_unique<std::size_t[]>(other.n_rows + 1) : nullptr},
-              pairs{detail::alloc_csr_buf<layout::elementPair<I, V>>(other.nnz)}
+            : detail::csr_row_table(other),
+              pairs{detail::alloc_csr_buf<layout::elementPair<I, V>>(other.end)}
         {
-            if (offsets)
-                std::copy_n(other.offsets.get(), n_rows + 1, offsets.get());
-            if (nnz > 0)
-                std::copy_n(other.pairs.get(), nnz, pairs.get());
+            if (end > 0)
+                std::copy_n(other.pairs.get(), end, pairs.get());
         }
 
         csr_storage &operator=(const csr_storage &other)
@@ -62,7 +50,20 @@ namespace spira
         csr_storage(csr_storage &&) = default;
         csr_storage &operator=(csr_storage &&) = default;
 
-        [[nodiscard]] bool is_built() const noexcept { return offsets != nullptr; }
+        [[nodiscard]] csr_slice<layout::tags::aos_tag, I, V> slice(std::size_t r) const noexcept
+        {
+            return {pairs.get() + row_start[r], row_len[r]};
+        }
+
+        // Slot access, the same for both layouts.
+        [[nodiscard]] I col(std::size_t k) const noexcept { return pairs.get()[k].column; }
+        [[nodiscard]] V val(std::size_t k) const noexcept { return pairs.get()[k].value; }
+        void set(std::size_t k, I c, const V &v) noexcept { pairs.get()[k] = {c, v}; }
+        // Copy n slots starting at src slot s into this storage at slot d.
+        void copy_from(std::size_t d, const csr_storage &src, std::size_t s, std::size_t n) noexcept
+        {
+            std::copy_n(src.pairs.get() + s, n, pairs.get() + d);
+        }
     };
 
     // ── AoS CSR slice ────────────────────────────────────────────────────────────
@@ -74,12 +75,6 @@ namespace spira
         std::size_t nnz{0};
 
         [[nodiscard]] bool is_set() const noexcept { return pairs != nullptr; }
-
-        void reset() noexcept
-        {
-            pairs = nullptr;
-            nnz = 0;
-        }
 
         [[nodiscard]] const V *binary_search(I col) const noexcept
         {

@@ -1,8 +1,7 @@
-#include <cstddef>
-#include <cstdint>
+#include "kernels/dot_impls.hpp"
 
 double sparse_dot_double_scalar(const double *vals, const uint32_t *cols,
-                                const double *x, size_t n, size_t /*x_size*/)
+                                const double *x, size_t n)
 {
     double acc = 0.0;
     for (size_t i = 0; i < n; i++)
@@ -11,7 +10,7 @@ double sparse_dot_double_scalar(const double *vals, const uint32_t *cols,
 }
 
 float sparse_dot_float_scalar(const float *vals, const uint32_t *cols,
-                              const float *x, size_t n, size_t /*x_size*/)
+                              const float *x, size_t n)
 {
     float acc = 0.0f;
     for (size_t i = 0; i < n; i++)

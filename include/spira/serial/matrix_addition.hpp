@@ -11,27 +11,12 @@
 namespace spira::serial::algorithms
 {
 
-    // Helper: extract key from iterator element regardless of AoS/SoA proxy type.
-    namespace detail {
-        auto key_of(const auto& entry) -> decltype(auto) {
-            if constexpr (requires { entry.first_ref(); })
-                return entry.first_ref();
-            else
-                return entry.first;
-        }
-        auto val_of(const auto& entry) -> decltype(auto) {
-            if constexpr (requires { entry.second_ref(); })
-                return entry.second_ref();
-            else
-                return entry.second;
-        }
-    }
-
     /// Merge two locked rows into a single open output row.
     /// A and B must be locked. out must be in open mode and empty.
     /// Iteration is via for_each_element, which reads the CSR slice.
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
-    void addRows(const spira::row<Layout, I, V> &A, const spira::row<Layout, I, V> &B, spira::row<Layout, I, V> &out)
+    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V, class BT, std::size_t BN>
+    void addRows(const spira::row<Layout, I, V, BT, BN> &A, const spira::row<Layout, I, V, BT, BN> &B,
+                 spira::row<Layout, I, V, BT, BN> &out)
     {
         if (!A.is_locked())
             throw std::logic_error("addRows: row A must be locked");
@@ -82,8 +67,8 @@ namespace spira::serial::algorithms
         while (bi < b_entries.size()) { out.insert(b_entries[bi].first, b_entries[bi].second); ++bi; }
     }
 
-    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V>
-    spira::matrix<Layout, I, V> MatrixAddition(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
+    template <class Layout, spira::concepts::Indexable I, spira::concepts::Valueable V, class BT, std::size_t BN>
+    spira::matrix<Layout, I, V, BT, BN> MatrixAddition(const spira::matrix<Layout, I, V, BT, BN> &A, const spira::matrix<Layout, I, V, BT, BN> &B)
     {
         if (A.shape() != B.shape())
         {
@@ -96,7 +81,7 @@ namespace spira::serial::algorithms
             throw std::logic_error("MatrixAddition: B must be locked");
 
         const auto [r, c] = A.shape();
-        spira::matrix<Layout, I, V> out(r, c);
+        spira::matrix<Layout, I, V, BT, BN> out(r, c);
 
         for (std::size_t i = 0; i < A.n_rows(); ++i)
         {
@@ -108,4 +93,4 @@ namespace spira::serial::algorithms
         return out;
     }
 
-} // namespace spira::algorithms
+} // namespace spira::serial::algorithms

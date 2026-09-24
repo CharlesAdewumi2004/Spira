@@ -59,7 +59,7 @@ namespace spira::parallel::algorithms
                     {
                         const auto col_sz = static_cast<std::size_t>(col);
                         if (col_sz >= rs && col_sz < re)
-                            p_out.rows[col_sz - rs].insert(global_row, val);
+                            p_out.writable_row(col_sz - rs).insert(global_row, val);
                     });
                 }
             }

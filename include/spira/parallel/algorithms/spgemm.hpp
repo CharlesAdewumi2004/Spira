@@ -39,7 +39,7 @@ namespace spira::parallel::algorithms
         parallel_matrix<L, I, V, BT, BN, IP, SN> C(
             A.n_rows(), B.n_cols(), A.n_threads());
 
-        A.execute([&A, &B, &C](const auto &p_A, std::size_t t)
+        A.execute([&B, &C](const auto &p_A, std::size_t t)
         {
             auto &p_C = C.partition_at(t);
 
@@ -60,7 +60,7 @@ namespace spira::parallel::algorithms
 
                 for (auto &[j, v] : acc)
                     if (v != V{})
-                        p_C.rows[i].insert(j, v);
+                        p_C.writable_row(i).insert(j, v);
             }
         });
 

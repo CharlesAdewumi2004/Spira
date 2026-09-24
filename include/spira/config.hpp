@@ -11,8 +11,8 @@ namespace spira::config {
 // ─────────────────────────────────────────────
 
 enum class matrix_mode : uint8_t {
-    open,   // mutable: inserts staged in per-row buffer, slab preserved from prior cycles
-    locked  // frozen: buffer merged into slab, one sorted array per row, zero-overhead reads
+    open,   // mutable: edits staged in per-row buffers; the committed CSR is kept
+    locked  // frozen: edits merged into the CSR; reads go straight to it
 };
 
 // ─────────────────────────────────────────────
@@ -27,7 +27,5 @@ enum class insert_policy : uint8_t {
             // keeps the active staging array hot in L1/L2 by writing to one partition
             // at a time
 };
-
-inline constexpr std::size_t default_row_reserve_hint = 0;
 
 } // namespace spira::config

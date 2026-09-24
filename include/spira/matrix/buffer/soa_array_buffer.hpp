@@ -20,20 +20,13 @@ namespace spira::buffer::impls
     public:
         using size_type = std::size_t;
 
-        struct entry_ref
+        template <class VRef>
+        struct entry
         {
             const I &column;
-            V &value;
+            VRef value;
             const I &first_ref() const noexcept { return column; }
-            V &second_ref() noexcept { return value; }
-            const V &second_ref() const noexcept { return value; }
-        };
-        struct entry_cref
-        {
-            const I &column;
-            const V &value;
-            const I &first_ref() const noexcept { return column; }
-            const V &second_ref() const noexcept { return value; }
+            VRef second_ref() const noexcept { return value; }
         };
 
         soa_array_buffer()
@@ -90,257 +83,53 @@ namespace spira::buffer::impls
         }
 
         /// Sort by column, deduplicate (last-write wins), keeping zero values.
-        /// Zeros survive to merge_csr, which reads them as deletion signals and
+        /// Zeros survive to relock_rows, which reads them as deletion signals and
         /// filters them when writing the CSR.
-        void sort_and_dedup() const
+        void sort_and_dedup()
         {
-            const std::size_t sz = col_.size();
-            if (sz == 0)
+            if (col_.empty())
                 return;
-
-            thread_local std::vector<size_type> idx;
-            idx.resize(sz);
-            for (size_type i = 0; i < sz; ++i)
-                idx[i] = sz - 1 - i;
-
-            std::stable_sort(idx.begin(), idx.end(),
-                             [&](size_type a, size_type b)
-                             { return col_[a] < col_[b]; });
-
-            for (std::size_t i = 0; i < sz; ++i)
-            {
-                if (idx[i] == i)
-                    continue;
-                I tmp_col = col_[i];
-                V tmp_val = val_[i];
-                std::size_t j = i;
-                while (idx[j] != i)
-                {
-                    col_[j] = col_[idx[j]];
-                    val_[j] = val_[idx[j]];
-                    const std::size_t k = idx[j];
-                    idx[j] = j;
-                    j = k;
-                }
-                col_[j] = tmp_col;
-                val_[j] = tmp_val;
-                idx[j] = j;
-            }
-
-            // Compact in-place: dedup only, no zero-filter.
-            std::size_t write = 0;
-            I last_col{};
-            bool first = true;
-            for (std::size_t i = 0; i < sz; ++i)
-            {
-                if (!first && col_[i] == last_col)
-                    continue;
-                last_col = col_[i];
-                first = false;
-                if (write != i)
-                {
-                    col_[write] = col_[i];
-                    val_[write] = val_[i];
-                }
-                ++write;
-            }
-            col_.resize(write);
-            val_.resize(write);
-
-            index_.clear();
+            // index_ already holds the last write for each column. Sorting in
+            // thread-local scratch and assigning back keeps the capacity of
+            // col_ and val_.
+            thread_local std::vector<std::pair<I, size_type>> order;
+            thread_local std::vector<V> vals;
+            order.assign(index_.begin(), index_.end());
+            std::sort(order.begin(), order.end());
+            vals.clear();
+            for (const auto &[col, idx] : order)
+                vals.push_back(val_[idx]);
+            col_.resize(order.size());
+            for (std::size_t i = 0; i < order.size(); ++i)
+                col_[i] = order[i].first;
+            val_.assign(vals.begin(), vals.end());
             for (std::size_t i = 0; i < col_.size(); ++i)
                 index_[col_[i]] = i;
         }
 
-        class iterator
+        // Forward iterator over (column, value) pairs held in two arrays.
+        template <class VT>
+        struct basic_iterator
         {
-        public:
-            using iterator_category = std::random_access_iterator_tag;
-            using difference_type = std::ptrdiff_t;
-            using value_type = entry_ref;
-            using reference = entry_ref;
-
-            iterator() = default;
-            iterator(I *c, V *v) : col_ptr(c), val_ptr(v) {}
-
-            reference operator*() const noexcept { return {*col_ptr, *val_ptr}; }
-
-            iterator &operator++() noexcept
-            {
-                ++col_ptr;
-                ++val_ptr;
-                return *this;
-            }
-            iterator operator++(int) noexcept
-            {
-                auto t = *this;
-                ++(*this);
-                return t;
-            }
-            iterator &operator--() noexcept
-            {
-                --col_ptr;
-                --val_ptr;
-                return *this;
-            }
-            iterator operator--(int) noexcept
-            {
-                auto t = *this;
-                --(*this);
-                return t;
-            }
-
-            iterator &operator+=(difference_type n) noexcept
-            {
-                col_ptr += n;
-                val_ptr += n;
-                return *this;
-            }
-            iterator &operator-=(difference_type n) noexcept
-            {
-                col_ptr -= n;
-                val_ptr -= n;
-                return *this;
-            }
-
-            friend iterator operator+(iterator it, difference_type n) noexcept
-            {
-                it += n;
-                return it;
-            }
-            friend iterator operator+(difference_type n, iterator it) noexcept
-            {
-                it += n;
-                return it;
-            }
-            friend iterator operator-(iterator it, difference_type n) noexcept
-            {
-                it -= n;
-                return it;
-            }
-            friend difference_type operator-(const iterator &a, const iterator &b) noexcept
-            {
-                return a.col_ptr - b.col_ptr;
-            }
-
-            friend bool operator==(const iterator &a, const iterator &b) noexcept { return a.col_ptr == b.col_ptr; }
-            friend bool operator!=(const iterator &a, const iterator &b) noexcept { return !(a == b); }
-            friend bool operator<(const iterator &a, const iterator &b) noexcept { return a.col_ptr < b.col_ptr; }
-            friend bool operator>(const iterator &a, const iterator &b) noexcept { return b < a; }
-            friend bool operator<=(const iterator &a, const iterator &b) noexcept { return !(b < a); }
-            friend bool operator>=(const iterator &a, const iterator &b) noexcept { return !(a < b); }
-
-            reference operator[](difference_type n) const noexcept { return *(*this + n); }
-
-            // Public raw pointer access (used by some tests and SIMD paths).
-            I *col_ptr{nullptr};
-            V *val_ptr{nullptr};
-
-        private:
+            const I *c{nullptr};
+            VT *v{nullptr};
+            entry<VT &> operator*() const noexcept { return {*c, *v}; }
+            basic_iterator &operator++() noexcept { ++c; ++v; return *this; }
+            bool operator==(const basic_iterator &o) const noexcept { return c == o.c; }
+            std::ptrdiff_t operator-(const basic_iterator &o) const noexcept { return c - o.c; }
         };
+        using iterator = basic_iterator<V>;
+        using const_iterator = basic_iterator<const V>;
 
-        class const_iterator
-        {
-        public:
-            using iterator_category = std::random_access_iterator_tag;
-            using difference_type = std::ptrdiff_t;
-            using value_type = entry_cref;
-            using reference = entry_cref;
-
-            const_iterator() = default;
-            const_iterator(const I *c, const V *v) : c_(c), v_(v) {}
-
-            reference operator*() const noexcept { return {*c_, *v_}; }
-
-            const_iterator &operator++() noexcept
-            {
-                ++c_;
-                ++v_;
-                return *this;
-            }
-            const_iterator operator++(int) noexcept
-            {
-                auto t = *this;
-                ++(*this);
-                return t;
-            }
-            const_iterator &operator--() noexcept
-            {
-                --c_;
-                --v_;
-                return *this;
-            }
-            const_iterator operator--(int) noexcept
-            {
-                auto t = *this;
-                --(*this);
-                return t;
-            }
-
-            const_iterator &operator+=(difference_type n) noexcept
-            {
-                c_ += n;
-                v_ += n;
-                return *this;
-            }
-            const_iterator &operator-=(difference_type n) noexcept
-            {
-                c_ -= n;
-                v_ -= n;
-                return *this;
-            }
-
-            friend const_iterator operator+(const_iterator it, difference_type n) noexcept
-            {
-                it += n;
-                return it;
-            }
-            friend const_iterator operator+(difference_type n, const_iterator it) noexcept
-            {
-                it += n;
-                return it;
-            }
-            friend const_iterator operator-(const_iterator it, difference_type n) noexcept
-            {
-                it -= n;
-                return it;
-            }
-            friend difference_type operator-(const const_iterator &a, const const_iterator &b) noexcept
-            {
-                return a.c_ - b.c_;
-            }
-
-            friend bool operator==(const const_iterator &a, const const_iterator &b) noexcept { return a.c_ == b.c_; }
-            friend bool operator!=(const const_iterator &a, const const_iterator &b) noexcept { return !(a == b); }
-            friend bool operator<(const const_iterator &a, const const_iterator &b) noexcept { return a.c_ < b.c_; }
-            friend bool operator>(const const_iterator &a, const const_iterator &b) noexcept { return b < a; }
-            friend bool operator<=(const const_iterator &a, const const_iterator &b) noexcept { return !(b < a); }
-            friend bool operator>=(const const_iterator &a, const const_iterator &b) noexcept { return !(a < b); }
-
-            reference operator[](difference_type n) const noexcept { return *(*this + n); }
-
-        private:
-            const I *c_{nullptr};
-            const V *v_{nullptr};
-        };
-
-        [[nodiscard]] iterator begin_impl() noexcept { return iterator(col_.data(), val_.data()); }
-        [[nodiscard]] iterator end_impl() noexcept { return iterator(col_.data() + col_.size(), val_.data() + val_.size()); }
-
-        [[nodiscard]] const_iterator begin_impl() const noexcept { return const_iterator(col_.data(), val_.data()); }
-        [[nodiscard]] const_iterator end_impl() const noexcept
-        {
-            return const_iterator(col_.data() + col_.size(), val_.data() + val_.size());
-        }
-
-        // Raw pointer access for SIMD paths (valid after sort_and_dedup).
-        [[nodiscard]] const I *col_data() const noexcept { return col_.data(); }
-        [[nodiscard]] const V *val_data() const noexcept { return val_.data(); }
+        [[nodiscard]] iterator begin_impl() noexcept { return {col_.data(), val_.data()}; }
+        [[nodiscard]] iterator end_impl() noexcept { return {col_.data() + col_.size(), val_.data() + val_.size()}; }
+        [[nodiscard]] const_iterator begin_impl() const noexcept { return {col_.data(), val_.data()}; }
+        [[nodiscard]] const_iterator end_impl() const noexcept { return {col_.data() + col_.size(), val_.data() + val_.size()}; }
 
     private:
-        mutable std::vector<I> col_;
-        mutable std::vector<V> val_;
-        mutable ankerl::unordered_dense::map<I, std::size_t> index_;
+        std::vector<I> col_;
+        std::vector<V> val_;
+        ankerl::unordered_dense::map<I, std::size_t> index_;
     };
 
 } // namespace spira::buffer::impls

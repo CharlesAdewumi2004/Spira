@@ -5,32 +5,9 @@
 #include <random>
 #include <vector>
 
+#include "../src/kernels/dot_impls.hpp"
 #include "../src/kernels/hw_detect.hpp"
 #include "spira/kernels/kernels.h"
-
-// ============================================================================
-// Extern declarations — free functions (no namespace)
-// ============================================================================
-
-// Scalar — always compiled on every platform
-extern double sparse_dot_double_scalar(const double *, const uint32_t *, const double *, size_t, size_t);
-extern float sparse_dot_float_scalar(const float *, const uint32_t *, const float *, size_t, size_t);
-
-#if defined(SPIRA_ARCH_X86)
-extern double sparse_dot_double_sse(const double *, const uint32_t *, const double *, size_t, size_t);
-extern float sparse_dot_float_sse(const float *, const uint32_t *, const float *, size_t, size_t);
-
-extern double sparse_dot_double_avx(const double *, const uint32_t *, const double *, size_t, size_t);
-extern float sparse_dot_float_avx(const float *, const uint32_t *, const float *, size_t, size_t);
-
-extern double sparse_dot_double_avx512(const double *, const uint32_t *, const double *, size_t, size_t);
-extern float sparse_dot_float_avx512(const float *, const uint32_t *, const float *, size_t, size_t);
-#endif
-
-#if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
-extern double sparse_dot_double_neon(const double *, const uint32_t *, const double *, size_t, size_t);
-extern float sparse_dot_float_neon(const float *, const uint32_t *, const float *, size_t, size_t);
-#endif
 
 // ============================================================================
 // Runtime CPU feature check — cached singleton
@@ -154,7 +131,7 @@ TEST_P(ScalarDoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = sparse_dot_double_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = sparse_dot_double_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -162,7 +139,7 @@ TEST_P(ScalarFloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = sparse_dot_float_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = sparse_dot_float_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -185,7 +162,7 @@ TEST_P(SSEDoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = sparse_dot_double_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = sparse_dot_double_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -195,7 +172,7 @@ TEST_P(SSEFloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = sparse_dot_float_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = sparse_dot_float_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -213,7 +190,7 @@ TEST_P(AVX2DoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = sparse_dot_double_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = sparse_dot_double_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -223,7 +200,7 @@ TEST_P(AVX2FloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = sparse_dot_float_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = sparse_dot_float_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -241,7 +218,7 @@ TEST_P(AVX512DoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = sparse_dot_double_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = sparse_dot_double_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -251,7 +228,7 @@ TEST_P(AVX512FloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = sparse_dot_float_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = sparse_dot_float_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -263,7 +240,7 @@ INSTANTIATE_TEST_SUITE_P(AVX512, AVX512FloatTest, ::testing::ValuesIn(TEST_SIZES
 // ============================================================================
 // ARM NEON TESTS — compiled only on ARM, runtime skip if NEON unavailable
 // ============================================================================
-#if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
+#if defined(SPIRA_ARCH_ARM64)
 
 class NEONDoubleTest : public ::testing::TestWithParam<size_t> {};
 class NEONFloatTest : public ::testing::TestWithParam<size_t> {};
@@ -274,7 +251,7 @@ TEST_P(NEONDoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = sparse_dot_double_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = sparse_dot_double_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -284,14 +261,14 @@ TEST_P(NEONFloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = sparse_dot_float_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = sparse_dot_float_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
 INSTANTIATE_TEST_SUITE_P(NEON, NEONDoubleTest, ::testing::ValuesIn(TEST_SIZES));
 INSTANTIATE_TEST_SUITE_P(NEON, NEONFloatTest, ::testing::ValuesIn(TEST_SIZES));
 
-#endif // SPIRA_ARCH_ARM64 || SPIRA_ARCH_ARM32
+#endif // SPIRA_ARCH_ARM64
 
 // ============================================================================
 // DISPATCH TESTS — call through function pointers, works on every platform
@@ -304,7 +281,7 @@ TEST_P(DispatchDoubleTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_double_data(nnz, X_SIZE);
     double expected = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    double actual = spira::kernel::sparse_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double actual = spira::kernel::sparse_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, double_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -312,7 +289,7 @@ TEST_P(DispatchFloatTest, MatchesReference) {
     size_t nnz = GetParam();
     auto d = make_float_data(nnz, X_SIZE);
     float expected = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
-    float actual = spira::kernel::sparse_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float actual = spira::kernel::sparse_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(expected, actual, float_tol(expected)) << "nnz=" << nnz;
 }
 
@@ -327,77 +304,77 @@ TEST(KnownValues, DoubleSimple) {
     double vals[] = {1.0, 2.0, 3.0};
     uint32_t cols[] = {0, 2, 1};
     double x[] = {10.0, 20.0, 30.0};
-    EXPECT_DOUBLE_EQ(130.0, sparse_dot_double_scalar(vals, cols, x, 3, 3));
-    EXPECT_DOUBLE_EQ(130.0, spira::kernel::sparse_dot_double(vals, cols, x, 3, 3));
+    EXPECT_DOUBLE_EQ(130.0, sparse_dot_double_scalar(vals, cols, x, 3));
+    EXPECT_DOUBLE_EQ(130.0, spira::kernel::sparse_dot_double(vals, cols, x, 3));
 }
 
 TEST(KnownValues, FloatSimple) {
     float vals[] = {1.0f, 2.0f, 3.0f};
     uint32_t cols[] = {0, 2, 1};
     float x[] = {10.0f, 20.0f, 30.0f};
-    EXPECT_FLOAT_EQ(130.0f, sparse_dot_float_scalar(vals, cols, x, 3, 3));
-    EXPECT_FLOAT_EQ(130.0f, spira::kernel::sparse_dot_float(vals, cols, x, 3, 3));
+    EXPECT_FLOAT_EQ(130.0f, sparse_dot_float_scalar(vals, cols, x, 3));
+    EXPECT_FLOAT_EQ(130.0f, spira::kernel::sparse_dot_float(vals, cols, x, 3));
 }
 
 TEST(KnownValues, AllZeroVals) {
     double vals[] = {0.0, 0.0, 0.0, 0.0};
     uint32_t cols[] = {0, 1, 2, 3};
     double x[] = {1.0, 2.0, 3.0, 4.0};
-    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(vals, cols, x, 4, 4));
+    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(vals, cols, x, 4));
 }
 
 TEST(KnownValues, AllZeroX) {
     double vals[] = {1.0, 2.0, 3.0, 4.0};
     uint32_t cols[] = {0, 1, 2, 3};
     double x[] = {0.0, 0.0, 0.0, 0.0};
-    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(vals, cols, x, 4, 4));
+    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(vals, cols, x, 4));
 }
 
 TEST(KnownValues, SingleElement) {
     double vals[] = {7.0};
     uint32_t cols[] = {3};
     double x[] = {0.0, 0.0, 0.0, 5.0};
-    EXPECT_DOUBLE_EQ(35.0, spira::kernel::sparse_dot_double(vals, cols, x, 1, 4));
+    EXPECT_DOUBLE_EQ(35.0, spira::kernel::sparse_dot_double(vals, cols, x, 1));
 }
 
 TEST(KnownValues, EmptyInput) {
-    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(nullptr, nullptr, nullptr, 0, 0));
-    EXPECT_FLOAT_EQ(0.0f, spira::kernel::sparse_dot_float(nullptr, nullptr, nullptr, 0, 0));
+    EXPECT_DOUBLE_EQ(0.0, spira::kernel::sparse_dot_double(nullptr, nullptr, nullptr, 0));
+    EXPECT_FLOAT_EQ(0.0f, spira::kernel::sparse_dot_float(nullptr, nullptr, nullptr, 0));
 }
 
 TEST(KnownValues, RepeatedColumnIndex) {
     double vals[] = {1.0, 2.0, 3.0};
     uint32_t cols[] = {0, 0, 0};
     double x[] = {5.0};
-    EXPECT_DOUBLE_EQ(30.0, spira::kernel::sparse_dot_double(vals, cols, x, 3, 1));
+    EXPECT_DOUBLE_EQ(30.0, spira::kernel::sparse_dot_double(vals, cols, x, 3));
 }
 
 TEST(KnownValues, NegativeValues) {
     double vals[] = {-1.0, 2.0, -3.0};
     uint32_t cols[] = {0, 1, 2};
     double x[] = {4.0, -5.0, 6.0};
-    EXPECT_DOUBLE_EQ(-32.0, spira::kernel::sparse_dot_double(vals, cols, x, 3, 3));
+    EXPECT_DOUBLE_EQ(-32.0, spira::kernel::sparse_dot_double(vals, cols, x, 3));
 }
 
 TEST(KnownValues, ExactlyTwoDoubles) {
     double vals[] = {2.0, 3.0};
     uint32_t cols[] = {1, 0};
     double x[] = {10.0, 20.0};
-    EXPECT_DOUBLE_EQ(70.0, spira::kernel::sparse_dot_double(vals, cols, x, 2, 2));
+    EXPECT_DOUBLE_EQ(70.0, spira::kernel::sparse_dot_double(vals, cols, x, 2));
 }
 
 TEST(KnownValues, ExactlyFourDoubles) {
     double vals[] = {1.0, 2.0, 3.0, 4.0};
     uint32_t cols[] = {0, 1, 2, 3};
     double x[] = {10.0, 20.0, 30.0, 40.0};
-    EXPECT_DOUBLE_EQ(300.0, spira::kernel::sparse_dot_double(vals, cols, x, 4, 4));
+    EXPECT_DOUBLE_EQ(300.0, spira::kernel::sparse_dot_double(vals, cols, x, 4));
 }
 
 TEST(KnownValues, ExactlyEightFloats) {
     float vals[] = {1, 2, 3, 4, 5, 6, 7, 8};
     uint32_t cols[] = {0, 1, 2, 3, 4, 5, 6, 7};
     float x[] = {1, 1, 1, 1, 1, 1, 1, 1};
-    EXPECT_FLOAT_EQ(36.0f, spira::kernel::sparse_dot_float(vals, cols, x, 8, 8));
+    EXPECT_FLOAT_EQ(36.0f, spira::kernel::sparse_dot_float(vals, cols, x, 8));
 }
 
 // ============================================================================
@@ -409,27 +386,27 @@ TEST(Consistency, AllDoubleImplementationsAgree) {
     double ref = reference_dot_double(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     double tol = double_tol(ref);
 
-    double scal = sparse_dot_double_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    double scal = sparse_dot_double_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(ref, scal, tol) << "scalar";
 
 #if defined(SPIRA_ARCH_X86)
     if (get_cpu().sse42) {
-        double sse = sparse_dot_double_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        double sse = sparse_dot_double_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, sse, tol) << "SSE";
     }
     if (get_cpu().avx2 && get_cpu().fma) {
-        double avx2 = sparse_dot_double_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        double avx2 = sparse_dot_double_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, avx2, tol) << "AVX2";
     }
     if (get_cpu().avx512f) {
-        double a512 = sparse_dot_double_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        double a512 = sparse_dot_double_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, a512, tol) << "AVX-512";
     }
 #endif
 
-#if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
+#if defined(SPIRA_ARCH_ARM64)
     if (get_cpu().neon) {
-        double neon = sparse_dot_double_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        double neon = sparse_dot_double_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, neon, tol) << "NEON";
     }
 #endif
@@ -440,27 +417,27 @@ TEST(Consistency, AllFloatImplementationsAgree) {
     float ref = reference_dot_float(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     float tol = float_tol(ref);
 
-    float scal = sparse_dot_float_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+    float scal = sparse_dot_float_scalar(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
     EXPECT_NEAR(ref, scal, tol) << "scalar";
 
 #if defined(SPIRA_ARCH_X86)
     if (get_cpu().sse42) {
-        float sse = sparse_dot_float_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        float sse = sparse_dot_float_sse(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, sse, tol) << "SSE";
     }
     if (get_cpu().avx2 && get_cpu().fma) {
-        float avx2 = sparse_dot_float_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        float avx2 = sparse_dot_float_avx(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, avx2, tol) << "AVX2";
     }
     if (get_cpu().avx512f) {
-        float a512 = sparse_dot_float_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        float a512 = sparse_dot_float_avx512(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, a512, tol) << "AVX-512";
     }
 #endif
 
-#if defined(SPIRA_ARCH_ARM64) || defined(SPIRA_ARCH_ARM32)
+#if defined(SPIRA_ARCH_ARM64)
     if (get_cpu().neon) {
-        float neon = sparse_dot_float_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz, d.x.size());
+        float neon = sparse_dot_float_neon(d.vals.data(), d.cols.data(), d.x.data(), d.nnz);
         EXPECT_NEAR(ref, neon, tol) << "NEON";
     }
 #endif
@@ -485,15 +462,11 @@ TEST(PlatformInfo, PrintDetectedFeatures) {
 
 #if defined(SPIRA_ARCH_X86)
     std::cout << "Architecture: x86\n";
-    std::cout << "  SSE2:      " << (cpu.sse2 ? "yes" : "no") << "\n";
     std::cout << "  SSE4.2:    " << (cpu.sse42 ? "yes" : "no") << "\n";
     std::cout << "  AVX:       " << (cpu.avx ? "yes" : "no") << "\n";
     std::cout << "  AVX2:      " << (cpu.avx2 ? "yes" : "no") << "\n";
     std::cout << "  FMA:       " << (cpu.fma ? "yes" : "no") << "\n";
     std::cout << "  AVX-512F:  " << (cpu.avx512f ? "yes" : "no") << "\n";
-    std::cout << "  AVX-512BW: " << (cpu.avx512bw ? "yes" : "no") << "\n";
-    std::cout << "  AVX-512VL: " << (cpu.avx512vl ? "yes" : "no") << "\n";
-    std::cout << "  AVX-512DQ: " << (cpu.avx512dq ? "yes" : "no") << "\n";
 
     if (cpu.avx512f)
         std::cout << "  Dispatch: AVX-512\n";
@@ -505,16 +478,6 @@ TEST(PlatformInfo, PrintDetectedFeatures) {
         std::cout << "  Dispatch: Scalar\n";
 #elif defined(SPIRA_ARCH_ARM64)
     std::cout << "Architecture: ARM64\n";
-    std::cout << "  NEON: " << (cpu.neon ? "yes" : "no") << "\n";
-    std::cout << "  SVE:  " << (cpu.sve ? "yes" : "no") << "\n";
-    std::cout << "  SVE2: " << (cpu.sve2 ? "yes" : "no") << "\n";
-
-    if (cpu.neon)
-        std::cout << "  Dispatch: NEON\n";
-    else
-        std::cout << "  Dispatch: Scalar\n";
-#elif defined(SPIRA_ARCH_ARM32)
-    std::cout << "Architecture: ARM32\n";
     std::cout << "  NEON: " << (cpu.neon ? "yes" : "no") << "\n";
 
     if (cpu.neon)

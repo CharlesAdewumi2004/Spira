@@ -1,69 +1,78 @@
 #pragma once
 #include <stdexcept>
+#include <string>
 #include <spira/matrix/matrix.hpp>
 
 namespace spira::serial::algorithms {
 
-// In-place scalar multiply: reads committed CSR entries, inserts scaled values
-// into the buffer. Subsequent lock() will merge-overwrite with the new values.
-template <class Layout, concepts::Indexable I, concepts::Valueable V>
-void multiplication_scaler(spira::matrix<Layout, I, V> &mat, V scaler) {
+namespace detail {
+
+// In place. Pending inserts are committed first so every current value is in
+// the CSR, then the matrix is reopened and each scaled value is staged through
+// matrix::insert(), which queues its row for the next lock(). Writing to a
+// row's buffer while reading its CSR slice is safe: the slice points into the
+// matrix's CSR arrays, not the buffer.
+template <class M, class Op>
+void scale_in_place(M &mat, Op op) {
+    using I = typename M::index_type;
+    mat.lock();
+    mat.open();
+    for (std::size_t r = 0; r < mat.n_rows(); ++r) {
+        const I row_idx = static_cast<I>(r);
+        mat.row_at(row_idx).for_each_element(
+            [&mat, &op, row_idx](const I col, const auto val) {
+                mat.insert(row_idx, col, op(val));
+            });
+    }
+}
+
+// Copy. out is replaced by a locked matrix of mat's shape holding op(value)
+// for every entry of the locked matrix mat.
+template <class M, class Op>
+void scale_copy(const M &mat, M &out, Op op, const char *name) {
+    using I = typename M::index_type;
+    if (!mat.is_locked())
+        throw std::logic_error(std::string(name) + ": input matrix must be locked");
+    out = M(mat.n_rows(), mat.n_cols());
+    mat.for_each_row([&out, &op](const auto &in_row, I row_idx) {
+        in_row.for_each_element([&out, &op, row_idx](I col, const auto val) {
+            out.insert(row_idx, col, op(val));
+        });
+    });
+    out.lock();
+}
+
+} // namespace detail
+
+/// In-place scalar multiply. The matrix must be open and stays open; the
+/// scaled values are committed by the next lock().
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+void multiplication_scaler(spira::matrix<Layout, I, V, BT, BN> &mat, V scaler) {
     if (!mat.is_open())
         throw std::logic_error("multiplication_scaler: matrix must be open");
-    mat.for_each_row([scaler](auto &row, I /*row_index*/) {
-        row.for_each_committed_element([&row, scaler](const I col, const V val) {
-            row.insert(col, val * scaler);
-        });
-    });
+    detail::scale_in_place(mat, [scaler](const V v) { return v * scaler; });
 }
 
-// Copy path: build result from scratch into out using matrix::insert() so
-// dirty_ flags are set correctly for the subsequent lock()/merge_csr() call.
-template <class Layout, concepts::Indexable I, concepts::Valueable V>
-void multiplication_scaler(const spira::matrix<Layout, I, V> &mat,
-                            spira::matrix<Layout, I, V> &out, V scaler) {
-    if (!mat.is_locked())
-        throw std::logic_error("multiplication_scaler: input matrix must be locked");
-    const auto [rows, cols] = mat.shape();
-    out = spira::matrix<Layout, I, V>(rows, cols);
-    mat.for_each_row([&out, scaler](const auto &in_row, I row_idx) {
-        in_row.for_each_element([&out, scaler, row_idx](I col, V val) {
-            out.insert(row_idx, col, val * scaler);
-        });
-    });
-    out.lock();
+/// Copy: out becomes scaler × mat (mat must be locked); out is left locked.
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+void multiplication_scaler(const spira::matrix<Layout, I, V, BT, BN> &mat, spira::matrix<Layout, I, V, BT, BN> &out, V scaler) {
+    detail::scale_copy(mat, out, [scaler](const V v) { return v * scaler; }, "multiplication_scaler");
 }
 
-template <class Layout, concepts::Indexable I, concepts::Valueable V>
-void division_scaler(spira::matrix<Layout, I, V> &mat, V scaler) {
-    if (spira::traits::ValueTraits<V>::is_zero(scaler)) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+void division_scaler(spira::matrix<Layout, I, V, BT, BN> &mat, V scaler) {
+    if (spira::traits::ValueTraits<V>::is_zero(scaler))
         throw std::domain_error("Divison by zero");
-    }
     if (!mat.is_open())
         throw std::logic_error("division_scaler: matrix must be open");
-    mat.for_each_row([scaler](auto &row, I /*row_index*/) {
-        row.for_each_committed_element([&row, scaler](const I col, const V val) {
-            row.insert(col, val / scaler);
-        });
-    });
+    detail::scale_in_place(mat, [scaler](const V v) { return v / scaler; });
 }
 
-template <class Layout, concepts::Indexable I, concepts::Valueable V>
-void division_scaler(const spira::matrix<Layout, I, V> &mat,
-                      spira::matrix<Layout, I, V> &out, V scaler) {
-    if (spira::traits::ValueTraits<V>::is_zero(scaler)) {
+template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+void division_scaler(const spira::matrix<Layout, I, V, BT, BN> &mat, spira::matrix<Layout, I, V, BT, BN> &out, V scaler) {
+    if (spira::traits::ValueTraits<V>::is_zero(scaler))
         throw std::domain_error("Divison by zero");
-    }
-    if (!mat.is_locked())
-        throw std::logic_error("division_scaler: input matrix must be locked");
-    const auto [rows, cols] = mat.shape();
-    out = spira::matrix<Layout, I, V>(rows, cols);
-    mat.for_each_row([&out, scaler](const auto &in_row, I row_idx) {
-        in_row.for_each_element([&out, scaler, row_idx](I col, V val) {
-            out.insert(row_idx, col, val / scaler);
-        });
-    });
-    out.lock();
+    detail::scale_copy(mat, out, [scaler](const V v) { return v / scaler; }, "division_scaler");
 }
 
-} // namespace spira::algorithms
+} // namespace spira::serial::algorithms

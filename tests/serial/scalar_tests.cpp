@@ -1,4 +1,4 @@
-// test_scalars.cpp
+// tests/serial/scalar_tests.cpp
 #include <gtest/gtest.h>
 
 #include <cmath>
@@ -114,4 +114,60 @@ TEST(Scalers, DivisionByZero_Behavior)
     });
     // Zero divisor check fires before open assert — matrix is open by default
     EXPECT_THROW(spira::serial::algorithms::division_scaler(m, 0.0), std::domain_error);
+}
+
+TEST(Scalers, InPlaceScaleAfterEarlierLockIsCommitted)
+{
+    // Regression: the in-place path used to write straight into the rows
+    // without marking them dirty, so the merge on the next lock() skipped them
+    // and the scaled values were lost.
+    Mat m(2, 2);
+    insert(m, {
+        {0, 0, 2.0},
+        {1, 1, 3.0},
+    });
+    m.lock();
+    m.open();
+
+    spira::serial::algorithms::multiplication_scaler(m, 10.0);
+    m.lock();
+    expect_near(m.get(0, 0), 20.0);
+    expect_near(m.get(1, 1), 30.0);
+
+    m.open();
+    spira::serial::algorithms::division_scaler(m, 4.0);
+    m.lock();
+    expect_near(m.get(0, 0), 5.0);
+    expect_near(m.get(1, 1), 7.5);
+}
+
+TEST(Scalers, InPlaceScaleWithPendingEditsScalesThemToo)
+{
+    Mat m(1, 3);
+    insert(m, {{0, 0, 1.0}});
+    m.lock();
+    m.open();
+    insert(m, {{0, 2, 4.0}}); // still in the buffer when the scaler runs
+
+    spira::serial::algorithms::multiplication_scaler(m, 2.0);
+    EXPECT_TRUE(m.is_open());
+    m.lock();
+    expect_near(m.get(0, 0), 2.0);
+    expect_near(m.get(0, 2), 8.0);
+}
+
+TEST(Scalers, InPlaceScaleOnWideRowBeforeFirstLock)
+{
+    // More entries in one row than the buffer's initial reserve (64): the old
+    // path appended to the buffer while iterating it.
+    constexpr Index n = 200;
+    Mat m(1, n);
+    for (Index c = 0; c < n; ++c)
+        m.insert(0, c, static_cast<Value>(c + 1));
+
+    spira::serial::algorithms::multiplication_scaler(m, 3.0);
+    m.lock();
+    ASSERT_EQ(m.nnz(), n);
+    for (Index c = 0; c < n; ++c)
+        expect_near(m.get(0, c), 3.0 * static_cast<Value>(c + 1));
 }

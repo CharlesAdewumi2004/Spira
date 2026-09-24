@@ -21,7 +21,7 @@ public:
     size_type size_impl() const noexcept { return buf_.size() + sorted_.size(); }
 
     void clear_impl() noexcept { buf_.clear(); sorted_.clear(); }
-    void push_back_impl(const I &col, const V &val) noexcept { buf_[col] = val; }
+    void push_back_impl(const I &col, const V &val) { buf_[col] = val; }
 
     bool contains_impl(I col) const noexcept {
         return buf_.contains(col) || find_sorted(col) != nullptr;
@@ -52,7 +52,7 @@ public:
 
     /// Sort by column and materialize into sorted_, keeping zero values.
     /// The hash map already deduplicates (last-write wins) on insert, so no
-    /// dedup pass is needed. Zeros survive to merge_csr as deletion signals.
+    /// dedup pass is needed. Zeros survive to relock_rows as deletion signals.
     void sort_and_dedup() {
         sorted_.clear();
         // buf_.clear() below memsets the map's bucket array regardless of how

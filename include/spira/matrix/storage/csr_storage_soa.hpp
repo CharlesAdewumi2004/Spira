@@ -14,47 +14,31 @@ namespace spira
     // ── SoA CSR storage ─────────────────────────────────────────────────────────
 
     template <class I, class V>
-    struct csr_storage<layout::tags::soa_tag, I, V>
+    struct csr_storage<layout::tags::soa_tag, I, V> : detail::csr_row_table
     {
-        std::size_t n_rows{0};
-        std::size_t nnz{0};
-        std::size_t capacity{0}; // allocated element count in cols/vals (>= nnz)
-
-        std::unique_ptr<std::size_t[]> offsets;
-        detail::csr_buf<I> cols;
-        detail::csr_buf<V> vals;
+        detail::csr_buf<I> cols; // [capacity], 64-byte aligned
+        detail::csr_buf<V> vals; // [capacity], 64-byte aligned
 
         csr_storage() = default;
 
-        // Allocate for exactly nnz_ elements.
-        csr_storage(std::size_t n_rows_, std::size_t nnz_)
-            : csr_storage(n_rows_, nnz_, nnz_)
-        {
-        }
-
-        // Allocate for cap elements but record only nnz_ actual entries.
-        // cap >= nnz_ allows merge_csr to reuse the allocation when it still fits.
-        csr_storage(std::size_t n_rows_, std::size_t nnz_, std::size_t cap)
-            : n_rows{n_rows_}, nnz{nnz_}, capacity{cap},
-              offsets{std::make_unique<std::size_t[]>(n_rows_ + 1)},
+        // Row table for n_rows_ rows plus data arrays of cap slots, all empty.
+        csr_storage(std::size_t n_rows_, std::size_t cap)
+            : detail::csr_row_table(n_rows_, cap),
               cols{detail::alloc_csr_buf<I>(cap)},
               vals{detail::alloc_csr_buf<V>(cap)}
         {
         }
 
-        // Copy produces a tight copy (capacity == nnz); no excess is carried over.
+        // Copies the assigned slots [0, end); the free tail is not carried over.
         csr_storage(const csr_storage &other)
-            : n_rows{other.n_rows}, nnz{other.nnz}, capacity{other.nnz},
-              offsets{other.offsets ? std::make_unique<std::size_t[]>(other.n_rows + 1) : nullptr},
-              cols{detail::alloc_csr_buf<I>(other.nnz)},
-              vals{detail::alloc_csr_buf<V>(other.nnz)}
+            : detail::csr_row_table(other),
+              cols{detail::alloc_csr_buf<I>(other.end)},
+              vals{detail::alloc_csr_buf<V>(other.end)}
         {
-            if (offsets)
-                std::copy_n(other.offsets.get(), n_rows + 1, offsets.get());
-            if (nnz > 0)
+            if (end > 0)
             {
-                std::copy_n(other.cols.get(), nnz, cols.get());
-                std::copy_n(other.vals.get(), nnz, vals.get());
+                std::copy_n(other.cols.get(), end, cols.get());
+                std::copy_n(other.vals.get(), end, vals.get());
             }
         }
 
@@ -68,11 +52,28 @@ namespace spira
             return *this;
         }
 
-        // Move preserves capacity — the reuse check in merge_csr depends on it.
         csr_storage(csr_storage &&) = default;
         csr_storage &operator=(csr_storage &&) = default;
 
-        [[nodiscard]] bool is_built() const noexcept { return offsets != nullptr; }
+        [[nodiscard]] csr_slice<layout::tags::soa_tag, I, V> slice(std::size_t r) const noexcept
+        {
+            return {cols.get() + row_start[r], vals.get() + row_start[r], row_len[r]};
+        }
+
+        // Slot access, the same for both layouts.
+        [[nodiscard]] I col(std::size_t k) const noexcept { return cols.get()[k]; }
+        [[nodiscard]] V val(std::size_t k) const noexcept { return vals.get()[k]; }
+        void set(std::size_t k, I c, const V &v) noexcept
+        {
+            cols.get()[k] = c;
+            vals.get()[k] = v;
+        }
+        // Copy n slots starting at src slot s into this storage at slot d.
+        void copy_from(std::size_t d, const csr_storage &src, std::size_t s, std::size_t n) noexcept
+        {
+            std::copy_n(src.cols.get() + s, n, cols.get() + d);
+            std::copy_n(src.vals.get() + s, n, vals.get() + d);
+        }
     };
 
     // ── SoA CSR slice ────────────────────────────────────────────────────────────
@@ -85,13 +86,6 @@ namespace spira
         std::size_t nnz{0};
 
         [[nodiscard]] bool is_set() const noexcept { return cols != nullptr; }
-
-        void reset() noexcept
-        {
-            cols = nullptr;
-            vals = nullptr;
-            nnz = 0;
-        }
 
         [[nodiscard]] const V *binary_search(I col) const noexcept
         {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <new>
@@ -41,6 +42,73 @@ namespace spira
                 static_cast<T *>(::operator new(n * sizeof(T), std::align_val_t{csr_alignment})), {}};
         }
 
+        // Row slot table shared by both layouts.
+        //
+        // Row i owns the slots [row_start[i], row_start[i] + row_cap[i]) of the
+        // data arrays and uses the first row_len[i] of them; the rest is slack
+        // that lets the row grow in place. Rows are not required to be stored
+        // in index order: a row that outgrows its slot is moved to the free
+        // tail [end, capacity), and the slot it leaves behind is counted in
+        // holes until the next repack.
+        struct csr_row_table
+        {
+            std::size_t n_rows{0};
+            std::size_t nnz{0};      // live entries: sum of row_len
+            std::size_t capacity{0}; // allocated slots in the data arrays
+            std::size_t end{0};      // slots [0, end) are assigned to rows
+            std::size_t holes{0};    // slots in [0, end) no row owns any more
+
+            std::unique_ptr<std::size_t[]> row_start;
+            std::unique_ptr<std::size_t[]> row_len;
+            std::unique_ptr<std::size_t[]> row_cap;
+
+            csr_row_table() = default;
+
+            csr_row_table(std::size_t n_rows_, std::size_t capacity_)
+                : n_rows{n_rows_}, capacity{capacity_},
+                  row_start{std::make_unique<std::size_t[]>(n_rows_)},
+                  row_len{std::make_unique<std::size_t[]>(n_rows_)},
+                  row_cap{std::make_unique<std::size_t[]>(n_rows_)}
+            {
+            }
+
+            // Copies the table only; the owning storage copies the data slots.
+            csr_row_table(const csr_row_table &other)
+                : n_rows{other.n_rows}, nnz{other.nnz}, capacity{other.end},
+                  end{other.end}, holes{other.holes},
+                  row_start{copy_array(other.row_start, other.n_rows)},
+                  row_len{copy_array(other.row_len, other.n_rows)},
+                  row_cap{copy_array(other.row_cap, other.n_rows)}
+            {
+            }
+
+            csr_row_table &operator=(const csr_row_table &) = delete;
+            csr_row_table(csr_row_table &&) = default;
+            csr_row_table &operator=(csr_row_table &&) = default;
+
+            [[nodiscard]] bool is_built() const noexcept { return row_start != nullptr; }
+
+        private:
+            static std::unique_ptr<std::size_t[]> copy_array(
+                const std::unique_ptr<std::size_t[]> &src, std::size_t n)
+            {
+                if (!src)
+                    return nullptr;
+                auto dst = std::make_unique<std::size_t[]>(n);
+                std::copy_n(src.get(), n, dst.get());
+                return dst;
+            }
+        };
+
     } // namespace detail
+
+    // Slots given to a row holding len entries when the CSR is laid out:
+    // 25 % headroom (at least one slot) so small edits land in place. Empty
+    // rows get none, so a hypersparse matrix does not pay for rows it never
+    // fills; they are placed in the free tail on their first insert.
+    constexpr std::size_t row_slot_capacity(std::size_t len) noexcept
+    {
+        return len == 0 ? 0 : len + (len / 4 > 0 ? len / 4 : 1);
+    }
 
 } // namespace spira

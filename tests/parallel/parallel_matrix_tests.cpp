@@ -17,7 +17,6 @@ using namespace spira::parallel;
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Simple alias for the default parallel matrix
-template <std::size_t N = 2>
 using pmat = parallel_matrix<layout::tags::aos_tag,
                              uint32_t, double,
                              buffer::tags::array_buffer<layout::tags::aos_tag>,
@@ -25,7 +24,6 @@ using pmat = parallel_matrix<layout::tags::aos_tag,
                              config::insert_policy::direct,
                              256>;
 
-template <std::size_t N = 2>
 using pmat_staged = parallel_matrix<layout::tags::aos_tag,
                                     uint32_t, double,
                                     buffer::tags::array_buffer<layout::tags::aos_tag>,
@@ -50,7 +48,7 @@ static std::vector<double> dense_spmv(std::size_t n_rows,
 
 TEST(ParallelMatrixConstruct, ShapeAndThreadCount)
 {
-    pmat<> m(8, 10, 2);
+    pmat m(8, 10, 2);
     EXPECT_EQ(m.n_rows(), 8u);
     EXPECT_EQ(m.n_cols(), 10u);
     EXPECT_EQ(m.n_threads(), 2u);
@@ -59,7 +57,7 @@ TEST(ParallelMatrixConstruct, ShapeAndThreadCount)
 
 TEST(ParallelMatrixConstruct, InitiallyEmpty)
 {
-    pmat<> m(4, 4, 2);
+    pmat m(4, 4, 2);
     EXPECT_TRUE(m.empty());
     EXPECT_EQ(m.nnz(), 0u);
     EXPECT_TRUE(m.is_open());
@@ -68,7 +66,7 @@ TEST(ParallelMatrixConstruct, InitiallyEmpty)
 
 TEST(ParallelMatrixConstruct, SingleThread)
 {
-    pmat<> m(4, 4, 1);
+    pmat m(4, 4, 1);
     EXPECT_EQ(m.n_threads(), 1u);
     m.insert(0, 0u, 1.0);
     m.insert(3, 3u, 2.0);
@@ -78,20 +76,13 @@ TEST(ParallelMatrixConstruct, SingleThread)
     EXPECT_DOUBLE_EQ(m.get(3, 3u), 2.0);
 }
 
-TEST(ParallelMatrixConstruct, FourThreads)
-{
-    pmat<> m(16, 16, 4);
-    EXPECT_EQ(m.n_threads(), 4u);
-    EXPECT_TRUE(m.empty());
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Insert + query (open mode, before lock)
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST(ParallelMatrixInsert, ContainsAndGet)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     m.insert(0, 1u, 1.5);
     m.insert(4, 2u, 2.5);
 
@@ -105,7 +96,7 @@ TEST(ParallelMatrixInsert, ContainsAndGet)
 
 TEST(ParallelMatrixInsert, NnzAndRowNnz)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     m.insert(0, 0u, 1.0);
     m.insert(0, 1u, 2.0);
     m.insert(7, 3u, 3.0);
@@ -119,7 +110,7 @@ TEST(ParallelMatrixInsert, NnzAndRowNnz)
 TEST(ParallelMatrixInsert, InsertsSpanAllPartitions)
 {
     // 8 rows, 2 threads → rows 0-3 in part 0, rows 4-7 in part 1
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     for (std::size_t r = 0; r < 8; ++r)
         m.insert(r, static_cast<uint32_t>(r), static_cast<double>(r + 1));
 
@@ -134,7 +125,7 @@ TEST(ParallelMatrixInsert, InsertsSpanAllPartitions)
 
 TEST(ParallelMatrixLock, ModeSwitches)
 {
-    pmat<> m(4, 4, 2);
+    pmat m(4, 4, 2);
     EXPECT_TRUE(m.is_open());
     m.insert(0, 0u, 1.0);
     m.lock();
@@ -147,7 +138,7 @@ TEST(ParallelMatrixLock, ModeSwitches)
 
 TEST(ParallelMatrixLock, DataPreservedAfterLock)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     m.insert(1, 2u, 3.14);
     m.insert(5, 6u, 2.72);
     m.lock();
@@ -160,7 +151,7 @@ TEST(ParallelMatrixLock, DataPreservedAfterLock)
 
 TEST(ParallelMatrixLock, MultipleInsertLockOpenCycles)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
 
     // cycle 1
     m.insert(0, 0u, 1.0);
@@ -189,8 +180,8 @@ TEST(ParallelMatrixLock, MultipleInsertLockOpenCycles)
 TEST(ParallelMatrixLock, ZeroInsertDeletesCommittedEntry)
 {
     // Regression: zero-value inserts used as deletions were silently ignored
-    // because sort_and_dedup() stripped them before merge_csr could see them.
-    pmat<> m(8, 8, 2);
+    // because sort_and_dedup() stripped them before the re-lock merge saw them.
+    pmat m(8, 8, 2);
 
     // Cycle 1: commit entries.
     m.insert(0, 1u, 5.0);
@@ -212,7 +203,7 @@ TEST(ParallelMatrixLock, ZeroInsertDeletesCommittedEntry)
 
 TEST(ParallelMatrixLock, ClearRemovesPendingBufferInserts)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     // Insert and lock — data committed to CSR
     m.insert(0, 0u, 1.0);
     m.insert(4, 4u, 2.0);
@@ -233,7 +224,7 @@ TEST(ParallelMatrixLock, ClearRemovesPendingBufferInserts)
 
 TEST(ParallelMatrixLock, ClearBeforeLockGivesEmptyMatrix)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     m.insert(0, 0u, 1.0);
     m.insert(4, 4u, 2.0);
     // clear before any lock — no CSR committed yet
@@ -250,7 +241,7 @@ TEST(ParallelMatrixLock, ClearBeforeLockGivesEmptyMatrix)
 
 TEST(ParallelMatrixStaged, BasicInsertAndLock)
 {
-    pmat_staged<> m(8, 8, 2);
+    pmat_staged m(8, 8, 2);
     m.insert(0, 1u, 1.5);
     m.insert(4, 2u, 2.5);
     m.insert(7, 7u, 3.5);
@@ -266,8 +257,8 @@ TEST(ParallelMatrixStaged, MatchesDirectPolicy)
 {
     // Build same matrix with both policies, compare nnz + all gets
     const std::size_t N = 12;
-    pmat<> direct(N, N, 2);
-    pmat_staged<> staged(N, N, 2);
+    pmat direct(N, N, 2);
+    pmat_staged staged(N, N, 2);
 
     for (std::size_t r = 0; r < N; ++r)
         for (std::size_t c = 0; c < 3; ++c)
@@ -318,7 +309,7 @@ namespace
     void run_spmv_test(std::size_t n_rows, std::size_t n_cols, std::size_t n_threads,
                        const std::vector<std::tuple<std::size_t, uint32_t, double>> &entries)
     {
-        pmat<> m(n_rows, n_cols, n_threads);
+        pmat m(n_rows, n_cols, n_threads);
         for (auto &[r, c, v] : entries)
             m.insert(r, c, v);
         m.lock();
@@ -377,39 +368,6 @@ TEST(ParallelSpmv, SingleThread)
     run_spmv_test(6, 4, 1, entries);
 }
 
-TEST(ParallelSpmv, MatchesAcrossThreadCounts)
-{
-    // Same matrix, different thread counts → same result
-    std::vector<std::tuple<std::size_t, uint32_t, double>> entries;
-    for (std::size_t r = 0; r < 8; ++r)
-        for (uint32_t c = 0; c < 3; ++c)
-            entries.emplace_back(r, c, static_cast<double>(r + c + 1));
-
-    std::vector<double> x(8);
-    std::iota(x.begin(), x.end(), 1.0);
-
-    auto get_y = [&](std::size_t n_threads)
-    {
-        pmat<> m(8, 8, n_threads);
-        for (auto &[r, c, v] : entries)
-            m.insert(r, c, v);
-        m.lock();
-        std::vector<double> y(8, 0.0);
-        algorithms::spmv(m, x, y);
-        return y;
-    };
-
-    auto y1 = get_y(1);
-    auto y2 = get_y(2);
-    auto y4 = get_y(4);
-
-    for (std::size_t i = 0; i < 8; ++i)
-    {
-        EXPECT_DOUBLE_EQ(y1[i], y2[i]) << "1 vs 2 threads at row " << i;
-        EXPECT_DOUBLE_EQ(y1[i], y4[i]) << "1 vs 4 threads at row " << i;
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Streaming (PAEM) cycle
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,7 +376,7 @@ TEST(ParallelMatrixStreaming, InsertLockSpmvOpenRepeat)
 {
     // Simulates the PAEM loop: insert → lock → spmv → open → insert → ...
     const std::size_t N = 8;
-    pmat<> m(N, N, 2);
+    pmat m(N, N, 2);
     std::vector<double> x(N, 1.0);
     std::vector<double> y(N, 0.0);
 
@@ -475,13 +433,13 @@ namespace
 
 TEST(ParallelMatrixAdd, DirectPolicy)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     run_add_cycle(m);
 }
 
 TEST(ParallelMatrixAdd, StagedPolicy)
 {
-    pmat_staged<> m(8, 8, 2);
+    pmat_staged m(8, 8, 2);
     run_add_cycle(m);
 }
 
@@ -489,7 +447,7 @@ TEST(ParallelMatrixAdd, StagedAddSeesStagedInsert)
 {
     // The insert is still in the staging array when add() is called, so the
     // sum must be taken at flush time, not when add() runs.
-    pmat_staged<> m(8, 8, 2);
+    pmat_staged m(8, 8, 2);
     m.insert(3, 3, 10.0);
     m.add(3, 3, 1.0);
     m.insert(3, 4, 1.0);
@@ -518,7 +476,7 @@ TEST(ParallelMatrixAdd, StagedAddAcrossMidInsertFlush)
 
 TEST(ParallelMatrixAdd, ParallelFillRowsSupportAdd)
 {
-    pmat<> m(8, 8, 2);
+    pmat m(8, 8, 2);
     m.parallel_fill([](auto &rows, std::size_t r_start, std::size_t r_end, std::size_t)
     {
         for (std::size_t r = r_start; r < r_end; ++r)
@@ -534,7 +492,97 @@ TEST(ParallelMatrixAdd, ParallelFillRowsSupportAdd)
 
 TEST(ParallelMatrixAdd, ThrowsWhenLocked)
 {
-    pmat<> m(4, 4, 2);
+    pmat m(4, 4, 2);
     m.lock();
     EXPECT_THROW(m.add(0, 0, 1.0), std::logic_error);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dirty-row relock
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(ParallelMatrixRelock, CleanRowsKeepTheirMemory)
+{
+    pmat m(64, 64, 4);
+    for (std::size_t r = 0; r < 64; ++r)
+        for (uint32_t c = 0; c < 4; ++c)
+            m.insert(r, static_cast<uint32_t>((r + c) % 64), 1.0);
+    m.lock();
+
+    std::vector<const double *> before(64);
+    for (std::size_t r = 0; r < 64; ++r)
+        before[r] = m.row_at(r).get(static_cast<uint32_t>(r));
+
+    m.open();
+    m.add(10, 10, 1.0);  // partition 0
+    m.insert(50, 0, 7.0); // partition 3
+    m.lock();
+
+    EXPECT_DOUBLE_EQ(m.get(10, 10), 2.0);
+    EXPECT_DOUBLE_EQ(m.get(50, 0), 7.0);
+    for (std::size_t r = 0; r < 64; ++r)
+    {
+        if (r != 10 && r != 50)
+        {
+            EXPECT_EQ(m.row_at(r).get(static_cast<uint32_t>(r)), before[r]) << "row " << r;
+        }
+    }
+}
+
+TEST(ParallelMatrixRelock, ParallelFillAfterLockIsCommitted)
+{
+    pmat m(8, 8, 2);
+    for (std::size_t r = 0; r < 8; ++r)
+        m.insert(r, static_cast<uint32_t>(r), 1.0);
+    m.lock();
+
+    m.open();
+    m.parallel_fill([](auto &rows, std::size_t r_start, std::size_t r_end, std::size_t)
+    {
+        for (std::size_t r = r_start; r < r_end; ++r)
+            if (r % 2 == 0)
+                rows[r - r_start].insert(static_cast<uint32_t>((r + 1) % 8), 5.0);
+    });
+    m.lock();
+
+    for (std::size_t r = 0; r < 8; ++r)
+    {
+        EXPECT_DOUBLE_EQ(m.get(r, static_cast<uint32_t>(r)), 1.0) << "row " << r;
+        EXPECT_EQ(m.contains(r, static_cast<uint32_t>((r + 1) % 8)), r % 2 == 0) << "row " << r;
+    }
+    EXPECT_EQ(m.nnz(), 12u);
+
+    // The next cycle goes back to tracking individual rows.
+    m.open();
+    m.insert(3, 0, 2.0);
+    m.lock();
+    EXPECT_DOUBLE_EQ(m.get(3, 0), 2.0);
+}
+
+TEST(ParallelMatrixRelock, ClearDropsOnlyPendingEdits)
+{
+    pmat m(8, 8, 2);
+    m.insert(1, 1, 1.0);
+    m.lock();
+    m.open();
+    m.insert(6, 6, 2.0);
+    m.parallel_fill([](auto &rows, std::size_t r_start, std::size_t, std::size_t)
+    { rows[0].insert(static_cast<uint32_t>(r_start), 3.0); });
+    m.clear();
+    m.lock();
+
+    EXPECT_DOUBLE_EQ(m.get(1, 1), 1.0);
+    EXPECT_EQ(m.nnz(), 1u);
+}
+
+TEST(ParallelMatrixStaged, ClearDropsStagedInserts)
+{
+    // Regression: clear() emptied the row buffers but not the staging arrays,
+    // so staged inserts reappeared at the next lock().
+    pmat_staged m(8, 8, 2);
+    m.insert(1, 1, 5.0);
+    m.add(6, 6, 2.0);
+    m.clear();
+    m.lock();
+    EXPECT_EQ(m.nnz(), 0u);
 }

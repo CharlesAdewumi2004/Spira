@@ -8,8 +8,8 @@
 namespace spira::serial::algorithms
 {
 
-    template <class Layout, concepts::Indexable I, concepts::Valueable V>
-    spira::matrix<Layout, I, V> spgemm(const spira::matrix<Layout, I, V> &A, const spira::matrix<Layout, I, V> &B)
+    template <class Layout, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+    spira::matrix<Layout, I, V, BT, BN> spgemm(const spira::matrix<Layout, I, V, BT, BN> &A, const spira::matrix<Layout, I, V, BT, BN> &B)
     {
         if (A.n_cols() != B.n_rows())
         {
@@ -21,7 +21,7 @@ namespace spira::serial::algorithms
         if (!B.is_locked())
             throw std::logic_error("spgemm: B must be locked");
 
-        spira::matrix<Layout, I, V> C(A.n_rows(), B.n_cols());
+        spira::matrix<Layout, I, V, BT, BN> C(A.n_rows(), B.n_cols());
 
         ankerl::unordered_dense::map<I, V> acc;
 
@@ -52,4 +52,4 @@ namespace spira::serial::algorithms
         return C;
     }
 
-} // namespace spira::algorithms
+} // namespace spira::serial::algorithms

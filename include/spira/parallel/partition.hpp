@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -22,6 +21,7 @@ namespace spira::parallel
     //   - [row_start, row_end): the global row range this thread owns
     //   - rows: the row objects for those rows (buffer + CSR slice state)
     //   - csr:  the flat CSR storage for this partition's rows
+    //   - dirty bookkeeping: which rows have pending edits for the next lock
     //
     // Row indices are 0-based within the partition (local). Use local_row() to
     // convert a global row index to a local one.
@@ -45,6 +45,72 @@ namespace spira::parallel
         std::vector<row_type> rows{};
         csr_storage<LayoutTag, I, V> csr{};
 
+        std::vector<bool> dirty{};             // local row i is in dirty_rows
+        std::vector<std::size_t> dirty_rows{}; // local rows edited since the last lock
+        bool scan_all{false};                  // rows were handed out wholesale (parallel_fill)
+
+        /// Size the dirty bookkeeping for local_n rows.
+        void reset_dirty(std::size_t local_n)
+        {
+            dirty.assign(local_n, false);
+            dirty_rows.clear();
+            scan_all = false;
+        }
+
+        /// Record that local row i has pending edits: reopen it and queue it
+        /// for the next lock. Each row is queued at most once per cycle.
+        void mark_dirty(std::size_t i)
+        {
+            if (dirty[i])
+                return;
+            dirty[i] = true;
+            dirty_rows.push_back(i);
+            rows[i].open();
+        }
+
+        /// Local row i, queued for the next lock and open for writing. Every
+        /// algorithm that writes into a partition's rows goes through this.
+        [[nodiscard]] row_type &writable_row(std::size_t i)
+        {
+            mark_dirty(i);
+            return rows[i];
+        }
+
+        /// Open every row for direct writes; the next lock finds the edited
+        /// rows by scanning their buffers.
+        void open_all()
+        {
+            for (auto &r : rows)
+                r.open();
+            scan_all = true;
+        }
+
+        /// Drop every pending edit and return the touched rows to locked mode.
+        void clear_pending()
+        {
+            auto reset = [](row_type &r)
+            {
+                r.clear();
+                r.lock();
+            };
+            if (scan_all)
+                for (auto &r : rows)
+                    reset(r);
+            else
+                for (const std::size_t i : dirty_rows)
+                    reset(rows[i]);
+            end_cycle();
+        }
+
+        /// Forget the rows queued in this cycle (after a lock or clear).
+        void end_cycle()
+        {
+            for (const std::size_t i : dirty_rows)
+                dirty[i] = false;
+            dirty_rows.clear();
+            scan_all = false;
+        }
+
         [[nodiscard]] std::size_t size() const noexcept
         {
             return row_end - row_start;
@@ -55,73 +121,5 @@ namespace spira::parallel
             return global_row - row_start;
         }
     };
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // compute_partition_boundaries
-    //
-    // Given per-row nnz counts and a thread count, returns a boundary vector of
-    // size n_threads + 1 where:
-    //   boundaries[t]     = first global row owned by thread t
-    //   boundaries[t + 1] = one-past-last global row owned by thread t
-    //
-    // Partitioning is nnz-balanced: each thread receives approximately
-    // total_nnz / n_threads non-zeros. Boundary placement uses a prefix-sum
-    // binary search — O(n_rows + n_threads * log(n_rows)).
-    //
-    // Edge cases:
-    //   total_nnz == 0    → uniform row-count split.
-    //   n_threads >= n_rows → excess threads receive empty partitions [x, x).
-    //   n_threads == 1    → boundaries = {0, n_rows}.
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    inline std::vector<std::size_t> compute_partition_boundaries(
-        const std::vector<std::size_t> &row_nnz,
-        std::size_t n_threads)
-    {
-        const std::size_t n_rows = row_nnz.size();
-
-        // Default: all threads point to n_rows (safe empty range), then fix up.
-        std::vector<std::size_t> boundaries(n_threads + 1, n_rows);
-        boundaries[0] = 0;
-
-        if (n_threads <= 1 || n_rows == 0)
-            return boundaries;
-
-        // Prefix sum: prefix[i+1] = cumulative nnz for rows 0..i.
-        std::vector<std::size_t> prefix(n_rows + 1, 0);
-        for (std::size_t i = 0; i < n_rows; ++i)
-            prefix[i + 1] = prefix[i] + row_nnz[i];
-
-        const std::size_t total_nnz = prefix[n_rows];
-
-        if (total_nnz == 0)
-        {
-            // Uniform row-count split: spread rows evenly across threads.
-            for (std::size_t t = 1; t < n_threads; ++t)
-                boundaries[t] = t * n_rows / n_threads;
-            return boundaries;
-        }
-
-        // Place each interior boundary at the first row r where the cumulative
-        // nnz prefix[r] reaches the per-thread target.  lower_bound gives the
-        // smallest r satisfying prefix[r] >= target, naturally placing the
-        // boundary so thread t-1 accumulates exactly (or just over) its share.
-        //
-        // target is clamped to at least 1 to avoid stalling on threads whose
-        // integer-divided share rounds to zero (happens when total_nnz < n_threads).
-        for (std::size_t t = 1; t < n_threads; ++t)
-        {
-            const std::size_t target = std::max(std::size_t{1}, t * total_nnz / n_threads);
-            const auto it = std::lower_bound(
-                prefix.cbegin() + static_cast<std::ptrdiff_t>(boundaries[t - 1]),
-                prefix.cend(),
-                target);
-            boundaries[t] = std::min(
-                static_cast<std::size_t>(it - prefix.cbegin()),
-                n_rows);
-        }
-
-        return boundaries;
-    }
 
 } // namespace spira::parallel

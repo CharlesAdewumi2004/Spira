@@ -62,25 +62,17 @@ namespace spira
 
         explicit row(size_type column_limit) : column_limit_{column_limit} {}
 
-        // reserve_hint is accepted for API compatibility; buffer capacity is
-        // controlled by BufferN (the initial vector reserve hint).
-        row(size_type /*reserve_hint*/, size_type column_limit)
-            : column_limit_{column_limit}
-        {
-        }
-
         // ─────────────────────────────────────────
         // Mode
         // ─────────────────────────────────────────
 
-        [[nodiscard]] config::matrix_mode mode() const noexcept { return mode_; }
         [[nodiscard]] bool is_locked() const noexcept
         {
             return mode_ == config::matrix_mode::locked;
         }
 
         /// Sort + dedup buffer in-place, then freeze.  O(k log k)
-        /// Zeros are kept: they survive to merge_csr, which uses them to delete
+        /// Zeros are kept: they survive to relock_rows, which uses them to delete
         /// matching old CSR entries via its collision handler.
         void lock()
         {
@@ -103,9 +95,6 @@ namespace spira
         {
             csr_slice_ = s;
         }
-
-        /// Detach CSR slice (called at start of matrix::lock() before rebuild).
-        void reset_csr_slice() noexcept { csr_slice_.reset(); }
 
         /// Clear staging buffer content (but keep allocation).
         /// Called by matrix::lock() after the CSR has been built.
@@ -136,6 +125,9 @@ namespace spira
         {
             return csr_slice_.nnz == 0 && buffer_.empty();
         }
+
+        /// True if the buffer holds entries not yet committed to the CSR.
+        [[nodiscard]] bool has_buffered() const noexcept { return !buffer_.empty(); }
 
         void clear() noexcept
         {
@@ -187,56 +179,25 @@ namespace spira
 
         [[nodiscard]] bool contains(index_type col) const
         {
-            if (mode_ == config::matrix_mode::open)
-            {
-                if (buffer_.contains(col))
-                    return true;
-                return csr_slice_.binary_search(col) != nullptr;
-            }
-            // Locked: slice if installed, else the sorted buffer (standalone row).
-            if (csr_slice_.is_set())
-                return csr_slice_.binary_search(col) != nullptr;
-            return buffer_.contains(col);
+            return buffer_.contains(col) || csr_slice_.binary_search(col) != nullptr;
         }
 
         [[nodiscard]] const value_type *get(index_type col) const
         {
             if (to_size(col) >= column_limit_)
                 return nullptr;
-            if (mode_ == config::matrix_mode::open)
-            {
-                if (const value_type *p = buffer_.get_ptr(col); p != nullptr)
-                    return p;
-                return csr_slice_.binary_search(col);
-            }
-            // Locked: slice if installed, else the sorted buffer (standalone row).
-            if (csr_slice_.is_set())
-                return csr_slice_.binary_search(col);
-            return buffer_.get_ptr(col);
+            if (const value_type *p = buffer_.get_ptr(col); p != nullptr)
+                return p;
+            return csr_slice_.binary_search(col);
         }
 
         [[nodiscard]] value_type accumulate() const noexcept
         {
-            if (mode_ == config::matrix_mode::locked)
-            {
-                if (csr_slice_.is_set())
-                    return csr_slice_.accumulate();
-                // Standalone locked row — sorted buffer is the committed store.
-                value_type acc = traits::ValueTraits<value_type>::zero();
-                for (const auto &entry : buffer_)
-                    acc += entry.second_ref();
-                return acc;
-            }
-            // Open mode — buffer (deduped, last-write wins) + CSR entries not
-            // shadowed by the buffer.
+            if (buffer_.empty())
+                return csr_slice_.accumulate();
             value_type acc = buffer_.accumulate();
-            if (csr_slice_.is_set())
-            {
-                csr_slice_.for_each([&](I col, V val)
-                                    {
-                    if (!buffer_.contains(col))
-                        acc += val; });
-            }
+            csr_slice_.for_each([&](I col, V val)
+                                { if (!buffer_.contains(col)) acc += val; });
             return acc;
         }
 
@@ -245,59 +206,29 @@ namespace spira
         //
         // begin()/end() return buffer iterators.
         //   — In locked mode (before set_csr_slice), buffer is sorted+deduped
-        //     and ready to be consumed by build_csr / merge_csr.
+        //     and ready to be consumed by build_csr / relock_rows.
         //   — In open mode, buffer is unsorted insertion-order.
         //
-        // for_each_element() (const, locked) iterates the CSR slice if set,
+        // for_each_element() visits the committed entries: the CSR slice once
+        // the row belongs to a locked matrix, else the (sorted) buffer of a
+        // standalone row that has never had a slice.
         // ─────────────────────────────────────────
 
         auto begin() noexcept { return buffer_.begin(); }
         auto end() noexcept { return buffer_.end(); }
         auto begin() const noexcept { return buffer_.begin(); }
         auto end() const noexcept { return buffer_.end(); }
-        auto cbegin() const noexcept { return buffer_.cbegin(); }
-        auto cend() const noexcept { return buffer_.cend(); }
 
         template <class Fn>
         void for_each_element(Fn &&f) const
         {
-            assert(mode_ == config::matrix_mode::locked &&
-                   "row::for_each_element() requires locked mode");
             if (csr_slice_.is_set())
             {
                 csr_slice_.for_each(std::forward<Fn>(f));
             }
             else
             {
-                // Standalone locked row — sorted buffer is the committed store.
-                for (const auto &entry : buffer_)
-                    std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
-            }
-        }
-
-        template <class Fn>
-        void for_each_element(Fn &&f)
-        {
-            assert(mode_ == config::matrix_mode::open &&
-                   "mutable row::for_each_element() requires open mode");
-            for (auto &entry : buffer_)
-                std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
-        }
-
-        /// Iterate committed (CSR slice or sorted buffer) entries, works in any mode.
-        /// Used by scalar multiplication and similar algorithms that need to read
-        /// committed data while in open mode.
-        template <class Fn>
-        void for_each_committed_element(Fn &&f) const
-        {
-            if (csr_slice_.is_set())
-            {
-                csr_slice_.for_each(std::forward<Fn>(f));
-            }
-            else
-            {
-                // Never locked: nothing is committed yet, so fall back to
-                // whatever the staging buffer holds.
+                // Standalone row — the buffer is the committed store.
                 for (const auto &entry : buffer_)
                     std::forward<Fn>(f)(entry.first_ref(), entry.second_ref());
             }

@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include <spira/kernels/kernels.h>
@@ -8,150 +11,70 @@
 #include <spira/matrix/matrix.hpp>
 #include <spira/traits.hpp>
 
-namespace spira::serial::algorithms
+namespace spira
 {
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Generic SpMV — works for any layout / index / value combination.
-    //
-    // The CSR is always built once the matrix is locked.
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    template <class L, concepts::Indexable I, concepts::Valueable V,
-              class BT, std::size_t BN>
-    inline void spmv(const spira::matrix<L, I, V, BT, BN> &mat,
-                     const std::vector<V> &x, std::vector<V> &y)
+    namespace detail
     {
-        if (x.size() != mat.n_cols())
-            throw std::invalid_argument(
-                "The size of the input vector x does not match the number of columns of the matrix");
-        if (y.size() != mat.n_rows())
-            throw std::invalid_argument(
-                "The size of the output vector y does not match the number of rows of the matrix");
-
-        if (!mat.is_locked())
-            throw std::logic_error("spmv: matrix must be locked");
-
-        // The CSR is always built once the matrix is locked.
-        const auto *csr = mat.csr();
-        // CSR flat-buffer path: O(nnz) with sequential memory access.
-        const std::size_t *offsets = csr->offsets.get();
-        const V *xp = x.data();
-        const std::size_t nr = mat.n_rows();
-
-        if constexpr (std::is_same_v<L, layout::tags::soa_tag>)
+        // y[i] = row i of csr · x for the csr's n_rows rows. SoA storage with
+        // uint32_t columns and float/double values goes through the dispatched
+        // SIMD kernel; every other combination uses the scalar loop.
+        template <class L, class I, class V>
+        void csr_spmv(const csr_storage<L, I, V> &csr, const V *x, V *y)
         {
-            const I *cols = csr->cols.get();
-            const V *vals = csr->vals.get();
-            for (std::size_t i = 0; i < nr; ++i)
+            constexpr bool soa = std::is_same_v<L, layout::tags::soa_tag>;
+            constexpr bool simd = soa && std::is_same_v<I, uint32_t> &&
+                                  (std::is_same_v<V, float> || std::is_same_v<V, double>);
+            const std::size_t *row_start = csr.row_start.get();
+            const std::size_t *row_len = csr.row_len.get();
+
+            for (std::size_t i = 0; i < csr.n_rows; ++i)
             {
-                V acc = traits::ValueTraits<V>::zero();
-                for (std::size_t k = offsets[i]; k < offsets[i + 1]; ++k)
-                    acc += xp[static_cast<std::size_t>(cols[k])] * vals[k];
-                y[i] = acc;
+                const std::size_t beg = row_start[i];
+                const std::size_t len = row_len[i];
+                if constexpr (simd)
+                {
+                    if constexpr (std::is_same_v<V, float>)
+                        y[i] = kernel::sparse_dot_float(csr.vals.get() + beg, csr.cols.get() + beg, x, len);
+                    else
+                        y[i] = kernel::sparse_dot_double(csr.vals.get() + beg, csr.cols.get() + beg, x, len);
+                }
+                else
+                {
+                    V acc = traits::ValueTraits<V>::zero();
+                    for (std::size_t k = beg; k < beg + len; ++k)
+                    {
+                        if constexpr (soa)
+                            acc += x[static_cast<std::size_t>(csr.cols.get()[k])] * csr.vals.get()[k];
+                        else
+                            acc += x[static_cast<std::size_t>(csr.pairs.get()[k].column)] * csr.pairs.get()[k].value;
+                    }
+                    y[i] = acc;
+                }
             }
         }
-        else // aos_tag: interleaved pairs
+
+        template <class M, class V>
+        void check_spmv_args(const M &mat, const std::vector<V> &x, const std::vector<V> &y)
         {
-            const auto *pairs = csr->pairs.get();
-            for (std::size_t i = 0; i < nr; ++i)
-            {
-                V acc = traits::ValueTraits<V>::zero();
-                for (std::size_t k = offsets[i]; k < offsets[i + 1]; ++k)
-                    acc += xp[static_cast<std::size_t>(pairs[k].column)] * pairs[k].value;
-                y[i] = acc;
-            }
+            if (x.size() != mat.n_cols())
+                throw std::invalid_argument("spmv: x size does not match matrix column count");
+            if (y.size() != mat.n_rows())
+                throw std::invalid_argument("spmv: y size does not match matrix row count");
+            if (!mat.is_locked())
+                throw std::logic_error("spmv: matrix must be locked");
         }
-    
+    } // namespace detail
 
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // SIMD overload — soa_tag / uint32_t / float
-    //
-    // More specialised than the generic template: picked by overload resolution
-    // when L=soa_tag, I=uint32_t, V=float.
-    //
-    // CSR path → flat cols/vals passed directly to the SIMD kernel.
-    // Fallback  → scalar accumulation via for_each_element.
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    template <class BT, std::size_t BN>
-    inline void spmv(
-        const spira::matrix<layout::tags::soa_tag, uint32_t, float, BT, BN> &mat,
-        const std::vector<float> &x, std::vector<float> &y)
+    namespace serial::algorithms
     {
-        using L = layout::tags::soa_tag;
-        using I = uint32_t;
-        using V = float;
-
-        if (x.size() != mat.n_cols())
-            throw std::invalid_argument(
-                "The size of the input vector x does not match the number of columns of the matrix");
-        if (y.size() != mat.n_rows())
-            throw std::invalid_argument(
-                "The size of the output vector y does not match the number of rows of the matrix");
-
-        if (!mat.is_locked())
-            throw std::logic_error("spmv: matrix must be locked");
-
-        // The CSR is always built once the matrix is locked.
-        const auto *csr = mat.csr();
-        const uint32_t *cols = csr->cols.get();
-        const float *vals = csr->vals.get();
-        const std::size_t *offsets = csr->offsets.get();
-        const std::size_t nr = mat.n_rows();
-
-        for (std::size_t i = 0; i < nr; ++i)
+        /// y = mat · x. mat must be locked.
+        template <class L, concepts::Indexable I, concepts::Valueable V, class BT, std::size_t BN>
+        inline void spmv(const spira::matrix<L, I, V, BT, BN> &mat,
+                         const std::vector<V> &x, std::vector<V> &y)
         {
-            const std::size_t row_nnz = offsets[i + 1] - offsets[i];
-            y[i] = kernel::sparse_dot_float(
-                vals + offsets[i], cols + offsets[i],
-                x.data(), row_nnz, x.size());
+            spira::detail::check_spmv_args(mat, x, y);
+            spira::detail::csr_spmv(*mat.csr(), x.data(), y.data());
         }
-    
+    } // namespace serial::algorithms
 
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // SIMD overload — soa_tag / uint32_t / double
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    template <class BT, std::size_t BN>
-    inline void spmv(
-        const spira::matrix<layout::tags::soa_tag, uint32_t, double, BT, BN> &mat,
-        const std::vector<double> &x, std::vector<double> &y)
-    {
-        using L = layout::tags::soa_tag;
-        using I = uint32_t;
-        using V = double;
-
-        if (x.size() != mat.n_cols())
-            throw std::invalid_argument(
-                "The size of the input vector x does not match the number of columns of the matrix");
-        if (y.size() != mat.n_rows())
-            throw std::invalid_argument(
-                "The size of the output vector y does not match the number of rows of the matrix");
-
-        if (!mat.is_locked())
-            throw std::logic_error("spmv: matrix must be locked");
-
-        // The CSR is always built once the matrix is locked.
-        const auto *csr = mat.csr();
-        const uint32_t *cols = csr->cols.get();
-        const double *vals = csr->vals.get();
-        const std::size_t *offsets = csr->offsets.get();
-        const std::size_t nr = mat.n_rows();
-
-        for (std::size_t i = 0; i < nr; ++i)
-        {
-            const std::size_t row_nnz = offsets[i + 1] - offsets[i];
-            y[i] = kernel::sparse_dot_double(
-                vals + offsets[i], cols + offsets[i],
-                x.data(), row_nnz, x.size());
-        }
-    
-
-    }
-
-} // namespace spira::algorithms
+} // namespace spira

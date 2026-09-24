@@ -1,10 +1,10 @@
 // ============================================================================
-// Spira Stage 4 (Multi-Threaded) — bench/spira_bench.cpp
+// Spira parallel_matrix — bench/spira_bench.cpp
 //
 // Benchmarks:
-//   Insert  : parallel_fill() → lock(); 256 entries pre-partitioned by
-//             thread.  Each thread merges only its own partition.
-//             Cold LLC before each timed section.
+//   Insert  : open() → parallel_fill() → lock(); 256 entries pre-partitioned
+//             by thread. Each thread re-locks only its own partition's
+//             edited rows. Cold LLC before each timed section.
 //   SpMV    : parallel::algorithms::spmv on a locked matrix; each thread
 //             covers its own CSR partition independently.  Cold LLC.
 //   Scaling : SpMV at 1 % density, random pattern, varying thread count
@@ -17,10 +17,12 @@
 // Matrix   : 10 000 × 10 000, double, hash_map_buffer.
 // Densities: range(0) = nnz_per_row — 10 (0.1 %), 100 (1 %), 1000 (10 %).
 // Patterns : range(1) = 0 random | 1 strided.
+//
+// Every case measures process CPU time and derives its rates from wall time,
+// since the work runs on the pool's worker threads, not the benchmark thread.
 // ============================================================================
 #include <benchmark/benchmark.h>
 #include <spira/spira.hpp>
-#include <spira/matrix/buffer/buffer_tags.hpp>
 #include <spira/parallel/parallel_matrix.hpp>
 #include <spira/parallel/algorithms/spmv.hpp>
 
@@ -149,13 +151,19 @@ distribute_by_thread(PM<LayoutTag> &mat,
 }
 
 template <typename LayoutTag>
-static void fill_and_lock(PM<LayoutTag> &mat,
-                          const std::vector<std::vector<Triple>> &by_thread)
+static void fill(PM<LayoutTag> &mat, const std::vector<std::vector<Triple>> &by_thread)
 {
     mat.parallel_fill([&](auto &rows, size_t r_start, size_t, size_t tid) {
         for (const auto &t : by_thread[tid])
             rows[static_cast<size_t>(t.row) - r_start].insert(t.col, t.val);
     });
+}
+
+template <typename LayoutTag>
+static void fill_and_lock(PM<LayoutTag> &mat,
+                          const std::vector<std::vector<Triple>> &by_thread)
+{
+    fill(mat, by_thread);
     mat.lock();
 }
 
@@ -203,11 +211,7 @@ static void run_insert(benchmark::State &state,
         state.ResumeTiming();
 
         mat.open();
-        mat.parallel_fill([&](auto &rows, size_t r_start, size_t, size_t tid) {
-            for (const auto &t : batch_by_thread[tid])
-                rows[static_cast<size_t>(t.row) - r_start].insert(t.col, t.val);
-        });
-        mat.lock();
+        fill_and_lock(mat, batch_by_thread);
     }
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) * static_cast<int64_t>(BATCH));
@@ -236,6 +240,8 @@ BENCHMARK_DEFINE_F(InsertFixture_AoS, Insert)(benchmark::State &state)
         ->Args({100,  1})                      \
         ->Args({1000, 1})                      \
         ->ArgNames({"nnz_per_row", "pattern"}) \
+        ->MeasureProcessCPUTime()              \
+        ->UseRealTime()                        \
         ->Unit(benchmark::kNanosecond)
 
 REGISTER_INSERT(InsertFixture_SoA);
@@ -251,19 +257,21 @@ class SpMVFixtureBase : public benchmark::Fixture
 public:
     std::unique_ptr<PM<LayoutTag>> mat;
     std::vector<double>            x, y;
-    size_t                         n_threads{1};
 
     void SetUp(const benchmark::State &state) override
     {
-        n_threads = std::max(1u, std::thread::hardware_concurrency());
-        const size_t nnz = static_cast<size_t>(state.range(0));
-        const bool   rnd = (state.range(1) == 0);
+        build(std::max(1u, std::thread::hardware_concurrency()),
+              static_cast<size_t>(state.range(0)), state.range(1) == 0);
+    }
 
+    void TearDown(const benchmark::State &) override { mat.reset(); }
+
+protected:
+    // Locked matrix with nnz_per_row entries per row, plus random x.
+    void build(size_t n_threads, size_t nnz_per_row, bool rnd)
+    {
         mat = std::make_unique<PM<LayoutTag>>(N, N, n_threads);
-
-        auto full = make_full_triples(nnz, rnd);
-        auto by_t = distribute_by_thread(*mat, full, n_threads);
-        fill_and_lock(*mat, by_t);
+        fill_and_lock(*mat, distribute_by_thread(*mat, make_full_triples(nnz_per_row, rnd), n_threads));
 
         std::mt19937 rng(SEED ^ 0xC0FFEEu);
         std::uniform_real_distribution<double> vd(0.0, 1.0);
@@ -271,8 +279,6 @@ public:
         y.assign(N, 0.0);
         for (auto &v : x) v = vd(rng);
     }
-
-    void TearDown(const benchmark::State &) override { mat.reset(); }
 };
 
 class SpMVFixture_SoA : public SpMVFixtureBase<SoA> {};
@@ -299,11 +305,12 @@ static void run_spmv(benchmark::State &state,
     state.SetItemsProcessed(
         static_cast<int64_t>(state.iterations()) *
         static_cast<int64_t>(nnz_tot) * 2);
-    // Memory bandwidth: CSR values (8B) + col indices (4B) + row offsets (8B)
+    // Memory bandwidth: CSR values (8B) + col indices (4B)
+    //                   + row_start and row_len (8B each per row)
     //                   + input vector x (8B) + output vector y (8B)
     const int64_t bytes_per_iter =
         static_cast<int64_t>(nnz_tot) * (sizeof(double) + sizeof(uint32_t)) +
-        static_cast<int64_t>(N + 1)   *  sizeof(size_t) +
+        static_cast<int64_t>(N)       *  2 * sizeof(size_t) +
         static_cast<int64_t>(N)       * (sizeof(double) + sizeof(double));
     state.SetBytesProcessed(
         static_cast<int64_t>(state.iterations()) * bytes_per_iter);
@@ -327,6 +334,8 @@ BENCHMARK_DEFINE_F(SpMVFixture_AoS, SpMV)(benchmark::State &state)
         ->Args({100,  1})                      \
         ->Args({1000, 1})                      \
         ->ArgNames({"nnz_per_row", "pattern"}) \
+        ->MeasureProcessCPUTime()              \
+        ->UseRealTime()                        \
         ->Unit(benchmark::kNanosecond)
 
 REGISTER_SPMV(SpMVFixture_SoA);
@@ -336,71 +345,30 @@ REGISTER_SPMV(SpMVFixture_AoS);
 // Thread scaling — SpMV at 1 % density, random pattern, both layouts
 // range(0) = n_threads
 // ============================================================================
+// Same as SpMV at 1 % density on the random pattern, with the thread count
+// as the swept variable.
 template <typename LayoutTag>
-class ThreadScalingFixtureBase : public benchmark::Fixture
+class ThreadScalingFixtureBase : public SpMVFixtureBase<LayoutTag>
 {
 public:
-    std::unique_ptr<PM<LayoutTag>> mat;
-    std::vector<double>            x, y;
+    static constexpr size_t nnz_per_row = 100;
 
     void SetUp(const benchmark::State &state) override
     {
-        const size_t n_threads = static_cast<size_t>(state.range(0));
-
-        mat = std::make_unique<PM<LayoutTag>>(N, N, n_threads);
-
-        auto full = make_full_triples(100, /*rnd=*/true);  // 1 % density
-        auto by_t = distribute_by_thread(*mat, full, n_threads);
-        fill_and_lock(*mat, by_t);
-
-        std::mt19937 rng(SEED ^ 0xC0FFEEu);
-        std::uniform_real_distribution<double> vd(0.0, 1.0);
-        x.resize(N);
-        y.assign(N, 0.0);
-        for (auto &v : x) v = vd(rng);
+        this->build(static_cast<size_t>(state.range(0)), nnz_per_row, /*rnd=*/true);
     }
-
-    void TearDown(const benchmark::State &) override { mat.reset(); }
 };
 
 class ThreadScalingFixture_SoA : public ThreadScalingFixtureBase<SoA> {};
 class ThreadScalingFixture_AoS : public ThreadScalingFixtureBase<AoS> {};
 
-template <typename LayoutTag>
-static void run_scaling(benchmark::State &state,
-                        PM<LayoutTag> &mat,
-                        std::vector<double> &x,
-                        std::vector<double> &y)
-{
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_cache();
-        state.ResumeTiming();
-
-        spira::parallel::algorithms::spmv(mat, x, y);
-        benchmark::DoNotOptimize(y.data());
-        benchmark::ClobberMemory();
-    }
-    // 1 % density = 100 nnz/row; 2 flops per non-zero
-    static constexpr size_t nnz_tot = N * 100;
-    state.SetItemsProcessed(
-        static_cast<int64_t>(state.iterations()) *
-        static_cast<int64_t>(nnz_tot) * 2);
-    const int64_t bytes =
-        static_cast<int64_t>(nnz_tot) * (sizeof(double) + sizeof(uint32_t)) +
-        static_cast<int64_t>(N + 1)   *  sizeof(size_t) +
-        static_cast<int64_t>(N)       * (sizeof(double) + sizeof(double));
-    state.SetBytesProcessed(
-        static_cast<int64_t>(state.iterations()) * bytes);
-}
-
 BENCHMARK_DEFINE_F(ThreadScalingFixture_SoA, SpMV_Scaling)(benchmark::State &state)
 {
-    run_scaling(state, *mat, x, y);
+    run_spmv(state, *mat, x, y, nnz_per_row);
 }
 BENCHMARK_DEFINE_F(ThreadScalingFixture_AoS, SpMV_Scaling)(benchmark::State &state)
 {
-    run_scaling(state, *mat, x, y);
+    run_spmv(state, *mat, x, y, nnz_per_row);
 }
 
 #define REGISTER_SCALING(FIXTURE)                                        \
@@ -413,6 +381,8 @@ BENCHMARK_DEFINE_F(ThreadScalingFixture_AoS, SpMV_Scaling)(benchmark::State &sta
             if (hw > 8) b->Arg(hw);                                      \
         })                                                               \
         ->ArgName("n_threads")                                           \
+        ->MeasureProcessCPUTime()                                        \
+        ->UseRealTime()                                                  \
         ->Unit(benchmark::kNanosecond)
 
 REGISTER_SCALING(ThreadScalingFixture_SoA);
